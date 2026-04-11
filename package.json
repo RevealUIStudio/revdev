@@ -1,0 +1,30 @@
+{
+  "name": "revdev",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RevDev — Native developer tools for RevealUI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RevealUIStudio/revdev.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.13.0"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean",
+    "dev": "pnpm -r --parallel dev",
+    "dev:studio": "pnpm --filter @revdev/studio dev",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.1.1",
+    "typescript": "^6.0.2"
+  }
+}

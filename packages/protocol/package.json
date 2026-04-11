@@ -1,0 +1,37 @@
+{
+  "name": "@revdev/protocol",
+  "version": "0.1.0",
+  "description": "JSON-RPC 2.0 type definitions shared between Studio, Terminal, and Harness Daemon",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RevealUIStudio/revdev.git",
+    "directory": "packages/protocol"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  },
+  "engines": {
+    "node": ">=24.13.0"
+  }
+}

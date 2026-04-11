@@ -1,0 +1,33 @@
+{
+  "name": "@revdev/theme",
+  "version": "0.1.0",
+  "description": "Shared terminal theme and color tokens for Studio and Terminal",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RevealUIStudio/revdev.git",
+    "directory": "packages/theme"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  },
+  "engines": {
+    "node": ">=24.13.0"
+  }
+}
