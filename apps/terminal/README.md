@@ -1,21 +1,43 @@
-# RevDev Terminal
+# RevealUI Terminal
 
-TUI client for RevealUI. API integration, agent management, QR checkout, SSH fingerprint lookup.
+> **Status: Experimental** — Not production-deployed. Functional prototype for SSH-based license purchases.
 
-Built with Go + Bubble Tea.
+SSH payment service built with the [Charm](https://charm.sh/) ecosystem:
 
-## Binary name
+- **Wish** — SSH server
+- **Bubble Tea** — TUI framework
+- **Lip Gloss** — Terminal styling
 
-`rvui` — short, typed thousands of times a day.
+## Usage
 
-## Features (planned)
+```bash
+ssh terminal.revealui.com
+```
 
-- Connect to harness daemon (same as Studio, different UI)
-- API client for RevealUI endpoints
-- Agent session management (spawn, stop, monitor)
-- QR code checkout flow
-- SSH public key fingerprint lookup
+Presents an interactive TUI for browsing tiers, purchasing licenses, and managing agent credits — all from the terminal.
 
-## Extraction status
+## Development
 
-Being extracted from `apps/terminal/` in the RevealUI monorepo.
+```bash
+cd apps/terminal
+go run .
+```
+
+## Deployment
+
+Requires persistent TCP (SSH), not serverless. Deploy to Fly.io or a VPS:
+
+```bash
+docker build -t revealui-terminal .
+docker run -p 2222:2222 revealui-terminal
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `0.0.0.0` | Bind address |
+| `PORT` | `2222` | SSH port |
+| `HOST_KEY_PATH` | `.ssh/term_ed25519` | SSH host key |
+| `REVEALUI_API_URL` | `https://api.revealui.com` | API endpoint |
+| `REVEALUI_API_TOKEN` | — | Optional API token |
