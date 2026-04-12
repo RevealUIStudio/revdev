@@ -7,7 +7,7 @@ export default defineConfig({
     'storage/index': 'src/storage/index.ts',
   },
   format: ['esm'],
-  dts: true,
+  dts: false,
   clean: true,
   target: 'node24',
   banner: { js: '' },
