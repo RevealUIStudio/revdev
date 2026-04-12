@@ -4,6 +4,15 @@
  * The server initializes PGlite, runs schema migrations, then accepts
  * newline-delimited JSON-RPC requests over the socket. Each request is
  * checked against the license guard before dispatch.
+ *
+ * Identity model:
+ *   Each connected socket has a SocketContext. A client calls
+ *   `session.register` to obtain a sessionId, which is then bound to
+ *   the socket as `ctx.agentId`. All subsequent coordination calls
+ *   (mail.*, files.*, tasks.*, memory.*, events.log) use ctx.agentId
+ *   as the caller identity. This lets two agents on the same daemon
+ *   be distinguishable. Calls that require identity but arrive before
+ *   `session.register` are rejected with -32002.
  */
 
 import { createServer, type Socket } from 'node:net';
@@ -25,10 +34,47 @@ interface RpcRequest {
   params?: Record<string, unknown>;
 }
 
+/** Per-connection state. Populated on session.register or session.attach. */
+export interface SocketContext {
+  /** Agent identity for this socket. Null until session.register/attach succeeds. */
+  agentId: string | null;
+  /** Human-readable agent name (e.g. "claude-main"). */
+  agentName: string | null;
+  /**
+   * How `agentId` was bound to this socket:
+   *   - 'register'/'attach': long-lived identity (trigger cleanup on disconnect)
+   *   - 'param': transient actorAgentId from a fresh-per-call client (never cleanup)
+   *   - null: unbound
+   */
+  boundVia: 'register' | 'attach' | 'param' | null;
+}
+
 type RpcHandler = (
   params: Record<string, unknown>,
   db: PGlite,
+  ctx: SocketContext,
 ) => Promise<unknown>;
+
+/** Methods that can be called without a registered session identity. */
+const IDENTITY_EXEMPT = new Set([
+  'ping',
+  'session.register',
+  'session.attach',
+  'session.list',
+  'harness.health',
+  'inference.status',
+  'inference.pull',
+  'inference.start',
+  'inference.stop',
+  'inference.chat',
+  'inference.generate',
+]);
+
+/**
+ * Shared DB reference so identity helpers can validate actorAgentId overrides.
+ * Set once in startDaemon before any handler runs.
+ */
+let sharedDb: PGlite | null = null;
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -42,236 +88,487 @@ export function registerHandler(method: string, handler: RpcHandler): void {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function requireAgent(
+  ctx: SocketContext,
+  params?: Record<string, unknown>,
+): string {
+  if (ctx.agentId) return ctx.agentId;
+  // Fallback: accept `actorAgentId` in params for fresh-per-call clients
+  // (e.g. Studio's Tauri bridge). The daemon does not authenticate — this
+  // is local-trust; remote callers go through the HTTP gateway with auth.
+  const actor = params ? strOrNull(params['actorAgentId']) : null;
+  if (actor) {
+    ctx.agentId = actor;
+    ctx.boundVia = 'param';
+    return actor;
+  }
+  throw new Error('Not registered: call session.register or pass actorAgentId');
+}
+
+function str(v: unknown, fallback = ''): string {
+  return typeof v === 'string' ? v : fallback;
+}
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+function num(v: unknown, fallback = 0): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+function asStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === 'string');
+}
+
+/** Accept either `paths: string[]` or `filePath: string` — normalize to array. */
+function normalizePaths(params: Record<string, unknown>): string[] {
+  const paths = asStringArray(params['paths']);
+  if (paths.length > 0) return paths;
+  const single = strOrNull(params['filePath']);
+  return single ? [single] : [];
+}
+
+// ---------------------------------------------------------------------------
 // Built-in handlers
 // ---------------------------------------------------------------------------
 
 registerHandler('ping', async () => ({ pong: true, ts: Date.now() }));
 
-registerHandler('session.register', async (params, db) => {
+// -- Session ----------------------------------------------------------------
+
+registerHandler('session.register', async (params, db, ctx) => {
   const id = crypto.randomUUID();
-  const { agentName, workDir, backend } = params as {
-    agentName: string;
-    workDir: string;
-    backend: string;
-  };
-  await db.exec(
-    `INSERT INTO agent_sessions (id, env, task)
-     VALUES ('${id}', '${backend ?? 'unknown'}:${agentName ?? 'anon'}', '${workDir ?? ''}')`,
+  const agentName = str(params['agentName'], 'anon');
+  const workDir = str(params['workDir']);
+  const backend = str(params['backend'], 'unknown');
+  const env = `${backend}:${agentName}`;
+
+  await db.query(
+    `INSERT INTO agent_sessions (id, env, task) VALUES ($1, $2, $3)`,
+    [id, env, workDir],
   );
-  return { sessionId: id, agentName, backend };
+
+  // Bind this identity to the connection.
+  ctx.agentId = id;
+  ctx.agentName = agentName;
+  ctx.boundVia = 'register';
+
+  return { sessionId: id, agentId: id, agentName, backend };
+});
+
+registerHandler('session.attach', async (params, db, ctx) => {
+  const agentId = strOrNull(params['agentId']);
+  if (!agentId) throw new Error('session.attach: missing agentId');
+  const r = await db.query<{ id: string; env: string }>(
+    `SELECT id, env FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,
+    [agentId],
+  );
+  if (r.rows.length === 0) {
+    throw new Error(`session.attach: unknown or ended session ${agentId}`);
+  }
+  ctx.agentId = agentId;
+  ctx.agentName = r.rows[0]?.env.split(':')[1] ?? null;
+  ctx.boundVia = 'attach';
+  return { attached: true, agentId };
 });
 
 registerHandler('session.list', async (_params, db) => {
-  const result = await db.exec('SELECT * FROM agent_sessions WHERE ended_at IS NULL');
-  return { sessions: result[0]?.rows ?? [] };
-});
-
-registerHandler('session.end', async (params, db) => {
-  const { sessionId } = params as { sessionId: string };
-  await db.exec(
-    `UPDATE agent_sessions SET ended_at = NOW() WHERE id = '${sessionId}'`,
+  const result = await db.query<Record<string, unknown>>(
+    `SELECT * FROM agent_sessions WHERE ended_at IS NULL ORDER BY started_at DESC`,
   );
-  return { ended: sessionId };
+  return { sessions: result.rows };
 });
 
-registerHandler('session.update', async (params, db) => {
-  const { sessionId, task, files } = params as {
-    sessionId: string;
-    task?: string;
-    files?: string;
-  };
+registerHandler('session.end', async (params, db, ctx) => {
+  // Prefer caller's own session, but allow explicit override (e.g. admin cleanup).
+  const target = strOrNull(params['sessionId']) ?? strOrNull(params['agentId']) ?? ctx.agentId;
+  if (!target) throw new Error('No session to end');
+  await db.query(
+    `UPDATE agent_sessions SET ended_at = NOW() WHERE id = $1`,
+    [target],
+  );
+  if (ctx.agentId === target) {
+    ctx.agentId = null;
+    ctx.agentName = null;
+  }
+  return { ended: target };
+});
+
+registerHandler('session.update', async (params, db, ctx) => {
+  const target = strOrNull(params['sessionId']) ?? strOrNull(params['agentId']) ?? ctx.agentId;
+  if (!target) throw new Error('No session to update');
+  const task = strOrNull(params['task']);
+  const files = strOrNull(params['files']);
+
+  // Build the update dynamically but keep values parameterized.
   const sets: string[] = ['updated_at = NOW()'];
-  if (task !== undefined) sets.push(`task = '${task}'`);
-  if (files !== undefined) sets.push(`files = '${files}'`);
-  await db.exec(
-    `UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = '${sessionId}'`,
+  const vals: unknown[] = [];
+  let i = 1;
+  if (task !== null) {
+    sets.push(`task = $${i++}`);
+    vals.push(task);
+  }
+  if (files !== null) {
+    sets.push(`files = $${i++}`);
+    vals.push(files);
+  }
+  vals.push(target);
+  await db.query(
+    `UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = $${i}`,
+    vals,
   );
-  return { updated: sessionId };
+  return { updated: target };
 });
 
-registerHandler('mail.send', async (params, db) => {
-  const { to, subject, body } = params as {
-    to: string;
-    subject: string;
-    body: string;
-  };
-  await db.exec(
+// -- Mail -------------------------------------------------------------------
+
+registerHandler('mail.send', async (params, db, ctx) => {
+  const from = requireAgent(ctx, params);
+  const to = strOrNull(params['to']) ?? strOrNull(params['toAgent']);
+  if (!to) throw new Error('mail.send: missing "to" (or "toAgent")');
+  const subject = str(params['subject']);
+  const body = str(params['body']);
+
+  const result = await db.query<{ id: number }>(
     `INSERT INTO agent_messages (from_agent, to_agent, subject, body)
-     VALUES ('self', '${to}', '${subject}', '${body}')`,
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [from, to, subject, body],
   );
-  return { sent: true };
+  return { sent: true, id: result.rows[0]?.id ?? null };
 });
 
-registerHandler('mail.inbox', async (params, db) => {
-  const { unreadOnly } = params as { unreadOnly?: boolean };
-  const where = unreadOnly !== false ? 'AND read = FALSE' : '';
-  const result = await db.exec(
-    `SELECT * FROM agent_messages WHERE to_agent = 'self' ${where} ORDER BY created_at DESC LIMIT 50`,
-  );
-  return { messages: result[0]?.rows ?? [] };
+registerHandler('mail.inbox', async (params, db, ctx) => {
+  // Explicit agentId param wins (for debugging / admin). Otherwise use caller.
+  const agentId = strOrNull(params['agentId']) ?? requireAgent(ctx, params);
+  const unreadOnly = params['unreadOnly'] !== false; // default true
+
+  const sql = unreadOnly
+    ? `SELECT * FROM agent_messages WHERE to_agent = $1 AND read = FALSE
+       ORDER BY created_at DESC LIMIT 50`
+    : `SELECT * FROM agent_messages WHERE to_agent = $1
+       ORDER BY created_at DESC LIMIT 50`;
+  const result = await db.query<Record<string, unknown>>(sql, [agentId]);
+  return { messages: result.rows };
 });
 
-registerHandler('mail.broadcast', async (params, db) => {
-  const { subject, body } = params as { subject: string; body: string };
-  const sessions = await db.exec(
-    'SELECT id FROM agent_sessions WHERE ended_at IS NULL',
+registerHandler('mail.broadcast', async (params, db, ctx) => {
+  const from = requireAgent(ctx, params);
+  const subject = str(params['subject']);
+  const body = str(params['body']);
+
+  const sessions = await db.query<{ id: string }>(
+    `SELECT id FROM agent_sessions WHERE ended_at IS NULL AND id <> $1`,
+    [from],
   );
-  const targets = (sessions[0]?.rows ?? []) as Array<{ id: string }>;
-  for (const target of targets) {
-    await db.exec(
+  for (const target of sessions.rows) {
+    await db.query(
       `INSERT INTO agent_messages (from_agent, to_agent, subject, body)
-       VALUES ('self', '${target.id}', '${subject}', '${body}')`,
+       VALUES ($1, $2, $3, $4)`,
+      [from, target.id, subject, body],
     );
   }
-  return { broadcast: true, recipients: targets.length };
+  return { broadcast: true, sent: sessions.rows.length, recipients: sessions.rows.length };
 });
 
-registerHandler('mail.markRead', async (params, db) => {
-  const { messageIds } = params as { messageIds: string[] };
-  for (const id of messageIds) {
-    await db.exec(`UPDATE agent_messages SET read = TRUE WHERE id = ${id}`);
-  }
-  return { marked: messageIds.length };
+registerHandler('mail.markRead', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  // Accept number[] or string[] (JSON numbers or numeric strings).
+  const raw = Array.isArray(params['messageIds']) ? params['messageIds'] : [];
+  const ids = raw
+    .map((v) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN))
+    .filter((n) => Number.isFinite(n));
+  if (ids.length === 0) return { marked: 0 };
+
+  const result = await db.query(
+    `UPDATE agent_messages SET read = TRUE
+     WHERE to_agent = $1 AND id = ANY($2::int[])`,
+    [agentId, ids],
+  );
+  return { marked: result.affectedRows ?? ids.length };
 });
 
-registerHandler('files.reserve', async (params, db) => {
-  const { paths, reason } = params as { paths: string[]; reason?: string };
+// -- File reservations ------------------------------------------------------
+
+registerHandler('files.reserve', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  const paths = normalizePaths(params);
+  if (paths.length === 0) throw new Error('files.reserve: missing paths');
+  const reason = str(params['reason']);
+  const ttlSeconds = num(params['ttlSeconds'], 30 * 60);
+
+  const reserved: string[] = [];
+  const conflicts: Array<{ path: string; holder: string }> = [];
+
   for (const p of paths) {
-    await db.exec(
-      `INSERT INTO file_reservations (file_path, agent_id, expires_at, reason)
-       VALUES ('${p}', 'self', NOW() + INTERVAL '30 minutes', '${reason ?? ''}')
-       ON CONFLICT (file_path) DO UPDATE SET agent_id = 'self', reserved_at = NOW(), expires_at = NOW() + INTERVAL '30 minutes'`,
+    // Check if another active agent holds it.
+    const existing = await db.query<{ agent_id: string; expires_at: string }>(
+      `SELECT agent_id, expires_at FROM file_reservations
+       WHERE file_path = $1 AND expires_at > NOW()`,
+      [p],
     );
+    const holder = existing.rows[0];
+    if (holder && holder.agent_id !== agentId) {
+      conflicts.push({ path: p, holder: holder.agent_id });
+      continue;
+    }
+
+    await db.query(
+      `INSERT INTO file_reservations (file_path, agent_id, expires_at, reason)
+       VALUES ($1, $2, NOW() + ($3 || ' seconds')::interval, $4)
+       ON CONFLICT (file_path) DO UPDATE
+         SET agent_id = EXCLUDED.agent_id,
+             reserved_at = NOW(),
+             expires_at = EXCLUDED.expires_at,
+             reason = EXCLUDED.reason`,
+      [p, agentId, String(ttlSeconds), reason],
+    );
+    reserved.push(p);
   }
-  return { reserved: paths };
+
+  return {
+    success: conflicts.length === 0,
+    reserved,
+    conflicts,
+  };
 });
 
 registerHandler('files.check', async (params, db) => {
-  const { paths } = params as { paths: string[] };
-  const result = await db.exec(
-    `SELECT file_path, agent_id, expires_at FROM file_reservations
-     WHERE file_path IN (${paths.map((p) => `'${p}'`).join(',')}) AND expires_at > NOW()`,
+  const paths = normalizePaths(params);
+  if (paths.length === 0) return { reservations: [] };
+  const result = await db.query<Record<string, unknown>>(
+    `SELECT file_path, agent_id, reserved_at, expires_at, reason
+     FROM file_reservations
+     WHERE file_path = ANY($1::text[]) AND expires_at > NOW()`,
+    [paths],
   );
-  return { reservations: result[0]?.rows ?? [] };
+  return { reservations: result.rows };
 });
 
-registerHandler('files.release', async (params, db) => {
-  const { paths } = params as { paths: string[] };
-  await db.exec(
-    `DELETE FROM file_reservations WHERE file_path IN (${paths.map((p) => `'${p}'`).join(',')})`,
+registerHandler('files.release', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  const paths = normalizePaths(params);
+
+  // If no paths given, release all of this agent's reservations.
+  if (paths.length === 0) {
+    const r = await db.query(
+      `DELETE FROM file_reservations WHERE agent_id = $1`,
+      [agentId],
+    );
+    return { released: r.affectedRows ?? 0 };
+  }
+
+  const r = await db.query(
+    `DELETE FROM file_reservations
+     WHERE agent_id = $1 AND file_path = ANY($2::text[])`,
+    [agentId, paths],
   );
-  return { released: paths };
+  return { released: r.affectedRows ?? 0 };
 });
 
-registerHandler('files.list', async (_params, db) => {
-  const result = await db.exec(
-    'SELECT * FROM file_reservations WHERE expires_at > NOW() ORDER BY reserved_at DESC',
+registerHandler('files.list', async (params, db) => {
+  const agentId = strOrNull(params['agentId']);
+  const sql = agentId
+    ? `SELECT * FROM file_reservations WHERE expires_at > NOW() AND agent_id = $1
+       ORDER BY reserved_at DESC`
+    : `SELECT * FROM file_reservations WHERE expires_at > NOW()
+       ORDER BY reserved_at DESC`;
+  const result = await db.query<Record<string, unknown>>(
+    sql,
+    agentId ? [agentId] : [],
   );
-  return { reservations: result[0]?.rows ?? [] };
+  return { reservations: result.rows };
 });
+
+// -- Tasks ------------------------------------------------------------------
 
 registerHandler('tasks.create', async (params, db) => {
-  const id = crypto.randomUUID();
-  const { title, description, priority } = params as {
-    title: string;
-    description?: string;
-    priority?: string;
-  };
-  await db.exec(
-    `INSERT INTO tasks (id, description, status)
-     VALUES ('${id}', '${priority ? `[${priority}] ` : ''}${title}${description ? ': ' + description : ''}', 'open')`,
+  // Allow caller-supplied taskId (useful for stable external IDs) or generate one.
+  const id = strOrNull(params['taskId']) ?? crypto.randomUUID();
+  const title = str(params['title']);
+  const description = str(params['description']);
+  const priority = strOrNull(params['priority']);
+  const full = [
+    priority ? `[${priority}]` : '',
+    title,
+    description ? `— ${description}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  await db.query(
+    `INSERT INTO tasks (id, description, status) VALUES ($1, $2, 'open')`,
+    [id, full || description || title || '(untitled)'],
   );
-  return { taskId: id };
+  return { taskId: id, id };
 });
 
 registerHandler('tasks.list', async (params, db) => {
-  const { status } = params as { status?: string };
-  const where = status && status !== 'all' ? `WHERE status = '${status}'` : '';
-  const result = await db.exec(`SELECT * FROM tasks ${where} ORDER BY created_at DESC`);
-  return { tasks: result[0]?.rows ?? [] };
-});
+  const status = strOrNull(params['status']);
+  const owner = strOrNull(params['owner']);
 
-registerHandler('tasks.claim', async (params, db) => {
-  const { taskId } = params as { taskId: string };
-  await db.exec(
-    `UPDATE tasks SET status = 'claimed', owner = 'self', claimed_at = NOW() WHERE id = '${taskId}'`,
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+  if (status && status !== 'all') {
+    where.push(`status = $${i++}`);
+    vals.push(status);
+  }
+  if (owner) {
+    where.push(`owner = $${i++}`);
+    vals.push(owner);
+  }
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const result = await db.query<Record<string, unknown>>(
+    `SELECT * FROM tasks ${whereClause} ORDER BY created_at DESC`,
+    vals,
   );
-  return { claimed: taskId };
+  return { tasks: result.rows };
 });
 
-registerHandler('tasks.complete', async (params, db) => {
-  const { taskId, summary } = params as { taskId: string; summary?: string };
-  await db.exec(
-    `UPDATE tasks SET status = 'completed', completed_at = NOW()${summary ? `, description = description || ' — ' || '${summary}'` : ''} WHERE id = '${taskId}'`,
+registerHandler('tasks.claim', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  const taskId = strOrNull(params['taskId']);
+  if (!taskId) throw new Error('tasks.claim: missing taskId');
+
+  // Atomic CAS: only claim if open or already held by us.
+  const r = await db.query<{ owner: string | null }>(
+    `UPDATE tasks SET status = 'claimed', owner = $1, claimed_at = NOW()
+     WHERE id = $2 AND (status = 'open' OR owner = $1)
+     RETURNING owner`,
+    [agentId, taskId],
   );
-  return { completed: taskId };
+  if (r.rows.length === 0) {
+    const current = await db.query<{ owner: string | null; status: string }>(
+      `SELECT owner, status FROM tasks WHERE id = $1`,
+      [taskId],
+    );
+    return {
+      success: false,
+      claimed: false,
+      owner: current.rows[0]?.owner ?? null,
+      status: current.rows[0]?.status ?? 'unknown',
+    };
+  }
+  return { success: true, claimed: taskId, owner: agentId };
 });
 
-registerHandler('tasks.release', async (params, db) => {
-  const { taskId } = params as { taskId: string };
-  await db.exec(
-    `UPDATE tasks SET status = 'open', owner = NULL, claimed_at = NULL WHERE id = '${taskId}'`,
+registerHandler('tasks.complete', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  const taskId = strOrNull(params['taskId']);
+  if (!taskId) throw new Error('tasks.complete: missing taskId');
+  const summary = strOrNull(params['summary']);
+
+  // Only the claiming agent may complete.
+  const r = summary
+    ? await db.query(
+        `UPDATE tasks SET status = 'completed', completed_at = NOW(),
+           description = description || ' — ' || $3
+         WHERE id = $1 AND owner = $2`,
+        [taskId, agentId, summary],
+      )
+    : await db.query(
+        `UPDATE tasks SET status = 'completed', completed_at = NOW()
+         WHERE id = $1 AND owner = $2`,
+        [taskId, agentId],
+      );
+  const ok = (r.affectedRows ?? 0) > 0;
+  return { ok, completed: ok ? taskId : null };
+});
+
+registerHandler('tasks.release', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  const taskId = strOrNull(params['taskId']);
+  if (!taskId) throw new Error('tasks.release: missing taskId');
+
+  const r = await db.query(
+    `UPDATE tasks SET status = 'open', owner = NULL, claimed_at = NULL
+     WHERE id = $1 AND owner = $2`,
+    [taskId, agentId],
   );
-  return { released: taskId };
+  const ok = (r.affectedRows ?? 0) > 0;
+  return { ok, released: ok ? taskId : null };
 });
 
-registerHandler('events.log', async (params, db) => {
-  const { agentId, eventType, payload } = params as {
-    agentId: string;
-    eventType: string;
-    payload?: Record<string, unknown>;
-  };
-  await db.exec(
-    `INSERT INTO events (agent_id, event_type, payload)
-     VALUES ('${agentId}', '${eventType}', '${JSON.stringify(payload ?? {})}')`,
+// -- Events -----------------------------------------------------------------
+
+registerHandler('events.log', async (params, db, ctx) => {
+  const agentId = strOrNull(params['agentId']) ?? ctx.agentId ?? 'anonymous';
+  const eventType = str(params['eventType'], 'event');
+  const payload = params['payload'] ?? {};
+  await db.query(
+    `INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`,
+    [agentId, eventType, JSON.stringify(payload)],
   );
   return { logged: true };
 });
 
 registerHandler('events.query', async (params, db) => {
-  const { limit, since } = params as { limit?: number; since?: string };
-  const where = since ? `WHERE created_at > '${since}'` : '';
-  const result = await db.exec(
-    `SELECT * FROM events ${where} ORDER BY created_at DESC LIMIT ${limit ?? 20}`,
+  const limit = Math.min(num(params['limit'], 20), 500);
+  const since = strOrNull(params['since']);
+  const sql = since
+    ? `SELECT * FROM events WHERE created_at > $1::timestamp ORDER BY created_at DESC LIMIT $2`
+    : `SELECT * FROM events ORDER BY created_at DESC LIMIT $1`;
+  const result = await db.query<Record<string, unknown>>(
+    sql,
+    since ? [since, limit] : [limit],
   );
-  return { events: result[0]?.rows ?? [] };
+  return { events: result.rows };
 });
 
+// -- Health -----------------------------------------------------------------
+
 registerHandler('harness.health', async (_params, db) => {
-  const sessions = await db.exec(
-    'SELECT COUNT(*) as count FROM agent_sessions WHERE ended_at IS NULL',
+  const sessions = await db.query<{ count: string }>(
+    `SELECT COUNT(*)::text as count FROM agent_sessions WHERE ended_at IS NULL`,
   );
-  const tasks = await db.exec(
-    "SELECT COUNT(*) as count FROM tasks WHERE status = 'open'",
+  const tasks = await db.query<{ count: string }>(
+    `SELECT COUNT(*)::text as count FROM tasks WHERE status = 'open'`,
   );
   return {
     status: 'healthy',
-    activeSessions: Number((sessions[0]?.rows[0] as { count: string })?.count ?? 0),
-    openTasks: Number((tasks[0]?.rows[0] as { count: string })?.count ?? 0),
+    activeSessions: Number(sessions.rows[0]?.count ?? 0),
+    openTasks: Number(tasks.rows[0]?.count ?? 0),
     uptime: process.uptime(),
   };
 });
 
-registerHandler('memory.store', async (params, db) => {
-  const { key, value, tags } = params as {
-    key: string;
-    value: string;
-    tags?: string[];
-  };
-  await db.exec(
+// -- Memory -----------------------------------------------------------------
+
+registerHandler('memory.store', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  const key = str(params['key']);
+  const value = str(params['value']);
+  const tags = asStringArray(params['tags']);
+  await db.query(
     `INSERT INTO agent_memory (agent_id, memory_type, content, metadata)
-     VALUES ('self', '${key}', '${value}', '${JSON.stringify({ tags: tags ?? [] })}')`,
+     VALUES ($1, $2, $3, $4::jsonb)`,
+    [agentId, key, value, JSON.stringify({ tags })],
   );
   return { stored: key };
 });
 
-registerHandler('memory.query', async (params, db) => {
-  const { query, limit } = params as { query?: string; tags?: string[]; limit?: number };
-  const where = query ? `AND content ILIKE '%${query}%'` : '';
-  const result = await db.exec(
-    `SELECT * FROM agent_memory WHERE agent_id = 'self' ${where} ORDER BY created_at DESC LIMIT ${limit ?? 10}`,
+registerHandler('memory.query', async (params, db, ctx) => {
+  const agentId = requireAgent(ctx, params);
+  const query = strOrNull(params['query']);
+  const limit = Math.min(num(params['limit'], 10), 200);
+  const sql = query
+    ? `SELECT * FROM agent_memory
+       WHERE agent_id = $1 AND content ILIKE $2
+       ORDER BY created_at DESC LIMIT $3`
+    : `SELECT * FROM agent_memory
+       WHERE agent_id = $1
+       ORDER BY created_at DESC LIMIT $2`;
+  const result = await db.query<Record<string, unknown>>(
+    sql,
+    query ? [agentId, `%${query}%`, limit] : [agentId, limit],
   );
-  return { memories: result[0]?.rows ?? [] };
+  return { memories: result.rows };
 });
 
 // ---------------------------------------------------------------------------
@@ -302,6 +599,7 @@ export async function startDaemon(
 
   // Start Unix socket server
   const server = createServer((socket: Socket) => {
+    const ctx: SocketContext = { agentId: null, agentName: null, boundVia: null };
     let buffer = '';
 
     socket.on('data', async (data) => {
@@ -346,8 +644,28 @@ export async function startDaemon(
           continue;
         }
 
+        // Identity gate: most coordination calls need a registered agent.
+        // Fallback: accept `actorAgentId` in params (requireAgent will validate).
+        if (
+          !IDENTITY_EXEMPT.has(req.method) &&
+          !ctx.agentId &&
+          !(req.params && typeof req.params['actorAgentId'] === 'string')
+        ) {
+          socket.write(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              error: {
+                code: -32002,
+                message: `Not registered: call session.register or session.attach before ${req.method}`,
+              },
+            }) + '\n',
+          );
+          continue;
+        }
+
         try {
-          const result = await handler(req.params ?? {}, db);
+          const result = await handler(req.params ?? {}, db, ctx);
           socket.write(
             JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) + '\n',
           );
@@ -363,6 +681,20 @@ export async function startDaemon(
             }) + '\n',
           );
         }
+      }
+    });
+
+    socket.on('close', async () => {
+      // Auto-release transient reservations when a long-lived agent
+      // disconnects. Fresh-per-call clients (boundVia = 'param') don't
+      // trigger cleanup — their identity outlives this socket.
+      if (
+        ctx.agentId &&
+        (ctx.boundVia === 'register' || ctx.boundVia === 'attach')
+      ) {
+        await db
+          .query(`DELETE FROM file_reservations WHERE agent_id = $1`, [ctx.agentId])
+          .catch(() => {});
       }
     });
 
