@@ -5,7 +5,7 @@ export default defineConfig({
   format: ['esm'],
   target: 'node24',
   platform: 'node',
-  dts: true,
+  dts: false,
   clean: true,
   banner: { js: '#!/usr/bin/env node' },
   external: ['@revdev/protocol'],
