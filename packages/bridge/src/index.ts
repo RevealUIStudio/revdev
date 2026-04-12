@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
 * @revdev/bridge — MCP server bridging AI coding tools to the RevDev Harness Daemon.
 *

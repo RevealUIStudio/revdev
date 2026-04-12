@@ -12,6 +12,7 @@
  *   REVDEV_DAEMON_DATA       # Override data directory
  */
 
+import "./inference.js";
 import { startDaemon } from './server.js';
 import { DAEMON_DEFAULTS } from './config.js';
 
