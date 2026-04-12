@@ -163,6 +163,18 @@ server.tool(
   },
 );
 
+server.tool(
+  'session_attach',
+  'Re-bind an existing session ID to this connection (used by UIs that reconnect per call)',
+  {
+    agentId: z.string().describe('Previously-registered session/agent ID'),
+  },
+  async ({ agentId }) => {
+    const result = await daemon.call(RPC_METHODS['session.attach'], { agentId });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
 // -- Inter-agent messaging ---------------------------------------------------
 
 server.tool(
@@ -216,7 +228,7 @@ server.tool(
   'mail_mark_read',
   'Mark inbox messages as read',
   {
-    messageIds: z.array(z.string()).describe('Message IDs to mark as read'),
+    messageIds: z.array(z.number().int()).describe('Message IDs to mark as read'),
   },
   async ({ messageIds }) => {
     const result = await daemon.call(RPC_METHODS['mail.markRead'], { messageIds });
