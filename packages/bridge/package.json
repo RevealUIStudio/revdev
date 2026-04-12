@@ -7,7 +7,7 @@
     "url": "https://github.com/RevealUIStudio/revdev.git",
     "directory": "packages/bridge"
   },
-  "license": "MIT",
+  "license": "FSL-1.1-MIT",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -19,7 +19,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "clean": "rm -rf dist",
@@ -41,5 +43,9 @@
   },
   "engines": {
     "node": ">=24.13.0"
+  },
+  "private": true,
+  "publishConfig": {
+    "access": "restricted"
   }
 }

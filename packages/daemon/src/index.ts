@@ -16,5 +16,13 @@
  */
 
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
+export {
+  guardRpcMethod,
+  initLicenseGuard,
+  refreshLicense,
+  getLicenseState,
+  licenseErrorResponse,
+  type RpcGuardResult,
+} from './guard.js';
 export { SCHEMA_SQL } from './storage/schema.js';
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';

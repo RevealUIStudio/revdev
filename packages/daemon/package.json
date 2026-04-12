@@ -1,7 +1,7 @@
 {
   "name": "@revdev/daemon",
   "version": "0.1.0",
-  "description": "Harness daemon — AI agent coordination, PTY management, and inter-agent messaging",
+  "description": "Harness daemon \u2014 AI agent coordination, PTY management, and inter-agent messaging",
   "repository": {
     "type": "git",
     "url": "https://github.com/RevealUIStudio/revdev.git",
@@ -24,7 +24,10 @@
       "import": "./dist/storage/index.js"
     }
   },
-  "files": ["dist", "LICENSE"],
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup",
     "clean": "rm -rf dist",
@@ -50,5 +53,9 @@
   "funding": {
     "type": "commercial",
     "url": "https://revealui.com/pro"
+  },
+  "private": true,
+  "publishConfig": {
+    "access": "restricted"
   }
 }
