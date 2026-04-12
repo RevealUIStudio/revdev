@@ -1,15 +1,28 @@
 #!/usr/bin/env node
 /**
- * @revdev/bridge — MCP server bridging AI coding tools to the RevDev Harness Daemon.
- *
- * Provides native harness integration via MCP protocol, replacing external
- * editor extensions (Zed ACP, etc.) with a tool-agnostic bridge.
- *
- * Transport: stdio (MCP standard)
- * Daemon transport: Unix socket (JSON-RPC 2.0 over newline-delimited JSON)
- *
- * @packageDocumentation
- */
+* @revdev/bridge — MCP server bridging AI coding tools to the RevDev Harness Daemon.
+*
+* Vendor-agnostic: works with any MCP-compatible tool (Claude Code, Codex,
+* Cursor, Windsurf, or custom agents). RevDev does not ship or endorse any
+* specific vendor — this bridge is a standard protocol adapter.
+*
+* Transport: stdio (MCP standard)
+* Daemon transport: Unix socket (JSON-RPC 2.0 over newline-delimited JSON)
+*
+* @packageDocumentation
+*/
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -117,13 +130,13 @@ server.tool(
   {
     agentName: z.string().describe('Name for this agent (e.g. "claude-main")'),
     workDir: z.string().describe('Working directory for this session'),
-    backend: z.string().optional().describe('Backend identifier (default: "claude-code")'),
+    backend: z.string().optional().describe('Backend identifier (default: "mcp-agent")'),
   },
   async ({ agentName, workDir, backend }) => {
     const result = await daemon.call(RPC_METHODS['session.register'], {
       agentName,
       workDir,
-      backend: backend ?? 'claude-code',
+      backend: backend ?? 'mcp-agent',
     });
     return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
   },
