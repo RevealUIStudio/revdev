@@ -13,6 +13,7 @@
  */
 
 import "./inference.js";
+import "./vcs.js";
 import { startDaemon } from './server.js';
 import { DAEMON_DEFAULTS } from './config.js';
 

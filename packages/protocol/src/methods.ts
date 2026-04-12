@@ -20,6 +20,7 @@ export const RPC_METHODS = {
 
   // Agent sessions
   'session.register': 'session.register',
+  'session.attach': 'session.attach',
   'session.update': 'session.update',
   'session.end': 'session.end',
   'session.list': 'session.list',
@@ -69,6 +70,7 @@ export const RPC_METHODS = {
   'merge.request': 'merge.request',
   'merge.status': 'merge.status',
   'merge.list': 'merge.list',
+  'merge.update': 'merge.update',
 
   // Agent memory
   'memory.store': 'memory.store',
