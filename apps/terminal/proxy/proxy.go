@@ -20,7 +20,7 @@ import (
 	"github.com/charmbracelet/ssh"
 	"github.com/gorilla/websocket"
 
-	"github.com/revealuistudio/revealui/apps/terminal/api"
+	"github.com/RevealUIStudio/revdev/apps/terminal/api"
 )
 
 // SessionInfo mirrors the daemon's AgentSessionInfo for display.

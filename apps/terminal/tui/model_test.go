@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/revealuistudio/revealui/apps/terminal/api"
+	"github.com/RevealUIStudio/revdev/apps/terminal/api"
 )
 
 // ---------------------------------------------------------------------------
