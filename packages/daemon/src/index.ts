@@ -24,5 +24,6 @@ export {
   licenseErrorResponse,
   type RpcGuardResult,
 } from './guard.js';
+export { startDaemon, registerHandler } from './server.js';
 export { SCHEMA_SQL } from './storage/schema.js';
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
