@@ -2,13 +2,19 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
+import { sanitizeTerminalLine } from '../../lib/terminal-sanitize';
 
 interface TerminalViewProps {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
   terminalRef: React.MutableRefObject<Terminal | null>;
-  /** Lines to print before the shell produces output. Omit for no banner. */
-  welcome?: string[];
+  /**
+   * Lines to print before the shell produces output. Each line is run
+   * through {@link sanitizeTerminalLine} — SGR colour escapes are kept,
+   * cursor / OSC / title-set / other control sequences are stripped.
+   * `readonly` so callers pass frozen literals, not mutable state.
+   */
+  welcome?: readonly string[];
 }
 
 export default function TerminalView({
@@ -74,7 +80,7 @@ export default function TerminalView({
 
     if (welcome?.length) {
       for (const line of welcome) {
-        terminal.writeln(line);
+        terminal.writeln(sanitizeTerminalLine(line));
       }
     }
 
