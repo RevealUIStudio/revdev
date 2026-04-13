@@ -5,10 +5,6 @@ Native developer tools for [RevealUI](https://github.com/RevealUIStudio/revealui
 **Studio** — Desktop AI editor and agent coordination dashboard (Tauri 2 + React 19)
 **Terminal** — TUI client for API integration, agent management, and deployment (Go + Bubble Tea)
 
-## Status
-
-Early development. Being extracted from the RevealUI monorepo.
-
 ## Architecture
 
 The harness daemon coordinates AI agents, manages PTY sessions, and routes tools. Studio and Terminal are different UIs for the same daemon.
