@@ -613,8 +613,18 @@ export function sshBookmarkDelete(id: string): Promise<void> {
 
 // ── Local Shell ─────────────────────────────────────────────────────────────
 
-export function shellOpen(cols: number, rows: number, cwd?: string): Promise<string> {
-  return invoke<string>('shell_open', { cols, rows, cwd: cwd ?? null });
+export function shellOpen(
+  cols: number,
+  rows: number,
+  cwd?: string,
+  shellProgram?: string,
+): Promise<string> {
+  return invoke<string>('shell_open', {
+    cols,
+    rows,
+    cwd: cwd ?? null,
+    shellProgram: shellProgram ?? null,
+  });
 }
 
 export function shellClose(sessionId: string): Promise<void> {

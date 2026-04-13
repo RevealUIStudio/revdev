@@ -7,9 +7,16 @@ interface TerminalViewProps {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
   terminalRef: React.MutableRefObject<Terminal | null>;
+  /** Lines to print before the shell produces output. Omit for no banner. */
+  welcome?: string[];
 }
 
-export default function TerminalView({ onData, onResize, terminalRef }: TerminalViewProps) {
+export default function TerminalView({
+  onData,
+  onResize,
+  terminalRef,
+  welcome,
+}: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const onDataRef = useRef(onData);
@@ -65,10 +72,11 @@ export default function TerminalView({ onData, onResize, terminalRef }: Terminal
       onResizeRef.current(terminal.cols, terminal.rows);
     });
 
-    // Welcome message before connection
-    terminal.writeln('\x1b[1;33mRevealUI Studio Terminal\x1b[0m');
-    terminal.writeln('\x1b[90mConnect to an SSH server using the form above.\x1b[0m');
-    terminal.writeln('');
+    if (welcome?.length) {
+      for (const line of welcome) {
+        terminal.writeln(line);
+      }
+    }
 
     // Forward user input to SSH
     terminal.onData((data) => onDataRef.current(data));

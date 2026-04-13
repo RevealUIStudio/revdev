@@ -44,11 +44,38 @@ impl Default for LocalShellState {
     }
 }
 
+/// Pick the default shell program for the current OS when the caller hasn't
+/// specified one. On Windows we default to `wsl.exe` so users land in their
+/// WSL environment (RevDev's daily driver) instead of CMD. On other
+/// platforms we honour `$SHELL`, falling back to `/bin/bash`.
+fn default_shell_program() -> String {
+    if cfg!(target_os = "windows") {
+        // `wsl.exe` is on PATH on every Windows 10/11 install that has WSL
+        // enabled. If it isn't, the PTY spawn will fail with a clear error
+        // and the frontend can offer `powershell.exe` as an explicit pick.
+        return "wsl.exe".to_string();
+    }
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+}
+
+/// Whether the given shell program should be invoked with `--login`. Only
+/// POSIX shells understand that flag; passing it to `wsl.exe`, `cmd.exe`,
+/// or `powershell.exe` makes them choke.
+fn wants_login_flag(shell: &str) -> bool {
+    let name = std::path::Path::new(shell)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(shell)
+        .to_ascii_lowercase();
+    matches!(name.as_str(), "bash" | "zsh" | "sh" | "dash" | "ksh" | "fish")
+}
+
 /// Open a local PTY shell. Returns session ID.
 pub fn open(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
+    shell_program: Option<String>,
     app_handle: tauri::AppHandle,
     state: Arc<Mutex<HashMap<String, LocalShellSession>>>,
 ) -> Result<String, String> {
@@ -66,9 +93,11 @@ pub fn open(
         .openpty(size)
         .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    let shell = shell_program.unwrap_or_else(default_shell_program);
     let mut cmd = CommandBuilder::new(&shell);
-    cmd.arg("--login");
+    if wants_login_flag(&shell) {
+        cmd.arg("--login");
+    }
 
     if let Some(dir) = cwd {
         cmd.cwd(dir);
