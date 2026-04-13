@@ -16,7 +16,7 @@ GENERATED_DIR="$STUDIO_DIR/src/generated"
 
 echo "==> Running cargo test to generate ts-rs bindings..."
 cd "$TAURI_DIR"
-cargo test --lib 2>&1 | tail -5
+cargo test --lib
 
 echo "==> Copying bindings to $GENERATED_DIR..."
 mkdir -p "$GENERATED_DIR"
