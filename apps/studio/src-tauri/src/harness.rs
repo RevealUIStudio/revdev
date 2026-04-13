@@ -6,7 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(unix)]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::UnixStream;
 use tokio::sync::OnceCell;
 
@@ -100,6 +102,7 @@ pub async fn rpc_call(
     rpc_call_raw(method, params).await
 }
 
+#[cfg(unix)]
 async fn rpc_call_raw(
     method: &str,
     params: serde_json::Value,
@@ -140,4 +143,13 @@ async fn rpc_call_raw(
     }
 
     Ok(response.result.unwrap_or(serde_json::Value::Null))
+}
+
+#[cfg(not(unix))]
+async fn rpc_call_raw(
+    _method: &str,
+    _params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let _ = (&REQUEST_ID, &_method, &_params, socket_path());
+    Err("Harness daemon IPC is not yet supported on this platform".to_string())
 }
