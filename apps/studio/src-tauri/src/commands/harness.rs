@@ -105,7 +105,9 @@ pub async fn harness_inbox(
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+    // Daemon returns { messages: [...] }; unwrap for the UI.
+    let messages = result.get("messages").cloned().unwrap_or(result);
+    serde_json::from_value(messages).map_err(|e| StudioError::Other(e.to_string()))
 }
 
 #[tauri::command]
@@ -114,19 +116,22 @@ pub async fn harness_send_message(
     to_agent: String,
     subject: String,
     body: String,
-) -> Result<HarnessMessage, StudioError> {
+) -> Result<serde_json::Value, StudioError> {
+    // `from_agent` is ignored — the daemon attributes the call to the
+    // registered Studio session (via actorAgentId). Left in the signature
+    // for frontend API compatibility.
+    let _ = from_agent;
     let result = harness::rpc_call(
         "mail.send",
         serde_json::json!({
-            "fromAgent": from_agent,
-            "toAgent": to_agent,
+            "to": to_agent,
             "subject": subject,
             "body": body,
         }),
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+    Ok(result)
 }
 
 #[tauri::command]
@@ -135,10 +140,10 @@ pub async fn harness_broadcast(
     subject: String,
     body: String,
 ) -> Result<i64, StudioError> {
+    let _ = from_agent;
     let result = harness::rpc_call(
         "mail.broadcast",
         serde_json::json!({
-            "fromAgent": from_agent,
             "subject": subject,
             "body": body,
         }),
@@ -146,7 +151,7 @@ pub async fn harness_broadcast(
     .await
     .map_err(|e| StudioError::Other(e))?;
 
-    // Returns { sent: number }
+    // Returns { sent: number, recipients: number, broadcast: true }
     let sent = result
         .get("sent")
         .and_then(|v| v.as_i64())
@@ -182,35 +187,52 @@ pub async fn harness_tasks(
     let result = harness::rpc_call("tasks.list", serde_json::Value::Object(params))
         .await
         .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+    let tasks = result.get("tasks").cloned().unwrap_or(result);
+    serde_json::from_value(tasks).map_err(|e| StudioError::Other(e.to_string()))
 }
 
 #[tauri::command]
 pub async fn harness_create_task(
     task_id: String,
     description: String,
-) -> Result<HarnessTask, StudioError> {
+) -> Result<serde_json::Value, StudioError> {
     let result = harness::rpc_call(
         "tasks.create",
-        serde_json::json!({ "taskId": task_id, "description": description }),
+        serde_json::json!({
+            "taskId": task_id,
+            "title": description.clone(),
+            "description": description,
+        }),
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+    Ok(result)
 }
 
+// Note: agent_id kept in the frontend signature but no longer forwarded —
+// the daemon uses the registered Studio session (actorAgentId) as the owner.
 #[tauri::command]
 pub async fn harness_claim_task(
     task_id: String,
     agent_id: String,
 ) -> Result<HarnessClaimResult, StudioError> {
+    let _ = agent_id;
     let result = harness::rpc_call(
         "tasks.claim",
-        serde_json::json!({ "taskId": task_id, "agentId": agent_id }),
+        serde_json::json!({ "taskId": task_id }),
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+    Ok(HarnessClaimResult {
+        success: result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        owner: result
+            .get("owner")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    })
 }
 
 #[tauri::command]
@@ -218,9 +240,10 @@ pub async fn harness_complete_task(
     task_id: String,
     agent_id: String,
 ) -> Result<bool, StudioError> {
+    let _ = agent_id;
     let result = harness::rpc_call(
         "tasks.complete",
-        serde_json::json!({ "taskId": task_id, "agentId": agent_id }),
+        serde_json::json!({ "taskId": task_id }),
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
@@ -232,9 +255,10 @@ pub async fn harness_release_task(
     task_id: String,
     agent_id: String,
 ) -> Result<bool, StudioError> {
+    let _ = agent_id;
     let result = harness::rpc_call(
         "tasks.release",
-        serde_json::json!({ "taskId": task_id, "agentId": agent_id }),
+        serde_json::json!({ "taskId": task_id }),
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
@@ -251,11 +275,11 @@ pub async fn harness_reservations(
         Some(id) => serde_json::json!({ "agentId": id }),
         None => serde_json::json!({}),
     };
-    // files.list requires agentId — if none given, list for all via session.list then merge
     let result = harness::rpc_call("files.list", params)
         .await
         .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+    let reservations = result.get("reservations").cloned().unwrap_or(result);
+    serde_json::from_value(reservations).map_err(|e| StudioError::Other(e.to_string()))
 }
 
 #[tauri::command]
@@ -265,18 +289,31 @@ pub async fn harness_reserve_file(
     ttl_seconds: u32,
     reason: String,
 ) -> Result<HarnessReserveResult, StudioError> {
+    // agent_id ignored — daemon uses the registered Studio session.
+    let _ = agent_id;
     let result = harness::rpc_call(
         "files.reserve",
         serde_json::json!({
-            "filePath": file_path,
-            "agentId": agent_id,
+            "paths": [file_path],
             "ttlSeconds": ttl_seconds,
             "reason": reason,
         }),
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+
+    let success = result
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let holder = result
+        .get("conflicts")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|o| o.get("holder"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Ok(HarnessReserveResult { success, holder })
 }
 
 #[tauri::command]
@@ -285,14 +322,19 @@ pub async fn harness_check_file(
 ) -> Result<Option<HarnessReservation>, StudioError> {
     let result = harness::rpc_call(
         "files.check",
-        serde_json::json!({ "filePath": file_path }),
+        serde_json::json!({ "paths": [file_path] }),
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    if result.is_null() {
-        return Ok(None);
+    let rows = result
+        .get("reservations")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    match rows.into_iter().next() {
+        None => Ok(None),
+        Some(row) => serde_json::from_value(row)
+            .map(Some)
+            .map_err(|e| StudioError::Other(e.to_string())),
     }
-    serde_json::from_value(result)
-        .map(Some)
-        .map_err(|e| StudioError::Other(e.to_string()))
 }

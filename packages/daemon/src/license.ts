@@ -28,7 +28,7 @@ const EXEMPT_METHODS = new Set([
  * works, but spawning, inference, and merge pipeline are gated.
  */
 export function checkLicense(): { tier: LicenseTier; valid: boolean } {
-  const key = process.env['REVEALUI_LICENSE_KEY'];
+  const key = process.env.REVEALUI_LICENSE_KEY;
 
   if (!key) {
     return { tier: 'free', valid: false };
@@ -40,7 +40,7 @@ export function checkLicense(): { tier: LicenseTier; valid: boolean } {
     return { tier: 'free', valid: false };
   }
 
-  const tier = match[1]!.toLowerCase() as LicenseTier;
+  const tier = match[1]?.toLowerCase() as LicenseTier;
   return { tier, valid: true };
 }
 

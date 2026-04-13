@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, test]
   pull_request:
-    branches: [main]
+    branches: [main, test]
 
 permissions:
   contents: read
@@ -63,7 +63,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      # Studio build requires cargo for ts-rs bindings; it lives in studio-release.yml.
+      - run: pnpm -r --filter=!@revealui/studio build
 
   terminal:
     name: Terminal (Go)

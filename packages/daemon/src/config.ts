@@ -19,7 +19,7 @@ export interface DaemonConfig {
   maxMemoryMb: number;
 }
 
-const homeDir = process.env['HOME'] ?? '/tmp';
+const homeDir = process.env.HOME ?? '/tmp';
 
 export const DAEMON_DEFAULTS: DaemonConfig = {
   socketPath: `${homeDir}/.local/share/revealui/harness.sock`,

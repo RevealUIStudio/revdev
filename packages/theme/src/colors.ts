@@ -44,13 +44,13 @@ export interface ColorPalette {
 }
 
 export const COLORS: ColorPalette = {
-  primary: '#6366f1',     // Indigo-500
-  secondary: '#8b5cf6',   // Violet-500
-  success: '#22c55e',     // Green-500
-  warning: '#f59e0b',     // Amber-500
-  error: '#ef4444',       // Red-500
-  info: '#3b82f6',        // Blue-500
-  muted: '#6b7280',       // Gray-500
+  primary: '#6366f1', // Indigo-500
+  secondary: '#8b5cf6', // Violet-500
+  success: '#22c55e', // Green-500
+  warning: '#f59e0b', // Amber-500
+  error: '#ef4444', // Red-500
+  info: '#3b82f6', // Blue-500
+  muted: '#6b7280', // Gray-500
 
   ansi: {
     black: '#1e1e2e',

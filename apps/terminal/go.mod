@@ -1,4 +1,4 @@
-module github.com/revealuistudio/revealui/apps/terminal
+module github.com/RevealUIStudio/revdev/apps/terminal
 
 go 1.25.8
 
