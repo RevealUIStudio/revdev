@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
+use tokio::sync::OnceCell;
 
 const SOCKET_REL_PATH: &str = ".local/share/revealui/harness.sock";
 
@@ -46,11 +47,60 @@ struct JsonRpcError {
     message: String,
 }
 
-/// Send a JSON-RPC request to the harness daemon and return the result.
+/// Cached agent ID for this Studio process — populated on first successful
+/// session.register, then injected as `actorAgentId` on every subsequent call.
+static STUDIO_AGENT_ID: OnceCell<String> = OnceCell::const_new();
+
+/// Register this Studio instance as a daemon session (idempotent).
+///
+/// Studio opens a fresh socket per RPC call, so we can't rely on per-socket
+/// identity surviving across calls. Instead we register once, cache the
+/// returned agent ID, and pass it as `actorAgentId` on every coordination call.
+pub async fn ensure_session() -> Result<String, String> {
+    if let Some(id) = STUDIO_AGENT_ID.get() {
+        return Ok(id.clone());
+    }
+    let result = rpc_call_raw(
+        "session.register",
+        serde_json::json!({
+            "agentName": "studio-ui",
+            "workDir": std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            "backend": "studio",
+        }),
+    )
+    .await?;
+    let id = result
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "session.register did not return sessionId".to_string())?
+        .to_string();
+    let _ = STUDIO_AGENT_ID.set(id.clone());
+    Ok(id)
+}
+
+/// Send a JSON-RPC request to the daemon, automatically injecting the cached
+/// Studio agent ID as `actorAgentId` so the daemon can attribute the call.
 ///
 /// Each call opens a fresh connection (the daemon handles concurrent sockets).
-/// Returns the `result` field on success, or an error string on failure.
 pub async fn rpc_call(
+    method: &str,
+    mut params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    // ping and session.register don't need identity
+    let exempt = matches!(method, "ping" | "session.register" | "inference.status");
+    if !exempt {
+        let agent_id = ensure_session().await?;
+        if let Some(obj) = params.as_object_mut() {
+            obj.entry("actorAgentId")
+                .or_insert(serde_json::Value::String(agent_id));
+        }
+    }
+    rpc_call_raw(method, params).await
+}
+
+async fn rpc_call_raw(
     method: &str,
     params: serde_json::Value,
 ) -> Result<serde_json::Value, String> {

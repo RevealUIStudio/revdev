@@ -232,7 +232,7 @@ describe('StepStripe', () => {
     });
 
     // Resolve validation to advance phases
-    resolveValidate!(true);
+    resolveValidate?.(true);
 
     await waitFor(() => {
       expect(screen.getByText('Stripe connected')).toBeInTheDocument();

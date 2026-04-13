@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
-	"github.com/revealuistudio/revealui/apps/terminal/api"
-	"github.com/revealuistudio/revealui/apps/terminal/qr"
+	"github.com/RevealUIStudio/revdev/apps/terminal/api"
+	"github.com/RevealUIStudio/revdev/apps/terminal/qr"
 )
 
 // ---------------------------------------------------------------------------

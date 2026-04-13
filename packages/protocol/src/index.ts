@@ -7,8 +7,34 @@
  * @packageDocumentation
  */
 
-export type { AgentMemoryEntry, AgentMessage, AgentSession, AgentTask, AgentWorktree, DaemonEvent, FileReservation, MergeRequest } from './schema.js';
-export type { ConflictResult, TaskPriority, TaskStatus, WorkboardAgent, WorkboardBlockedTask, WorkboardDoneTask, WorkboardState, WorkboardTask } from './workboard.js';
+export type {
+  HarnessCapabilities,
+  HarnessCommand,
+  HarnessCommandResult,
+  HarnessEvent,
+  HarnessInfo,
+  HarnessProcessInfo,
+  HealthCheckResult,
+} from './harness.js';
 export { RPC_METHODS } from './methods.js';
 export type { JsonRpcRequest, JsonRpcResponse, RpcErrorCode } from './rpc.js';
-export type { HarnessCapabilities, HarnessCommand, HarnessCommandResult, HarnessEvent, HarnessInfo, HarnessProcessInfo, HealthCheckResult } from './harness.js';
+export type {
+  AgentMemoryEntry,
+  AgentMessage,
+  AgentSession,
+  AgentTask,
+  AgentWorktree,
+  DaemonEvent,
+  FileReservation,
+  MergeRequest,
+} from './schema.js';
+export type {
+  ConflictResult,
+  TaskPriority,
+  TaskStatus,
+  WorkboardAgent,
+  WorkboardBlockedTask,
+  WorkboardDoneTask,
+  WorkboardState,
+  WorkboardTask,
+} from './workboard.js';

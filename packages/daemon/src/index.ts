@@ -15,6 +15,19 @@
  * @packageDocumentation
  */
 
+export {
+  getLicenseState,
+  guardRpcMethod,
+  initLicenseGuard,
+  licenseErrorResponse,
+  type RpcGuardResult,
+  refreshLicense,
+} from './guard.js';
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
-export { SCHEMA_SQL } from './storage/schema.js';
+export { registerHandler, startDaemon } from './server.js';
+// Side-effect imports: register built-in handler groups.
+import './inference.js';
+import './vcs.js';
+
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
+export { SCHEMA_SQL } from './storage/schema.js';

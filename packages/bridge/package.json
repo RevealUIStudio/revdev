@@ -1,45 +1,39 @@
 {
-  "name": "@revdev/daemon",
+  "name": "@revdev/bridge",
   "version": "0.1.0",
-  "description": "Harness daemon \u2014 AI agent coordination, PTY management, and inter-agent messaging",
+  "description": "MCP server bridging AI coding tools to the RevDev Harness Daemon",
   "repository": {
     "type": "git",
     "url": "https://github.com/RevealUIStudio/revdev.git",
-    "directory": "packages/daemon"
+    "directory": "packages/bridge"
   },
   "license": "FSL-1.1-MIT",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "bin": {
-    "revdev-daemon": "./dist/cli.js"
+    "revdev-bridge": "./dist/index.js"
   },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./storage": {
-      "types": "./dist/storage/index.d.ts",
-      "import": "./dist/storage/index.js"
     }
   },
   "files": [
-    "dist",
-    "LICENSE"
+    "dist"
   ],
   "scripts": {
     "build": "tsup",
     "clean": "rm -rf dist",
     "dev": "tsup --watch",
-    "start": "node dist/cli.js",
+    "start": "node dist/index.js",
     "test": "vitest run --passWithNoTests",
-    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.4.3",
-    "@revdev/protocol": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@revdev/protocol": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
@@ -49,10 +43,6 @@
   },
   "engines": {
     "node": ">=24.13.0"
-  },
-  "funding": {
-    "type": "commercial",
-    "url": "https://revealui.com/pro"
   },
   "private": true,
   "publishConfig": {
