@@ -229,6 +229,39 @@ describe('two-agent coordination', () => {
     ).rejects.toThrow(/Not registered/);
   });
 
+  it('accepts stable agentId (upsert) for hook-style registration', async () => {
+    // First registration creates the row.
+    const r1 = (await rpc(socketPath, 'session.register', {
+      agentId: 'conductor',
+      agentName: 'conductor',
+      workDir: '/tmp/conductor',
+      backend: 'claude-code',
+    })) as { sessionId: string; session: { id: string } };
+    expect(r1.sessionId).toBe('conductor');
+    expect(r1.session.id).toBe('conductor');
+
+    // Second registration with same id is idempotent (re-opens, doesn't error).
+    const r2 = (await rpc(socketPath, 'session.register', {
+      agentId: 'conductor',
+      agentName: 'conductor',
+      backend: 'claude-code',
+    })) as { sessionId: string };
+    expect(r2.sessionId).toBe('conductor');
+
+    // And that stable id can now receive mail from another agent.
+    await rpc(socketPath, 'mail.send', {
+      actorAgentId: alice,
+      to: 'conductor',
+      subject: 'ping',
+      body: 'hello conductor',
+    });
+    const inbox = (await rpc(socketPath, 'mail.inbox', {
+      actorAgentId: 'conductor',
+      agentId: 'conductor',
+    })) as { messages: Array<{ subject: string }> };
+    expect(inbox.messages.some((m) => m.subject === 'ping')).toBe(true);
+  });
+
   it('broadcast excludes the sender', async () => {
     await rpc(socketPath, 'mail.broadcast', {
       actorAgentId: alice,

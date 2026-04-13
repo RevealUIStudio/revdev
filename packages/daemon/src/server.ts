@@ -142,23 +142,56 @@ registerHandler('ping', async () => ({ pong: true, ts: Date.now() }));
 // -- Session ----------------------------------------------------------------
 
 registerHandler('session.register', async (params, db, ctx) => {
-  const id = crypto.randomUUID();
-  const agentName = str(params['agentName'], 'anon');
-  const workDir = str(params['workDir']);
-  const backend = str(params['backend'], 'unknown');
+  // Two registration modes:
+  //   1. Ephemeral (no agentId): generate a UUID. Studio/Terminal flow.
+  //   2. Stable (agentId supplied): UPSERT on that id. Used by Claude Code
+  //      hooks which want long-lived role identities like "conductor" or
+  //      "agent-system" that persist across reboots and can be targeted by
+  //      name from other agents' mail/tasks calls. Idempotent — re-registering
+  //      the same id re-opens an ended session.
+  const supplied = strOrNull(params['agentId']);
+  const id = supplied ?? crypto.randomUUID();
+  const agentName = str(params['agentName'], supplied ?? 'anon');
+  const workDir = str(params['workDir']) || str(params['task']);
+  const backend = str(params['backend'], str(params['env'], 'unknown'));
   const env = `${backend}:${agentName}`;
+  const pid = num(params['pid'], 0) || null;
 
-  await db.query(
-    `INSERT INTO agent_sessions (id, env, task) VALUES ($1, $2, $3)`,
-    [id, env, workDir],
-  );
+  if (supplied) {
+    // UPSERT: insert or re-open existing row.
+    await db.query(
+      `INSERT INTO agent_sessions (id, env, task, pid)
+         VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET
+         env = EXCLUDED.env,
+         task = EXCLUDED.task,
+         pid = EXCLUDED.pid,
+         updated_at = NOW(),
+         ended_at = NULL,
+         exit_summary = NULL`,
+      [id, env, workDir, pid],
+    );
+  } else {
+    await db.query(
+      `INSERT INTO agent_sessions (id, env, task, pid) VALUES ($1, $2, $3, $4)`,
+      [id, env, workDir, pid],
+    );
+  }
 
   // Bind this identity to the connection.
   ctx.agentId = id;
   ctx.agentName = agentName;
   ctx.boundVia = 'register';
 
-  return { sessionId: id, agentId: id, agentName, backend };
+  // Include `session: {id}` for back-compat with hook clients that read
+  // `result.session.id`. New clients should use `sessionId`/`agentId`.
+  return {
+    sessionId: id,
+    agentId: id,
+    agentName,
+    backend,
+    session: { id, env, task: workDir },
+  };
 });
 
 registerHandler('session.attach', async (params, db, ctx) => {
