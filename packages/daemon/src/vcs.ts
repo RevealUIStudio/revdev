@@ -54,10 +54,9 @@ async function agentWorkDir(
   db: import('@electric-sql/pglite').PGlite,
   agentId: string,
 ): Promise<string> {
-  const r = await db.query<{ task: string }>(
-    `SELECT task FROM agent_sessions WHERE id = $1`,
-    [agentId],
-  );
+  const r = await db.query<{ task: string }>(`SELECT task FROM agent_sessions WHERE id = $1`, [
+    agentId,
+  ]);
   return r.rows[0]?.task || process.cwd();
 }
 
@@ -75,10 +74,7 @@ registerHandler('worktree.create', async (params, db, ctx) => {
   const worktreePath =
     strOrNull(params['path']) ?? `${cwd.replace(/\/+$/, '')}-${branch.replace(/\//g, '-')}`;
 
-  const result = await runGit(
-    ['worktree', 'add', '-b', branch, worktreePath, baseBranch],
-    cwd,
-  );
+  const result = await runGit(['worktree', 'add', '-b', branch, worktreePath, baseBranch], cwd);
   if (!result.ok) {
     return { success: false, error: result.stderr || 'git worktree add failed' };
   }
@@ -100,10 +96,7 @@ registerHandler('worktree.list', async (params, db) => {
   const sql = agentId
     ? `SELECT * FROM worktrees WHERE agent_id = $1 ORDER BY created_at DESC`
     : `SELECT * FROM worktrees WHERE status = 'active' ORDER BY created_at DESC`;
-  const result = await db.query<Record<string, unknown>>(
-    sql,
-    agentId ? [agentId] : [],
-  );
+  const result = await db.query<Record<string, unknown>>(sql, agentId ? [agentId] : []);
   return { worktrees: result.rows };
 });
 
@@ -226,9 +219,6 @@ registerHandler('merge.update', async (params, db, ctx) => {
     vals.push(errorMessage);
   }
   vals.push(mergeId);
-  const r = await db.query(
-    `UPDATE merge_requests SET ${sets.join(', ')} WHERE id = $${i}`,
-    vals,
-  );
+  const r = await db.query(`UPDATE merge_requests SET ${sets.join(', ')} WHERE id = $${i}`, vals);
   return { updated: (r.affectedRows ?? 0) > 0 };
 });

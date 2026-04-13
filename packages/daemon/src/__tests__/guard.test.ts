@@ -1,5 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { guardRpcMethod, initLicenseGuard, refreshLicense, licenseErrorResponse } from '../guard.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  guardRpcMethod,
+  initLicenseGuard,
+  licenseErrorResponse,
+  refreshLicense,
+} from '../guard.js';
 
 describe('guardRpcMethod', () => {
   const originalEnv = process.env['REVEALUI_LICENSE_KEY'];

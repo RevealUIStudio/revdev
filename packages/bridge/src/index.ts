@@ -1,33 +1,21 @@
 /**
-* @revdev/bridge — MCP server bridging AI coding tools to the RevDev Harness Daemon.
-*
-* Vendor-agnostic: works with any MCP-compatible tool (Claude Code, Codex,
-* Cursor, Windsurf, or custom agents). RevDev does not ship or endorse any
-* specific vendor — this bridge is a standard protocol adapter.
-*
-* Transport: stdio (MCP standard)
-* Daemon transport: Unix socket (JSON-RPC 2.0 over newline-delimited JSON)
-*
-* @packageDocumentation
-*/
+ * @revdev/bridge — MCP server bridging AI coding tools to the RevDev Harness Daemon.
+ *
+ * Vendor-agnostic: works with any MCP-compatible tool (Claude Code, Codex,
+ * Cursor, Windsurf, or custom agents). RevDev does not ship or endorse any
+ * specific vendor — this bridge is a standard protocol adapter.
+ *
+ * Transport: stdio (MCP standard)
+ * Daemon transport: Unix socket (JSON-RPC 2.0 over newline-delimited JSON)
+ *
+ * @packageDocumentation
+ */
 
-
-
-
-
-
-
-
-
-
-
-
-
+import { connect } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
-import { connect } from 'node:net';
 import { RPC_METHODS } from '@revdev/protocol';
+import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
 // Daemon RPC client
@@ -275,15 +263,10 @@ server.tool(
   },
 );
 
-server.tool(
-  'file_list',
-  'List all current file reservations across agents',
-  {},
-  async () => {
-    const result = await daemon.call(RPC_METHODS['files.list']);
-    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-  },
-);
+server.tool('file_list', 'List all current file reservations across agents', {}, async () => {
+  const result = await daemon.call(RPC_METHODS['files.list']);
+  return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+});
 
 // -- Task coordination -------------------------------------------------------
 
@@ -305,7 +288,10 @@ server.tool(
   'task_list',
   'List available tasks for agent coordination',
   {
-    status: z.enum(['pending', 'claimed', 'completed', 'all']).optional().describe('Filter by status'),
+    status: z
+      .enum(['pending', 'claimed', 'completed', 'all'])
+      .optional()
+      .describe('Filter by status'),
   },
   async ({ status }) => {
     const result = await daemon.call(RPC_METHODS['tasks.list'], { status: status ?? 'all' });
@@ -416,15 +402,10 @@ server.tool(
   },
 );
 
-server.tool(
-  'merge_list',
-  'List all merge requests',
-  {},
-  async () => {
-    const result = await daemon.call(RPC_METHODS['merge.list']);
-    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-  },
-);
+server.tool('merge_list', 'List all merge requests', {}, async () => {
+  const result = await daemon.call(RPC_METHODS['merge.list']);
+  return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+});
 
 // -- Worktree management -----------------------------------------------------
 
@@ -444,15 +425,10 @@ server.tool(
   },
 );
 
-server.tool(
-  'worktree_list',
-  'List active git worktrees',
-  {},
-  async () => {
-    const result = await daemon.call(RPC_METHODS['worktree.list']);
-    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-  },
-);
+server.tool('worktree_list', 'List active git worktrees', {}, async () => {
+  const result = await daemon.call(RPC_METHODS['worktree.list']);
+  return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+});
 
 server.tool(
   'worktree_remove',

@@ -9,11 +9,11 @@
  * without human relay," proven at the RPC layer.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { connect, type Socket } from 'node:net';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startDaemon } from '../server.js';
 
 // ---------------------------------------------------------------------------

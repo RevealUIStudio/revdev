@@ -27,9 +27,7 @@ export function initLicenseGuard(): { tier: LicenseTier; valid: boolean } {
   cachedLicense = checkLicense();
 
   if (cachedLicense.valid) {
-    console.log(
-      `[license] RevDev daemon running with ${cachedLicense.tier.toUpperCase()} license`,
-    );
+    console.log(`[license] RevDev daemon running with ${cachedLicense.tier.toUpperCase()} license`);
   } else {
     console.log('[license] RevDev daemon running in FREE (degraded) mode');
     console.log('[license] Set REVEALUI_LICENSE_KEY to unlock Pro features');
@@ -76,7 +74,8 @@ export function guardRpcMethod(method: string): RpcGuardResult {
   return {
     allowed: false,
     tier: 'free',
-    reason: `Method "${method}" requires a Pro or higher license. ` +
+    reason:
+      `Method "${method}" requires a Pro or higher license. ` +
       'Set REVEALUI_LICENSE_KEY or upgrade at https://revealui.com/pro',
   };
 }
@@ -85,10 +84,7 @@ export function guardRpcMethod(method: string): RpcGuardResult {
  * JSON-RPC 2.0 error response for license violations.
  * Uses error code -32001 (server error range, license required).
  */
-export function licenseErrorResponse(
-  id: number | string | null,
-  result: RpcGuardResult,
-): string {
+export function licenseErrorResponse(id: number | string | null, result: RpcGuardResult): string {
   return JSON.stringify({
     jsonrpc: '2.0',
     id,

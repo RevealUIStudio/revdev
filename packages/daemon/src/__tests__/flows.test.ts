@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { DAEMON_DEFAULTS } from '../config.js';
 import { checkLicense, isExemptMethod, LICENSE_TIERS } from '../license.js';
 import { SCHEMA_SQL } from '../storage/schema.js';
-import { DAEMON_DEFAULTS } from '../config.js';
 
 describe('license', () => {
   it('returns free tier when no key is set', () => {

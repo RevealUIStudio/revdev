@@ -4,10 +4,10 @@
 
 /** Standard JSON-RPC error codes. */
 export type RpcErrorCode =
-  | -32700  // Parse error
-  | -32600  // Invalid request
-  | -32601  // Method not found
-  | -32602  // Invalid params
+  | -32700 // Parse error
+  | -32600 // Invalid request
+  | -32601 // Method not found
+  | -32602 // Invalid params
   | -32603; // Internal error
 
 export interface JsonRpcRequest {

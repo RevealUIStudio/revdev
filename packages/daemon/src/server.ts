@@ -15,13 +15,13 @@
  *   `session.register` are rejected with -32002.
  */
 
-import { createServer, type Socket } from 'node:net';
-import { PGlite } from '@electric-sql/pglite';
-import { SCHEMA_SQL } from './storage/schema.js';
-import { type DaemonConfig, DAEMON_DEFAULTS } from './config.js';
-import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
 import { mkdir } from 'node:fs/promises';
+import { createServer, type Socket } from 'node:net';
 import { dirname } from 'node:path';
+import { PGlite } from '@electric-sql/pglite';
+import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
+import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
+import { SCHEMA_SQL } from './storage/schema.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,7 +74,7 @@ const IDENTITY_EXEMPT = new Set([
  * Shared DB reference so identity helpers can validate actorAgentId overrides.
  * Set once in startDaemon before any handler runs.
  */
-let sharedDb: PGlite | null = null;
+const sharedDb: PGlite | null = null;
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -91,10 +91,7 @@ export function registerHandler(method: string, handler: RpcHandler): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function requireAgent(
-  ctx: SocketContext,
-  params?: Record<string, unknown>,
-): string {
+function requireAgent(ctx: SocketContext, params?: Record<string, unknown>): string {
   if (ctx.agentId) return ctx.agentId;
   // Fallback: accept `actorAgentId` in params for fresh-per-call clients
   // (e.g. Studio's Tauri bridge). The daemon does not authenticate — this
@@ -172,10 +169,12 @@ registerHandler('session.register', async (params, db, ctx) => {
       [id, env, workDir, pid],
     );
   } else {
-    await db.query(
-      `INSERT INTO agent_sessions (id, env, task, pid) VALUES ($1, $2, $3, $4)`,
-      [id, env, workDir, pid],
-    );
+    await db.query(`INSERT INTO agent_sessions (id, env, task, pid) VALUES ($1, $2, $3, $4)`, [
+      id,
+      env,
+      workDir,
+      pid,
+    ]);
   }
 
   // Bind this identity to the connection.
@@ -221,10 +220,7 @@ registerHandler('session.end', async (params, db, ctx) => {
   // Prefer caller's own session, but allow explicit override (e.g. admin cleanup).
   const target = strOrNull(params['sessionId']) ?? strOrNull(params['agentId']) ?? ctx.agentId;
   if (!target) throw new Error('No session to end');
-  await db.query(
-    `UPDATE agent_sessions SET ended_at = NOW() WHERE id = $1`,
-    [target],
-  );
+  await db.query(`UPDATE agent_sessions SET ended_at = NOW() WHERE id = $1`, [target]);
   if (ctx.agentId === target) {
     ctx.agentId = null;
     ctx.agentName = null;
@@ -251,10 +247,7 @@ registerHandler('session.update', async (params, db, ctx) => {
     vals.push(files);
   }
   vals.push(target);
-  await db.query(
-    `UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = $${i}`,
-    vals,
-  );
+  await db.query(`UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = $${i}`, vals);
   return { updated: target };
 });
 
@@ -388,10 +381,7 @@ registerHandler('files.release', async (params, db, ctx) => {
 
   // If no paths given, release all of this agent's reservations.
   if (paths.length === 0) {
-    const r = await db.query(
-      `DELETE FROM file_reservations WHERE agent_id = $1`,
-      [agentId],
-    );
+    const r = await db.query(`DELETE FROM file_reservations WHERE agent_id = $1`, [agentId]);
     return { released: r.affectedRows ?? 0 };
   }
 
@@ -410,10 +400,7 @@ registerHandler('files.list', async (params, db) => {
        ORDER BY reserved_at DESC`
     : `SELECT * FROM file_reservations WHERE expires_at > NOW()
        ORDER BY reserved_at DESC`;
-  const result = await db.query<Record<string, unknown>>(
-    sql,
-    agentId ? [agentId] : [],
-  );
+  const result = await db.query<Record<string, unknown>>(sql, agentId ? [agentId] : []);
   return { reservations: result.rows };
 });
 
@@ -425,19 +412,15 @@ registerHandler('tasks.create', async (params, db) => {
   const title = str(params['title']);
   const description = str(params['description']);
   const priority = strOrNull(params['priority']);
-  const full = [
-    priority ? `[${priority}]` : '',
-    title,
-    description ? `— ${description}` : '',
-  ]
+  const full = [priority ? `[${priority}]` : '', title, description ? `— ${description}` : '']
     .filter(Boolean)
     .join(' ')
     .trim();
 
-  await db.query(
-    `INSERT INTO tasks (id, description, status) VALUES ($1, $2, 'open')`,
-    [id, full || description || title || '(untitled)'],
-  );
+  await db.query(`INSERT INTO tasks (id, description, status) VALUES ($1, $2, 'open')`, [
+    id,
+    full || description || title || '(untitled)',
+  ]);
   return { taskId: id, id };
 });
 
@@ -534,10 +517,11 @@ registerHandler('events.log', async (params, db, ctx) => {
   const agentId = strOrNull(params['agentId']) ?? ctx.agentId ?? 'anonymous';
   const eventType = str(params['eventType'], 'event');
   const payload = params['payload'] ?? {};
-  await db.query(
-    `INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`,
-    [agentId, eventType, JSON.stringify(payload)],
-  );
+  await db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+    agentId,
+    eventType,
+    JSON.stringify(payload),
+  ]);
   return { logged: true };
 });
 
@@ -547,10 +531,7 @@ registerHandler('events.query', async (params, db) => {
   const sql = since
     ? `SELECT * FROM events WHERE created_at > $1::timestamp ORDER BY created_at DESC LIMIT $2`
     : `SELECT * FROM events ORDER BY created_at DESC LIMIT $1`;
-  const result = await db.query<Record<string, unknown>>(
-    sql,
-    since ? [since, limit] : [limit],
-  );
+  const result = await db.query<Record<string, unknown>>(sql, since ? [since, limit] : [limit]);
   return { events: result.rows };
 });
 
@@ -699,9 +680,7 @@ export async function startDaemon(
 
         try {
           const result = await handler(req.params ?? {}, db, ctx);
-          socket.write(
-            JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) + '\n',
-          );
+          socket.write(JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) + '\n');
         } catch (err) {
           socket.write(
             JSON.stringify({
@@ -721,10 +700,7 @@ export async function startDaemon(
       // Auto-release transient reservations when a long-lived agent
       // disconnects. Fresh-per-call clients (boundVia = 'param') don't
       // trigger cleanup — their identity outlives this socket.
-      if (
-        ctx.agentId &&
-        (ctx.boundVia === 'register' || ctx.boundVia === 'attach')
-      ) {
+      if (ctx.agentId && (ctx.boundVia === 'register' || ctx.boundVia === 'attach')) {
         await db
           .query(`DELETE FROM file_reservations WHERE agent_id = $1`, [ctx.agentId])
           .catch(() => {});
