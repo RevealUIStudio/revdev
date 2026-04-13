@@ -23,9 +23,7 @@ describe('sanitizeTerminalLine', () => {
 
   it('strips OSC title / hyperlink sequences', () => {
     expect(sanitizeTerminalLine('\x1b]0;pwned\x07hello')).toBe('hello');
-    expect(sanitizeTerminalLine('\x1b]8;;https://evil.example\x07click\x1b]8;;\x07')).toBe(
-      'click',
-    );
+    expect(sanitizeTerminalLine('\x1b]8;;https://evil.example\x07click\x1b]8;;\x07')).toBe('click');
   });
 
   it('strips DCS / PM / APC string sequences', () => {

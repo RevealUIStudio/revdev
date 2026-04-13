@@ -34,6 +34,10 @@ export default function TerminalView({
   onResizeRef.current = onResize;
   terminalRefStable.current = terminalRef;
 
+  // Welcome is a one-time banner printed at terminal creation. Adding it
+  // to deps would tear down and recreate the xterm instance on every
+  // welcome change, which is not what we want.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional single-run effect
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
