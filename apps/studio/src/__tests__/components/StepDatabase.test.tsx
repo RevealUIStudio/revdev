@@ -13,6 +13,8 @@ const MOCK_CONFIG: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
   completedSteps: [],
+  deploy: null,
+  develop: null,
 };
 
 const MOCK_DATA: WizardData = {

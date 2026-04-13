@@ -14,6 +14,8 @@ const BASE_CONFIG: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
   completedSteps: [],
+  deploy: null,
+  develop: null,
 };
 
 describe('useDeployWizard', () => {

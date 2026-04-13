@@ -23,9 +23,14 @@ const BASE_CONFIG: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
   completedSteps: [],
+  develop: null,
   deploy: {
-    supabaseEnabled: false,
+    vercelTeamId: null,
+    domain: null,
     apps: { api: 'prj-api-123', admin: 'prj-admin', marketing: 'prj-mkt' },
+    neonProjectId: null,
+    supabaseEnabled: false,
+    emailProvider: null,
   },
 };
 

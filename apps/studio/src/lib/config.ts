@@ -9,6 +9,8 @@ const DEFAULT_CONFIG: StudioConfig = {
   intent: null,
   setupComplete: false,
   completedSteps: [],
+  deploy: null,
+  develop: null,
 };
 
 let cachedConfig: StudioConfig | null = null;
