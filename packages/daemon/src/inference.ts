@@ -8,7 +8,7 @@
 
 import { registerHandler } from './server.js';
 
-const OLLAMA_URL = process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434';
+const OLLAMA_URL = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
 
 async function ollamaFetch(path: string, options?: RequestInit): Promise<Response> {
   return fetch(`${OLLAMA_URL}${path}`, {

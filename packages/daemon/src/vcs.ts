@@ -66,13 +66,13 @@ async function agentWorkDir(
 
 registerHandler('worktree.create', async (params, db, ctx) => {
   if (!ctx.agentId) throw new Error('worktree.create: no registered session');
-  const branch = strOrNull(params['branch']);
+  const branch = strOrNull(params.branch);
   if (!branch) throw new Error('worktree.create: missing branch');
-  const baseBranch = str(params['baseBranch'], 'main');
+  const baseBranch = str(params.baseBranch, 'main');
   const cwd = await agentWorkDir(db, ctx.agentId);
   // Derive worktree path as ../<repo>-<branch>
   const worktreePath =
-    strOrNull(params['path']) ?? `${cwd.replace(/\/+$/, '')}-${branch.replace(/\//g, '-')}`;
+    strOrNull(params.path) ?? `${cwd.replace(/\/+$/, '')}-${branch.replace(/\//g, '-')}`;
 
   const result = await runGit(['worktree', 'add', '-b', branch, worktreePath, baseBranch], cwd);
   if (!result.ok) {
@@ -92,7 +92,7 @@ registerHandler('worktree.create', async (params, db, ctx) => {
 });
 
 registerHandler('worktree.list', async (params, db) => {
-  const agentId = strOrNull(params['agentId']);
+  const agentId = strOrNull(params.agentId);
   const sql = agentId
     ? `SELECT * FROM worktrees WHERE agent_id = $1 ORDER BY created_at DESC`
     : `SELECT * FROM worktrees WHERE status = 'active' ORDER BY created_at DESC`;
@@ -102,7 +102,7 @@ registerHandler('worktree.list', async (params, db) => {
 
 registerHandler('worktree.remove', async (params, db, ctx) => {
   if (!ctx.agentId) throw new Error('worktree.remove: no registered session');
-  const branch = strOrNull(params['branch']);
+  const branch = strOrNull(params.branch);
   if (!branch) throw new Error('worktree.remove: missing branch');
 
   const row = await db.query<{ worktree_path: string }>(
@@ -133,11 +133,11 @@ registerHandler('worktree.remove', async (params, db, ctx) => {
 
 registerHandler('merge.request', async (params, db, ctx) => {
   if (!ctx.agentId) throw new Error('merge.request: no registered session');
-  const sourceBranch = strOrNull(params['branch']) ?? strOrNull(params['sourceBranch']);
+  const sourceBranch = strOrNull(params.branch) ?? strOrNull(params.sourceBranch);
   if (!sourceBranch) throw new Error('merge.request: missing branch');
-  const baseBranch = str(params['targetBranch'], str(params['baseBranch'], 'main'));
-  const description = str(params['description']);
-  const taskId = strOrNull(params['taskId']);
+  const baseBranch = str(params.targetBranch, str(params.baseBranch, 'main'));
+  const description = str(params.description);
+  const taskId = strOrNull(params.taskId);
 
   const id = crypto.randomUUID();
   await db.query(
@@ -155,7 +155,7 @@ registerHandler('merge.request', async (params, db, ctx) => {
 });
 
 registerHandler('merge.status', async (params, db) => {
-  const mergeId = strOrNull(params['mergeId']);
+  const mergeId = strOrNull(params.mergeId);
   if (!mergeId) throw new Error('merge.status: missing mergeId');
   const result = await db.query<Record<string, unknown>>(
     `SELECT * FROM merge_requests WHERE id = $1`,
@@ -168,8 +168,8 @@ registerHandler('merge.status', async (params, db) => {
 });
 
 registerHandler('merge.list', async (params, db) => {
-  const status = strOrNull(params['status']);
-  const agentId = strOrNull(params['agentId']);
+  const status = strOrNull(params.status);
+  const agentId = strOrNull(params.agentId);
 
   const where: string[] = [];
   const vals: unknown[] = [];
@@ -192,12 +192,12 @@ registerHandler('merge.list', async (params, db) => {
 
 registerHandler('merge.update', async (params, db, ctx) => {
   if (!ctx.agentId) throw new Error('merge.update: no registered session');
-  const mergeId = strOrNull(params['mergeId']);
+  const mergeId = strOrNull(params.mergeId);
   if (!mergeId) throw new Error('merge.update: missing mergeId');
-  const status = strOrNull(params['status']);
-  const prNumber = typeof params['prNumber'] === 'number' ? params['prNumber'] : null;
-  const prUrl = strOrNull(params['prUrl']);
-  const errorMessage = strOrNull(params['errorMessage']);
+  const status = strOrNull(params.status);
+  const prNumber = typeof params.prNumber === 'number' ? params.prNumber : null;
+  const prUrl = strOrNull(params.prUrl);
+  const errorMessage = strOrNull(params.errorMessage);
 
   const sets: string[] = ['updated_at = NOW()'];
   const vals: unknown[] = [];

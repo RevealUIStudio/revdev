@@ -40,7 +40,7 @@ class DaemonClient {
   private nextId = 1;
 
   constructor(socketPath?: string) {
-    const home = process.env['HOME'] ?? '/tmp';
+    const home = process.env.HOME ?? '/tmp';
     this.socketPath = socketPath ?? `${home}/.local/share/revealui/harness.sock`;
   }
 
@@ -53,7 +53,7 @@ class DaemonClient {
       let buffer = '';
 
       socket.on('connect', () => {
-        socket.write(JSON.stringify(req) + '\n');
+        socket.write(`${JSON.stringify(req)}\n`);
       });
 
       socket.on('data', (data) => {
@@ -102,7 +102,7 @@ class DaemonClient {
 // MCP Server
 // ---------------------------------------------------------------------------
 
-const daemon = new DaemonClient(process.env['REVDEV_DAEMON_SOCKET']);
+const daemon = new DaemonClient(process.env.REVDEV_DAEMON_SOCKET);
 
 const server = new McpServer({
   name: 'revdev-bridge',

@@ -44,8 +44,8 @@ License tiers:
 }
 
 const config = {
-  socketPath: process.env['REVDEV_DAEMON_SOCKET'] ?? DAEMON_DEFAULTS.socketPath,
-  dataDir: process.env['REVDEV_DAEMON_DATA'] ?? DAEMON_DEFAULTS.dataDir,
+  socketPath: process.env.REVDEV_DAEMON_SOCKET ?? DAEMON_DEFAULTS.socketPath,
+  dataDir: process.env.REVDEV_DAEMON_DATA ?? DAEMON_DEFAULTS.dataDir,
 };
 
 console.log('');

@@ -70,12 +70,6 @@ const IDENTITY_EXEMPT = new Set([
   'inference.generate',
 ]);
 
-/**
- * Shared DB reference so identity helpers can validate actorAgentId overrides.
- * Set once in startDaemon before any handler runs.
- */
-const sharedDb: PGlite | null = null;
-
 // ---------------------------------------------------------------------------
 // Handler registry
 // ---------------------------------------------------------------------------
@@ -96,7 +90,7 @@ function requireAgent(ctx: SocketContext, params?: Record<string, unknown>): str
   // Fallback: accept `actorAgentId` in params for fresh-per-call clients
   // (e.g. Studio's Tauri bridge). The daemon does not authenticate — this
   // is local-trust; remote callers go through the HTTP gateway with auth.
-  const actor = params ? strOrNull(params['actorAgentId']) : null;
+  const actor = params ? strOrNull(params.actorAgentId) : null;
   if (actor) {
     ctx.agentId = actor;
     ctx.boundVia = 'param';
@@ -124,9 +118,9 @@ function asStringArray(v: unknown): string[] {
 
 /** Accept either `paths: string[]` or `filePath: string` — normalize to array. */
 function normalizePaths(params: Record<string, unknown>): string[] {
-  const paths = asStringArray(params['paths']);
+  const paths = asStringArray(params.paths);
   if (paths.length > 0) return paths;
-  const single = strOrNull(params['filePath']);
+  const single = strOrNull(params.filePath);
   return single ? [single] : [];
 }
 
@@ -146,13 +140,13 @@ registerHandler('session.register', async (params, db, ctx) => {
   //      "agent-system" that persist across reboots and can be targeted by
   //      name from other agents' mail/tasks calls. Idempotent — re-registering
   //      the same id re-opens an ended session.
-  const supplied = strOrNull(params['agentId']);
+  const supplied = strOrNull(params.agentId);
   const id = supplied ?? crypto.randomUUID();
-  const agentName = str(params['agentName'], supplied ?? 'anon');
-  const workDir = str(params['workDir']) || str(params['task']);
-  const backend = str(params['backend'], str(params['env'], 'unknown'));
+  const agentName = str(params.agentName, supplied ?? 'anon');
+  const workDir = str(params.workDir) || str(params.task);
+  const backend = str(params.backend, str(params.env, 'unknown'));
   const env = `${backend}:${agentName}`;
-  const pid = num(params['pid'], 0) || null;
+  const pid = num(params.pid, 0) || null;
 
   if (supplied) {
     // UPSERT: insert or re-open existing row.
@@ -194,7 +188,7 @@ registerHandler('session.register', async (params, db, ctx) => {
 });
 
 registerHandler('session.attach', async (params, db, ctx) => {
-  const agentId = strOrNull(params['agentId']);
+  const agentId = strOrNull(params.agentId);
   if (!agentId) throw new Error('session.attach: missing agentId');
   const r = await db.query<{ id: string; env: string }>(
     `SELECT id, env FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,
@@ -218,7 +212,7 @@ registerHandler('session.list', async (_params, db) => {
 
 registerHandler('session.end', async (params, db, ctx) => {
   // Prefer caller's own session, but allow explicit override (e.g. admin cleanup).
-  const target = strOrNull(params['sessionId']) ?? strOrNull(params['agentId']) ?? ctx.agentId;
+  const target = strOrNull(params.sessionId) ?? strOrNull(params.agentId) ?? ctx.agentId;
   if (!target) throw new Error('No session to end');
   await db.query(`UPDATE agent_sessions SET ended_at = NOW() WHERE id = $1`, [target]);
   if (ctx.agentId === target) {
@@ -229,10 +223,10 @@ registerHandler('session.end', async (params, db, ctx) => {
 });
 
 registerHandler('session.update', async (params, db, ctx) => {
-  const target = strOrNull(params['sessionId']) ?? strOrNull(params['agentId']) ?? ctx.agentId;
+  const target = strOrNull(params.sessionId) ?? strOrNull(params.agentId) ?? ctx.agentId;
   if (!target) throw new Error('No session to update');
-  const task = strOrNull(params['task']);
-  const files = strOrNull(params['files']);
+  const task = strOrNull(params.task);
+  const files = strOrNull(params.files);
 
   // Build the update dynamically but keep values parameterized.
   const sets: string[] = ['updated_at = NOW()'];
@@ -255,10 +249,10 @@ registerHandler('session.update', async (params, db, ctx) => {
 
 registerHandler('mail.send', async (params, db, ctx) => {
   const from = requireAgent(ctx, params);
-  const to = strOrNull(params['to']) ?? strOrNull(params['toAgent']);
+  const to = strOrNull(params.to) ?? strOrNull(params.toAgent);
   if (!to) throw new Error('mail.send: missing "to" (or "toAgent")');
-  const subject = str(params['subject']);
-  const body = str(params['body']);
+  const subject = str(params.subject);
+  const body = str(params.body);
 
   const result = await db.query<{ id: number }>(
     `INSERT INTO agent_messages (from_agent, to_agent, subject, body)
@@ -270,8 +264,8 @@ registerHandler('mail.send', async (params, db, ctx) => {
 
 registerHandler('mail.inbox', async (params, db, ctx) => {
   // Explicit agentId param wins (for debugging / admin). Otherwise use caller.
-  const agentId = strOrNull(params['agentId']) ?? requireAgent(ctx, params);
-  const unreadOnly = params['unreadOnly'] !== false; // default true
+  const agentId = strOrNull(params.agentId) ?? requireAgent(ctx, params);
+  const unreadOnly = params.unreadOnly !== false; // default true
 
   const sql = unreadOnly
     ? `SELECT * FROM agent_messages WHERE to_agent = $1 AND read = FALSE
@@ -284,8 +278,8 @@ registerHandler('mail.inbox', async (params, db, ctx) => {
 
 registerHandler('mail.broadcast', async (params, db, ctx) => {
   const from = requireAgent(ctx, params);
-  const subject = str(params['subject']);
-  const body = str(params['body']);
+  const subject = str(params.subject);
+  const body = str(params.body);
 
   const sessions = await db.query<{ id: string }>(
     `SELECT id FROM agent_sessions WHERE ended_at IS NULL AND id <> $1`,
@@ -304,7 +298,7 @@ registerHandler('mail.broadcast', async (params, db, ctx) => {
 registerHandler('mail.markRead', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
   // Accept number[] or string[] (JSON numbers or numeric strings).
-  const raw = Array.isArray(params['messageIds']) ? params['messageIds'] : [];
+  const raw = Array.isArray(params.messageIds) ? params.messageIds : [];
   const ids = raw
     .map((v) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN))
     .filter((n) => Number.isFinite(n));
@@ -324,8 +318,8 @@ registerHandler('files.reserve', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
   const paths = normalizePaths(params);
   if (paths.length === 0) throw new Error('files.reserve: missing paths');
-  const reason = str(params['reason']);
-  const ttlSeconds = num(params['ttlSeconds'], 30 * 60);
+  const reason = str(params.reason);
+  const ttlSeconds = num(params.ttlSeconds, 30 * 60);
 
   const reserved: string[] = [];
   const conflicts: Array<{ path: string; holder: string }> = [];
@@ -394,7 +388,7 @@ registerHandler('files.release', async (params, db, ctx) => {
 });
 
 registerHandler('files.list', async (params, db) => {
-  const agentId = strOrNull(params['agentId']);
+  const agentId = strOrNull(params.agentId);
   const sql = agentId
     ? `SELECT * FROM file_reservations WHERE expires_at > NOW() AND agent_id = $1
        ORDER BY reserved_at DESC`
@@ -408,10 +402,10 @@ registerHandler('files.list', async (params, db) => {
 
 registerHandler('tasks.create', async (params, db) => {
   // Allow caller-supplied taskId (useful for stable external IDs) or generate one.
-  const id = strOrNull(params['taskId']) ?? crypto.randomUUID();
-  const title = str(params['title']);
-  const description = str(params['description']);
-  const priority = strOrNull(params['priority']);
+  const id = strOrNull(params.taskId) ?? crypto.randomUUID();
+  const title = str(params.title);
+  const description = str(params.description);
+  const priority = strOrNull(params.priority);
   const full = [priority ? `[${priority}]` : '', title, description ? `— ${description}` : '']
     .filter(Boolean)
     .join(' ')
@@ -425,8 +419,8 @@ registerHandler('tasks.create', async (params, db) => {
 });
 
 registerHandler('tasks.list', async (params, db) => {
-  const status = strOrNull(params['status']);
-  const owner = strOrNull(params['owner']);
+  const status = strOrNull(params.status);
+  const owner = strOrNull(params.owner);
 
   const where: string[] = [];
   const vals: unknown[] = [];
@@ -449,7 +443,7 @@ registerHandler('tasks.list', async (params, db) => {
 
 registerHandler('tasks.claim', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
-  const taskId = strOrNull(params['taskId']);
+  const taskId = strOrNull(params.taskId);
   if (!taskId) throw new Error('tasks.claim: missing taskId');
 
   // Atomic CAS: only claim if open or already held by us.
@@ -476,9 +470,9 @@ registerHandler('tasks.claim', async (params, db, ctx) => {
 
 registerHandler('tasks.complete', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
-  const taskId = strOrNull(params['taskId']);
+  const taskId = strOrNull(params.taskId);
   if (!taskId) throw new Error('tasks.complete: missing taskId');
-  const summary = strOrNull(params['summary']);
+  const summary = strOrNull(params.summary);
 
   // Only the claiming agent may complete.
   const r = summary
@@ -499,7 +493,7 @@ registerHandler('tasks.complete', async (params, db, ctx) => {
 
 registerHandler('tasks.release', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
-  const taskId = strOrNull(params['taskId']);
+  const taskId = strOrNull(params.taskId);
   if (!taskId) throw new Error('tasks.release: missing taskId');
 
   const r = await db.query(
@@ -514,9 +508,9 @@ registerHandler('tasks.release', async (params, db, ctx) => {
 // -- Events -----------------------------------------------------------------
 
 registerHandler('events.log', async (params, db, ctx) => {
-  const agentId = strOrNull(params['agentId']) ?? ctx.agentId ?? 'anonymous';
-  const eventType = str(params['eventType'], 'event');
-  const payload = params['payload'] ?? {};
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const eventType = str(params.eventType, 'event');
+  const payload = params.payload ?? {};
   await db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
     agentId,
     eventType,
@@ -526,8 +520,8 @@ registerHandler('events.log', async (params, db, ctx) => {
 });
 
 registerHandler('events.query', async (params, db) => {
-  const limit = Math.min(num(params['limit'], 20), 500);
-  const since = strOrNull(params['since']);
+  const limit = Math.min(num(params.limit, 20), 500);
+  const since = strOrNull(params.since);
   const sql = since
     ? `SELECT * FROM events WHERE created_at > $1::timestamp ORDER BY created_at DESC LIMIT $2`
     : `SELECT * FROM events ORDER BY created_at DESC LIMIT $1`;
@@ -556,9 +550,9 @@ registerHandler('harness.health', async (_params, db) => {
 
 registerHandler('memory.store', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
-  const key = str(params['key']);
-  const value = str(params['value']);
-  const tags = asStringArray(params['tags']);
+  const key = str(params.key);
+  const value = str(params.value);
+  const tags = asStringArray(params.tags);
   await db.query(
     `INSERT INTO agent_memory (agent_id, memory_type, content, metadata)
      VALUES ($1, $2, $3, $4::jsonb)`,
@@ -569,8 +563,8 @@ registerHandler('memory.store', async (params, db, ctx) => {
 
 registerHandler('memory.query', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
-  const query = strOrNull(params['query']);
-  const limit = Math.min(num(params['limit'], 10), 200);
+  const query = strOrNull(params.query);
+  const limit = Math.min(num(params.limit, 10), 200);
   const sql = query
     ? `SELECT * FROM agent_memory
        WHERE agent_id = $1 AND content ILIKE $2
@@ -629,11 +623,11 @@ export async function startDaemon(
           req = JSON.parse(line);
         } catch {
           socket.write(
-            JSON.stringify({
+            `${JSON.stringify({
               jsonrpc: '2.0',
               id: null,
               error: { code: -32700, message: 'Parse error' },
-            }) + '\n',
+            })}\n`,
           );
           continue;
         }
@@ -641,7 +635,7 @@ export async function startDaemon(
         // License guard
         const guard = guardRpcMethod(req.method);
         if (!guard.allowed) {
-          socket.write(licenseErrorResponse(req.id, guard) + '\n');
+          socket.write(`${licenseErrorResponse(req.id, guard)}\n`);
           continue;
         }
 
@@ -649,11 +643,11 @@ export async function startDaemon(
         const handler = handlers.get(req.method);
         if (!handler) {
           socket.write(
-            JSON.stringify({
+            `${JSON.stringify({
               jsonrpc: '2.0',
               id: req.id,
               error: { code: -32601, message: `Method not found: ${req.method}` },
-            }) + '\n',
+            })}\n`,
           );
           continue;
         }
@@ -663,34 +657,34 @@ export async function startDaemon(
         if (
           !IDENTITY_EXEMPT.has(req.method) &&
           !ctx.agentId &&
-          !(req.params && typeof req.params['actorAgentId'] === 'string')
+          !(req.params && typeof req.params.actorAgentId === 'string')
         ) {
           socket.write(
-            JSON.stringify({
+            `${JSON.stringify({
               jsonrpc: '2.0',
               id: req.id,
               error: {
                 code: -32002,
                 message: `Not registered: call session.register or session.attach before ${req.method}`,
               },
-            }) + '\n',
+            })}\n`,
           );
           continue;
         }
 
         try {
           const result = await handler(req.params ?? {}, db, ctx);
-          socket.write(JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) + '\n');
+          socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
         } catch (err) {
           socket.write(
-            JSON.stringify({
+            `${JSON.stringify({
               jsonrpc: '2.0',
               id: req.id,
               error: {
                 code: -32000,
                 message: err instanceof Error ? err.message : 'Internal error',
               },
-            }) + '\n',
+            })}\n`,
           );
         }
       }

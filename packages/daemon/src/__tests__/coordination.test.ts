@@ -28,7 +28,7 @@ function rpc(
   return new Promise((resolve, reject) => {
     const sock: Socket = connect(socketPath);
     let buf = '';
-    const req = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) + '\n';
+    const req = `${JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })}\n`;
     sock.on('connect', () => sock.write(req));
     sock.on('data', (d) => {
       buf += d.toString();
@@ -65,9 +65,8 @@ beforeAll(async () => {
   // Coordination RPCs are license-gated (Pro+). Tests inject a valid
   // enterprise key so the guard lets mail/files/tasks calls through.
   // Local dev machines usually have this set already; CI does not.
-  originalLicenseKey = process.env['REVEALUI_LICENSE_KEY'];
-  process.env['REVEALUI_LICENSE_KEY'] =
-    'RVUI-enterprise-0123456789abcdef0123456789abcdef';
+  originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
+  process.env.REVEALUI_LICENSE_KEY = 'RVUI-enterprise-0123456789abcdef0123456789abcdef';
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-coord-'));
   socketPath = join(dataDir, 'harness.sock');
   const d = await startDaemon({ socketPath, dataDir });
@@ -78,9 +77,9 @@ afterAll(async () => {
   await close?.();
   await rm(dataDir, { recursive: true, force: true });
   if (originalLicenseKey === undefined) {
-    delete process.env['REVEALUI_LICENSE_KEY'];
+    delete process.env.REVEALUI_LICENSE_KEY;
   } else {
-    process.env['REVEALUI_LICENSE_KEY'] = originalLicenseKey;
+    process.env.REVEALUI_LICENSE_KEY = originalLicenseKey;
   }
 });
 

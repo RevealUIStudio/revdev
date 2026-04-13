@@ -5,30 +5,30 @@ import { SCHEMA_SQL } from '../storage/schema.js';
 
 describe('license', () => {
   it('returns free tier when no key is set', () => {
-    const original = process.env['REVEALUI_LICENSE_KEY'];
-    delete process.env['REVEALUI_LICENSE_KEY'];
+    const original = process.env.REVEALUI_LICENSE_KEY;
+    delete process.env.REVEALUI_LICENSE_KEY;
 
     const result = checkLicense();
     expect(result.tier).toBe('free');
     expect(result.valid).toBe(false);
 
-    if (original) process.env['REVEALUI_LICENSE_KEY'] = original;
+    if (original) process.env.REVEALUI_LICENSE_KEY = original;
   });
 
   it('validates a pro license key format', () => {
-    process.env['REVEALUI_LICENSE_KEY'] = 'RVUI-pro-abcdef0123456789abcdef0123456789';
+    process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-abcdef0123456789abcdef0123456789';
     const result = checkLicense();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);
-    delete process.env['REVEALUI_LICENSE_KEY'];
+    delete process.env.REVEALUI_LICENSE_KEY;
   });
 
   it('rejects invalid license key formats', () => {
-    process.env['REVEALUI_LICENSE_KEY'] = 'invalid-key';
+    process.env.REVEALUI_LICENSE_KEY = 'invalid-key';
     const result = checkLicense();
     expect(result.tier).toBe('free');
     expect(result.valid).toBe(false);
-    delete process.env['REVEALUI_LICENSE_KEY'];
+    delete process.env.REVEALUI_LICENSE_KEY;
   });
 
   it('exports all known license tiers', () => {

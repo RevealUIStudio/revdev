@@ -7,18 +7,18 @@ import {
 } from '../guard.js';
 
 describe('guardRpcMethod', () => {
-  const originalEnv = process.env['REVEALUI_LICENSE_KEY'];
+  const originalEnv = process.env.REVEALUI_LICENSE_KEY;
 
   beforeEach(() => {
-    delete process.env['REVEALUI_LICENSE_KEY'];
+    delete process.env.REVEALUI_LICENSE_KEY;
     refreshLicense();
   });
 
   afterEach(() => {
     if (originalEnv !== undefined) {
-      process.env['REVEALUI_LICENSE_KEY'] = originalEnv;
+      process.env.REVEALUI_LICENSE_KEY = originalEnv;
     } else {
-      delete process.env['REVEALUI_LICENSE_KEY'];
+      delete process.env.REVEALUI_LICENSE_KEY;
     }
     refreshLicense();
   });
@@ -71,7 +71,7 @@ describe('guardRpcMethod', () => {
 
   describe('pro license grants full access', () => {
     beforeEach(() => {
-      process.env['REVEALUI_LICENSE_KEY'] = 'RVUI-pro-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
+      process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
       refreshLicense();
     });
 
@@ -99,14 +99,14 @@ describe('guardRpcMethod', () => {
 
   describe('max/enterprise licenses', () => {
     it('allows all methods with max license', () => {
-      process.env['REVEALUI_LICENSE_KEY'] = 'RVUI-max-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
+      process.env.REVEALUI_LICENSE_KEY = 'RVUI-max-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
       refreshLicense();
       expect(guardRpcMethod('agent.spawn').allowed).toBe(true);
       expect(guardRpcMethod('agent.spawn').tier).toBe('max');
     });
 
     it('allows all methods with enterprise license', () => {
-      process.env['REVEALUI_LICENSE_KEY'] = 'RVUI-enterprise-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
+      process.env.REVEALUI_LICENSE_KEY = 'RVUI-enterprise-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
       refreshLicense();
       expect(guardRpcMethod('merge.request').allowed).toBe(true);
       expect(guardRpcMethod('merge.request').tier).toBe('enterprise');
@@ -115,7 +115,7 @@ describe('guardRpcMethod', () => {
 
   describe('invalid license keys', () => {
     it('treats malformed key as free tier', () => {
-      process.env['REVEALUI_LICENSE_KEY'] = 'not-a-valid-key';
+      process.env.REVEALUI_LICENSE_KEY = 'not-a-valid-key';
       refreshLicense();
       const result = guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(false);
@@ -123,7 +123,7 @@ describe('guardRpcMethod', () => {
     });
 
     it('treats empty key as free tier', () => {
-      process.env['REVEALUI_LICENSE_KEY'] = '';
+      process.env.REVEALUI_LICENSE_KEY = '';
       refreshLicense();
       const result = guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(false);
@@ -133,7 +133,7 @@ describe('guardRpcMethod', () => {
 
 describe('initLicenseGuard', () => {
   beforeEach(() => {
-    delete process.env['REVEALUI_LICENSE_KEY'];
+    delete process.env.REVEALUI_LICENSE_KEY;
   });
 
   it('returns free tier without key', () => {
@@ -143,7 +143,7 @@ describe('initLicenseGuard', () => {
   });
 
   it('returns pro tier with valid key', () => {
-    process.env['REVEALUI_LICENSE_KEY'] = 'RVUI-pro-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
+    process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
     const result = initLicenseGuard();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);
