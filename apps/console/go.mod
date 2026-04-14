@@ -1,4 +1,4 @@
-module github.com/RevealUIStudio/revdev/apps/terminal
+module github.com/RevealUIStudio/revdev/apps/console
 
 go 1.25.8
 

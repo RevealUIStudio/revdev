@@ -18,8 +18,8 @@ apps/studio/src-tauri/bindings/
 apps/studio/src/generated/
 
 # Go
-apps/terminal/terminal
-apps/terminal/rvui
+apps/console/console
+apps/console/rvui
 
 # Environment
 .env
