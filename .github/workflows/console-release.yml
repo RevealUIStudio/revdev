@@ -1,9 +1,9 @@
-name: Terminal Release
+name: Console Release
 
 on:
   push:
     tags:
-      - "terminal-v*"
+      - "console-v*"
   workflow_dispatch:
     inputs:
       draft:
@@ -51,8 +51,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: apps/terminal/go.mod
-          cache-dependency-path: apps/terminal/go.sum
+          go-version-file: apps/console/go.mod
+          cache-dependency-path: apps/console/go.sum
 
       - name: Build
         env:
@@ -60,7 +60,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          cd apps/terminal
+          cd apps/console
           go build -trimpath -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o ../../${{ env.BINARY }} .
 
       - name: Generate checksum
