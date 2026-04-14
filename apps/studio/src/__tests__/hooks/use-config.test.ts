@@ -14,6 +14,8 @@ const MOCK_CONFIG: StudioConfig = {
   intent: null,
   setupComplete: false,
   completedSteps: [],
+  deploy: null,
+  develop: null,
 };
 
 function flushPromises(): Promise<void> {

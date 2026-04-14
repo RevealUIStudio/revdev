@@ -21,8 +21,8 @@
     "lint:fix": "biome check --write .",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
-    "typecheck": "pnpm --filter @revdev/protocol build && pnpm -r --filter=!@revealui/studio typecheck",
-    "typecheck:studio": "pnpm --filter @revealui/studio typecheck"
+    "typecheck": "pnpm --filter @revdev/protocol build && pnpm -r --filter=!studio typecheck",
+    "typecheck:studio": "pnpm --filter studio typecheck"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.1.1",

@@ -24,7 +24,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-revvault-core = { git = "https://github.com/RevealUIStudio/revault.git", package = "revvault-core" }
+revvault-core = { git = "https://github.com/RevealUIStudio/revvault.git", package = "revvault-core" }
 age = { version = "0.11", features = ["armor"] }
 secrecy = "0.10"
 dirs = "6"
@@ -42,7 +42,7 @@ rand = "0.9"
 hex = "0.4"
 rsa = { version = "0.9", features = ["pem"] }
 lettre = { version = "0.11", features = ["tokio1-rustls-tls", "smtp-transport", "builder"], default-features = false }
-git2 = "0.20"
+git2 = { version = "0.20", default-features = false, features = ["vendored-openssl", "vendored-libgit2"] }
 similar = "2"
 dissimilar = "1"
 ts-rs = { version = "10", features = ["serde-compat"] }

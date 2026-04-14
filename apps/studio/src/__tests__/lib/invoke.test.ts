@@ -212,6 +212,7 @@ describe('invoke bridge (browser mode)', () => {
         port: 22,
         username: 'user',
         auth_method: 'key',
+        key_path: null,
       }),
     ).resolves.toBeUndefined();
   });

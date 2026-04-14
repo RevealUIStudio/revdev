@@ -54,9 +54,12 @@ export default function StepDomain({
       });
       await onUpdateConfig({
         deploy: {
-          ...config.deploy,
+          vercelTeamId: config.deploy?.vercelTeamId ?? null,
           domain: cleanDomain,
+          apps: config.deploy?.apps ?? null,
+          neonProjectId: config.deploy?.neonProjectId ?? null,
           supabaseEnabled: config.deploy?.supabaseEnabled ?? false,
+          emailProvider: config.deploy?.emailProvider ?? null,
         },
       });
       setSaved(true);
