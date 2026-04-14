@@ -308,7 +308,7 @@ function CommitLog({ entries, loading }: { entries: GitCommitInfo[]; loading: bo
           <div className="mt-0.5 flex items-center gap-2 pl-8 text-[10px] text-neutral-500">
             <span>{entry.author}</span>
             <span>·</span>
-            <span>{relativeTime(entry.timestamp)}</span>
+            <span>{relativeTime(Number(entry.timestamp))}</span>
           </div>
         </div>
       ))}

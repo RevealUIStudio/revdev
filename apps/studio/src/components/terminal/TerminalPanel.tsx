@@ -7,10 +7,57 @@ import Card from '../ui/Card';
 import ErrorAlert from '../ui/ErrorAlert';
 import StatusDot from '../ui/StatusDot';
 import ConnectForm from './ConnectForm';
+import LocalTerminalPanel from './LocalTerminalPanel';
 import SshBookmarkSidebar from './SshBookmarkSidebar';
 import TerminalView from './TerminalView';
 
+type TerminalMode = 'local' | 'ssh';
+
 export default function TerminalPanel() {
+  const [mode, setMode] = useState<TerminalMode>('local');
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex items-center gap-1 border-b border-neutral-800 pb-2">
+        <TabButton active={mode === 'local'} onClick={() => setMode('local')}>
+          Local
+        </TabButton>
+        <TabButton active={mode === 'ssh'} onClick={() => setMode('ssh')}>
+          Remote (SSH)
+        </TabButton>
+      </div>
+      <div className="min-h-0 flex-1">
+        {mode === 'local' ? <LocalTerminalPanel /> : <SshTerminalPanel />}
+      </div>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+        active
+          ? 'bg-neutral-800 text-neutral-100'
+          : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SshTerminalPanel() {
   const terminalRef = useRef<Terminal | null>(null);
   const [hostKeyInfo, setHostKeyInfo] = useState<SshHostKeyEvent | null>(null);
   const [lastParams, setLastParams] = useState<SshConnectParams | null>(null);
@@ -109,6 +156,11 @@ export default function TerminalPanel() {
                 onData={handleTerminalData}
                 onResize={handleTerminalResize}
                 terminalRef={terminalRef}
+                welcome={[
+                  '\x1b[1;33mRevealUI Studio Terminal\x1b[0m',
+                  '\x1b[90mConnect to an SSH server using the form above.\x1b[0m',
+                  '',
+                ]}
               />
             </div>
 

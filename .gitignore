@@ -14,6 +14,8 @@ target/
 # Tauri
 apps/studio/src-tauri/target/
 apps/studio/src-tauri/gen/
+apps/studio/src-tauri/bindings/
+apps/studio/src/generated/
 
 # Go
 apps/terminal/terminal

@@ -34,7 +34,7 @@ pub struct DeployConfig {
 #[ts(export, export_to = "bindings/")]
 pub struct DeployApps {
     pub api: Option<String>,
-    pub cms: Option<String>,
+    pub admin: Option<String>,
     pub marketing: Option<String>,
 }
 

@@ -64,7 +64,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Studio build requires cargo for ts-rs bindings; it lives in studio-release.yml.
-      - run: pnpm -r --filter=!@revealui/studio build
+      - run: pnpm -r --filter=!studio build
 
   terminal:
     name: Terminal (Go)
