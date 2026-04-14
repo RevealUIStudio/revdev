@@ -12,9 +12,11 @@ export interface StudioSettings {
   solanaNetwork: 'devnet' | 'mainnet-beta';
 }
 
+const DEFAULT_API_URL = import.meta.env.DEV ? 'http://localhost:3004' : 'https://api.revealui.com';
+
 const DEFAULT_SETTINGS: StudioSettings = {
   theme: 'system',
-  apiUrl: 'http://localhost:3004',
+  apiUrl: DEFAULT_API_URL,
   pollingIntervalMs: 30_000,
   solanaWalletAddress: '',
   solanaNetwork: 'devnet',
