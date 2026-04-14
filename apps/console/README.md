@@ -1,8 +1,13 @@
-# RevealUI Terminal
+# RevealUI Console
 
-> **Status: Experimental** — Not production-deployed. Functional prototype for SSH-based license purchases.
+> **Status: Experimental** — Not production-deployed. Functional prototype.
 
-SSH payment service built with the [Charm](https://charm.sh/) ecosystem:
+SSH-delivered TUI ops cockpit for RevealUI. Read-mostly view of agent health,
+deploys, billing, and alerts; fast keyboard ops for rollback, approve, rotate,
+ack, and credit purchases. Runs anywhere there's SSH — phone, borrowed laptop,
+server — and is explicitly **not** for editing code (that's Studio's job).
+
+Built with the [Charm](https://charm.sh/) ecosystem:
 
 - **Wish** — SSH server
 - **Bubble Tea** — TUI framework
@@ -11,15 +16,13 @@ SSH payment service built with the [Charm](https://charm.sh/) ecosystem:
 ## Usage
 
 ```bash
-ssh terminal.revealui.com
+ssh console.revealui.com
 ```
-
-Presents an interactive TUI for browsing tiers, purchasing licenses, and managing agent credits — all from the terminal.
 
 ## Development
 
 ```bash
-cd apps/terminal
+cd apps/console
 go run .
 ```
 
@@ -28,8 +31,8 @@ go run .
 Requires persistent TCP (SSH), not serverless. Deploy to Fly.io or a VPS:
 
 ```bash
-docker build -t revealui-terminal .
-docker run -p 2222:2222 revealui-terminal
+docker build -t revealui-console .
+docker run -p 2222:2222 revealui-console
 ```
 
 ## Environment Variables
