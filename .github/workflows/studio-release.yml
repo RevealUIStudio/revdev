@@ -71,6 +71,7 @@ jobs:
         shell: bash
         run: bash apps/studio/scripts/generate-types.sh
 
+
       - name: Build Studio (Tauri)
         uses: tauri-apps/tauri-action@v0
         env:
