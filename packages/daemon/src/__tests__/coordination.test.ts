@@ -9,7 +9,7 @@
  * without human relay," proven at the RPC layer.
  */
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -86,6 +86,14 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe('socket hardening', () => {
+  it('socket file is mode 0600 (restricted to owning UID)', async () => {
+    const s = await stat(socketPath);
+    // Mask to the permission bits; ignore the type bits (0o140000 = socket).
+    expect(s.mode & 0o777).toBe(0o600);
+  });
+});
 
 describe('two-agent coordination', () => {
   let alice: string;
