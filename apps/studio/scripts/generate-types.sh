@@ -16,17 +16,21 @@ GENERATED_DIR="$STUDIO_DIR/src/generated"
 
 echo "==> Running cargo test to generate ts-rs bindings..."
 cd "$TAURI_DIR"
-cargo test export_bindings -- --ignored 2>/dev/null || cargo test 2>&1
+cargo test --lib
 
 echo "==> Copying bindings to $GENERATED_DIR..."
 mkdir -p "$GENERATED_DIR"
 
-# Copy all generated .ts files
-if [ -d "$TAURI_DIR/bindings" ] && [ "$(ls -A "$TAURI_DIR/bindings"/*.ts 2>/dev/null)" ]; then
-    cp "$TAURI_DIR/bindings"/*.ts "$GENERATED_DIR/"
-    echo "==> Copied $(ls "$TAURI_DIR/bindings"/*.ts | wc -l) type files."
+# Collect .ts files from both bindings/ and bindings/bindings/ —
+# ts-rs v10 writes to the latter because `export_to = "bindings/"` is
+# relative to the crate root rather than the test harness dir.
+shopt -s nullglob
+files=("$TAURI_DIR/bindings"/*.ts "$TAURI_DIR/bindings/bindings"/*.ts)
+if [ ${#files[@]} -gt 0 ]; then
+    cp "${files[@]}" "$GENERATED_DIR/"
+    echo "==> Copied ${#files[@]} type files."
 else
-    echo "==> Warning: No .ts files found in $TAURI_DIR/bindings/"
+    echo "==> Warning: No .ts files found under $TAURI_DIR/bindings/"
     echo "    This is expected if cargo test hasn't been run yet."
     echo "    The bindings will be generated when cargo test runs in a"
     echo "    full Tauri build environment."

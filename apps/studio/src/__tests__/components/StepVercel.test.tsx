@@ -15,7 +15,15 @@ const MOCK_CONFIG: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
   completedSteps: [],
-  deploy: { supabaseEnabled: false },
+  develop: null,
+  deploy: {
+    vercelTeamId: null,
+    domain: null,
+    apps: null,
+    neonProjectId: null,
+    supabaseEnabled: false,
+    emailProvider: null,
+  },
 };
 
 const MOCK_DATA: WizardData = {

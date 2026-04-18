@@ -152,11 +152,7 @@ pub async fn harness_broadcast(
     .map_err(|e| StudioError::Other(e))?;
 
     // Returns { sent: number, recipients: number, broadcast: true }
-    let sent = result
-        .get("sent")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    Ok(sent)
+    Ok(parse_broadcast_sent(&result))
 }
 
 #[tauri::command]
@@ -168,6 +164,47 @@ pub async fn harness_mark_read(message_ids: Vec<i64>) -> Result<(), StudioError>
     .await
     .map_err(|e| StudioError::Other(e))?;
     Ok(())
+}
+
+// ── Pure parsers (testable without a daemon) ────────────────────────────────
+
+/// Parse the response shape of `tasks.claim` into a typed struct.
+/// Missing fields default to `{ success: false, owner: None }`.
+fn parse_claim_result(val: &serde_json::Value) -> HarnessClaimResult {
+    HarnessClaimResult {
+        success: val.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+        owner: val
+            .get("owner")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    }
+}
+
+/// Parse the response shape of `files.reserve` into a typed struct.
+/// The daemon returns `{ success, conflicts: [{ path, holder }] }` — we
+/// surface the first conflict's holder to the UI.
+fn parse_reserve_result(val: &serde_json::Value) -> HarnessReserveResult {
+    let success = val.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+    let holder = val
+        .get("conflicts")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|o| o.get("holder"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    HarnessReserveResult { success, holder }
+}
+
+/// Parse `mail.broadcast` → returns the count of recipients that received
+/// the message. Missing or non-numeric `sent` defaults to 0.
+fn parse_broadcast_sent(val: &serde_json::Value) -> i64 {
+    val.get("sent").and_then(|v| v.as_i64()).unwrap_or(0)
+}
+
+/// Parse a success flag keyed at `ok` (used by `tasks.complete` /
+/// `tasks.release`). Missing or non-bool defaults to false.
+fn parse_ok_flag(val: &serde_json::Value) -> bool {
+    val.get("ok").and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
@@ -223,16 +260,7 @@ pub async fn harness_claim_task(
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    Ok(HarnessClaimResult {
-        success: result
-            .get("success")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-        owner: result
-            .get("owner")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-    })
+    Ok(parse_claim_result(&result))
 }
 
 #[tauri::command]
@@ -247,7 +275,7 @@ pub async fn harness_complete_task(
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    Ok(result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
+    Ok(parse_ok_flag(&result))
 }
 
 #[tauri::command]
@@ -262,7 +290,7 @@ pub async fn harness_release_task(
     )
     .await
     .map_err(|e| StudioError::Other(e))?;
-    Ok(result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
+    Ok(parse_ok_flag(&result))
 }
 
 // ── File Reservations ───────────────────────────────────────────────────────
@@ -302,18 +330,7 @@ pub async fn harness_reserve_file(
     .await
     .map_err(|e| StudioError::Other(e))?;
 
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let holder = result
-        .get("conflicts")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|o| o.get("holder"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    Ok(HarnessReserveResult { success, holder })
+    Ok(parse_reserve_result(&result))
 }
 
 #[tauri::command]
@@ -336,5 +353,156 @@ pub async fn harness_check_file(
         Some(row) => serde_json::from_value(row)
             .map(Some)
             .map_err(|e| StudioError::Other(e.to_string())),
+    }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // parse_claim_result ------------------------------------------------------
+
+    #[test]
+    fn parse_claim_result_missing_fields_defaults_to_false_and_none() {
+        let r = parse_claim_result(&json!({}));
+        assert!(!r.success);
+        assert!(r.owner.is_none());
+    }
+
+    #[test]
+    fn parse_claim_result_extracts_success_and_owner() {
+        let r = parse_claim_result(&json!({
+            "success": true,
+            "owner": "agent-alice",
+        }));
+        assert!(r.success);
+        assert_eq!(r.owner.as_deref(), Some("agent-alice"));
+    }
+
+    #[test]
+    fn parse_claim_result_ignores_non_string_owner() {
+        // Daemon contract says owner is a string; a numeric value should fall
+        // back to None rather than panic or stringify the number.
+        let r = parse_claim_result(&json!({
+            "success": false,
+            "owner": 42,
+        }));
+        assert!(!r.success);
+        assert!(r.owner.is_none());
+    }
+
+    // parse_reserve_result ----------------------------------------------------
+
+    #[test]
+    fn parse_reserve_result_no_conflicts_yields_none_holder() {
+        let r = parse_reserve_result(&json!({
+            "success": true,
+            "conflicts": [],
+        }));
+        assert!(r.success);
+        assert!(r.holder.is_none());
+    }
+
+    #[test]
+    fn parse_reserve_result_extracts_first_conflict_holder() {
+        let r = parse_reserve_result(&json!({
+            "success": false,
+            "conflicts": [
+                { "path": "/x.ts", "holder": "agent-alice" },
+                { "path": "/y.ts", "holder": "agent-bob" },
+            ],
+        }));
+        assert!(!r.success);
+        assert_eq!(r.holder.as_deref(), Some("agent-alice"));
+    }
+
+    #[test]
+    fn parse_reserve_result_missing_fields_defaults_cleanly() {
+        let r = parse_reserve_result(&json!({}));
+        assert!(!r.success);
+        assert!(r.holder.is_none());
+    }
+
+    // parse_broadcast_sent ----------------------------------------------------
+
+    #[test]
+    fn parse_broadcast_sent_missing_is_zero() {
+        assert_eq!(parse_broadcast_sent(&json!({})), 0);
+    }
+
+    #[test]
+    fn parse_broadcast_sent_reads_integer() {
+        assert_eq!(parse_broadcast_sent(&json!({ "sent": 7 })), 7);
+    }
+
+    #[test]
+    fn parse_broadcast_sent_ignores_non_integer() {
+        // String or null should not crash — contract violation → 0.
+        assert_eq!(parse_broadcast_sent(&json!({ "sent": "seven" })), 0);
+        assert_eq!(parse_broadcast_sent(&json!({ "sent": null })), 0);
+    }
+
+    // parse_ok_flag -----------------------------------------------------------
+
+    #[test]
+    fn parse_ok_flag_missing_is_false() {
+        assert!(!parse_ok_flag(&json!({})));
+    }
+
+    #[test]
+    fn parse_ok_flag_reads_true_and_false() {
+        assert!(parse_ok_flag(&json!({ "ok": true })));
+        assert!(!parse_ok_flag(&json!({ "ok": false })));
+    }
+
+    #[test]
+    fn parse_ok_flag_ignores_non_bool() {
+        assert!(!parse_ok_flag(&json!({ "ok": 1 })));
+        assert!(!parse_ok_flag(&json!({ "ok": "true" })));
+    }
+
+    // Serde round-trip for wire types ----------------------------------------
+
+    #[test]
+    fn harness_session_serde_roundtrip() {
+        let s = HarnessSession {
+            id: "s1".into(),
+            env: "claude:alice".into(),
+            task: "ship feature".into(),
+            files: Some("src/a.ts".into()),
+            pid: Some(12345),
+            started_at: "2026-04-18T00:00:00Z".into(),
+            updated_at: "2026-04-18T00:05:00Z".into(),
+            ended_at: None,
+            exit_summary: None,
+        };
+        let wire = serde_json::to_value(&s).unwrap();
+        let back: HarnessSession = serde_json::from_value(wire).unwrap();
+        assert_eq!(back.id, s.id);
+        assert_eq!(back.env, s.env);
+        assert_eq!(back.task, s.task);
+        assert_eq!(back.pid, s.pid);
+        assert_eq!(back.ended_at, s.ended_at);
+    }
+
+    #[test]
+    fn harness_task_serde_roundtrip() {
+        let t = HarnessTask {
+            id: "t1".into(),
+            description: "do the thing".into(),
+            status: "open".into(),
+            owner: None,
+            claimed_at: None,
+            completed_at: None,
+            created_at: "2026-04-18T00:00:00Z".into(),
+        };
+        let wire = serde_json::to_value(&t).unwrap();
+        let back: HarnessTask = serde_json::from_value(wire).unwrap();
+        assert_eq!(back.id, t.id);
+        assert_eq!(back.status, t.status);
+        assert_eq!(back.owner, t.owner);
     }
 }

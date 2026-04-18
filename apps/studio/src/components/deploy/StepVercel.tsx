@@ -85,14 +85,16 @@ export default function StepVercel({
 
       await onUpdateConfig({
         deploy: {
-          ...config.deploy,
           vercelTeamId: teamId,
+          domain: config.deploy?.domain ?? null,
           apps: {
             api: projectMap.api ?? '',
             admin: projectMap.admin ?? '',
             marketing: projectMap.marketing ?? '',
           },
+          neonProjectId: config.deploy?.neonProjectId ?? null,
           supabaseEnabled: config.deploy?.supabaseEnabled ?? false,
+          emailProvider: config.deploy?.emailProvider ?? null,
         },
       });
     } catch (err) {

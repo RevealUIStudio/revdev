@@ -64,16 +64,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Studio build requires cargo for ts-rs bindings; it lives in studio-release.yml.
-      - run: pnpm -r --filter=!@revealui/studio build
+      - run: pnpm -r --filter=!studio build
 
-  terminal:
-    name: Terminal (Go)
+  console:
+    name: Console (Go)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache-dependency-path: apps/terminal/go.sum
-      - run: cd apps/terminal && go test ./...
-      - run: cd apps/terminal && go build -o /dev/null .
+          cache-dependency-path: apps/console/go.sum
+      - run: cd apps/console && go test ./...
+      - run: cd apps/console && go build -o /dev/null .

@@ -130,6 +130,8 @@ const MOCK_DATA: Record<string, unknown> = {
     intent: null,
     setupComplete: false,
     completedSteps: [],
+    deploy: null,
+    develop: null,
   } satisfies StudioConfig,
   set_config: undefined,
   reset_config: undefined,
@@ -164,14 +166,14 @@ const MOCK_DATA: Record<string, unknown> = {
       short_sha: 'abc1234',
       message: 'feat(studio): add CodeMirror editor + branch management',
       author: 'RevealUI Studio',
-      timestamp: Math.floor(Date.now() / 1000) - MOCK_COMMIT_RECENT_S,
+      timestamp: BigInt(Math.floor(Date.now() / 1000) - MOCK_COMMIT_RECENT_S),
     },
     {
       sha: 'def5678901234567890abcdef12345678abc1234',
       short_sha: 'def5678',
       message: 'feat(studio): git panel MVP — status, diff, stage, commit',
       author: 'RevealUI Studio',
-      timestamp: Math.floor(Date.now() / 1000) - MOCK_COMMIT_OLDER_S,
+      timestamp: BigInt(Math.floor(Date.now() / 1000) - MOCK_COMMIT_OLDER_S),
     },
   ] satisfies GitCommitInfo[],
   git_read_file: '// Mock file content\nexport default function example() {}\n',
@@ -613,8 +615,18 @@ export function sshBookmarkDelete(id: string): Promise<void> {
 
 // ── Local Shell ─────────────────────────────────────────────────────────────
 
-export function shellOpen(cols: number, rows: number, cwd?: string): Promise<string> {
-  return invoke<string>('shell_open', { cols, rows, cwd: cwd ?? null });
+export function shellOpen(
+  cols: number,
+  rows: number,
+  cwd?: string,
+  shellProgram?: string,
+): Promise<string> {
+  return invoke<string>('shell_open', {
+    cols,
+    rows,
+    cwd: cwd ?? null,
+    shellProgram: shellProgram ?? null,
+  });
 }
 
 export function shellClose(sessionId: string): Promise<void> {

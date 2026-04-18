@@ -1,0 +1,86 @@
+# gitleaks config for RevDev
+#
+# Layered defense:
+#   1. .gitignore already keeps build artifacts out of git.
+#   2. This file narrows gitleaks scans so working-tree and history
+#      scans don't produce noise from Rust .rmeta docstrings,
+#      test fixtures, and generated code.
+#   3. Historical fingerprints pinned in .gitleaksignore.
+#
+# Docs: https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+# Extends the default ruleset; base rules still apply unless overridden.
+
+[extend]
+useDefault = true
+
+# ----------------------------------------------------------------------
+# Global allowlist — paths that never contain genuine secrets.
+# ----------------------------------------------------------------------
+[allowlist]
+description = "Paths with no real secrets: build output, generated code, lockfiles, fixtures"
+paths = [
+  # Rust build output — .rmeta files embed crate docstrings that often show
+  # PEM examples ("-----BEGIN PRIVATE KEY-----...") as documentation.
+  '''^(?:.*/)?target/''',
+  # Node / pnpm build output
+  '''^(?:.*/)?node_modules/''',
+  '''^(?:.*/)?dist/''',
+  '''^(?:.*/)?build/''',
+  '''^(?:.*/)?\.next/''',
+  # Go build cache
+  '''^(?:.*/)?\.cache/''',
+  # ts-rs generated bindings
+  '''^(?:.*/)?bindings/''',
+  # Test snapshot directories
+  '''^(?:.*/)?__snapshots__/''',
+  '''^(?:.*/)?test-fixtures/''',
+  # This file itself
+  '''^\.gitleaks\.toml$''',
+  # Dependency lock files — secrets do not belong in them, and noisy
+  # entropy heuristics can false-positive.
+  '''^(?:.*/)?Cargo\.lock$''',
+  '''^(?:.*/)?pnpm-lock\.yaml$''',
+  '''^(?:.*/)?package-lock\.json$''',
+  '''^(?:.*/)?go\.sum$''',
+]
+
+# Forward-looking regex allowlist.
+regexes = [
+  # Documentation placeholders (README examples, etc.)
+  '''<(your[_-]?(secret|token|key|password)|redacted|placeholder)>''',
+  # Unix socket paths the daemon uses as config defaults (not secrets).
+  '''~?/\.local/share/(revealui|revdev)/harness\.sock''',
+]
+
+# ----------------------------------------------------------------------
+# Custom rule: brand the RVUI license key format.
+#
+# This rule matches the daemon's regex (RVUI-<tier>-<32 hex>) so real
+# keys get flagged anywhere they appear. The rule's own allowlist
+# excludes test files by path — any fixture key in a test file is
+# presumed intentional. A real key leaking into production code (or
+# docs, or config examples) would fire immediately.
+# ----------------------------------------------------------------------
+[[rules]]
+id = "revealui-license-key"
+description = "RevealUI / RevDev license key (format: RVUI-<tier>-<32 hex>, case-insensitive)"
+regex = '''(?i)RVUI-(pro|max|enterprise)-[a-f0-9]{32}'''
+tags = ["key", "revealui"]
+
+  [rules.allowlist]
+  description = "Test files + the daemon's own format documentation — fixture keys, not issued credentials"
+  paths = [
+    '''__tests__''',
+    '''\.test\.(ts|tsx|js|jsx|rs)$''',
+    '''\.spec\.(ts|tsx|js|jsx|rs)$''',
+    '''(^|/)tests/''',
+    '''packages/daemon/src/license\.ts$''',
+  ]
+  regexes = [
+    # Obvious fixture patterns — repeating / placeholder hex
+    '''(?i)RVUI-[a-z]+-(0123456789abcdef){2}''',
+    '''(?i)RVUI-[a-z]+-(a1b2c3d4e5f6){2}.{8}''',
+    '''(?i)RVUI-[a-z]+-(abcdef0123456789){2}''',
+    '''(?i)RVUI-[a-z]+-0{32}''',
+    '''(?i)RVUI-[a-z]+-f{32}''',
+  ]

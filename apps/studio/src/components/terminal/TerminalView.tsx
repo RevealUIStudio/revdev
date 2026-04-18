@@ -2,14 +2,27 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
+import { sanitizeTerminalLine } from '../../lib/terminal-sanitize';
 
 interface TerminalViewProps {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
   terminalRef: React.MutableRefObject<Terminal | null>;
+  /**
+   * Lines to print before the shell produces output. Each line is run
+   * through {@link sanitizeTerminalLine} — SGR colour escapes are kept,
+   * cursor / OSC / title-set / other control sequences are stripped.
+   * `readonly` so callers pass frozen literals, not mutable state.
+   */
+  welcome?: readonly string[];
 }
 
-export default function TerminalView({ onData, onResize, terminalRef }: TerminalViewProps) {
+export default function TerminalView({
+  onData,
+  onResize,
+  terminalRef,
+  welcome,
+}: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const onDataRef = useRef(onData);
@@ -21,6 +34,10 @@ export default function TerminalView({ onData, onResize, terminalRef }: Terminal
   onResizeRef.current = onResize;
   terminalRefStable.current = terminalRef;
 
+  // Welcome is a one-time banner printed at terminal creation. Adding it
+  // to deps would tear down and recreate the xterm instance on every
+  // welcome change, which is not what we want.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional single-run effect
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -65,10 +82,11 @@ export default function TerminalView({ onData, onResize, terminalRef }: Terminal
       onResizeRef.current(terminal.cols, terminal.rows);
     });
 
-    // Welcome message before connection
-    terminal.writeln('\x1b[1;33mRevealUI Studio Terminal\x1b[0m');
-    terminal.writeln('\x1b[90mConnect to an SSH server using the form above.\x1b[0m');
-    terminal.writeln('');
+    if (welcome?.length) {
+      for (const line of welcome) {
+        terminal.writeln(sanitizeTerminalLine(line));
+      }
+    }
 
     // Forward user input to SSH
     terminal.onData((data) => onDataRef.current(data));

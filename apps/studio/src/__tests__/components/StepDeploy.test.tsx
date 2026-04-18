@@ -17,9 +17,14 @@ const MOCK_CONFIG: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
   completedSteps: [],
+  develop: null,
   deploy: {
-    supabaseEnabled: false,
+    vercelTeamId: null,
+    domain: null,
     apps: { api: 'prj-api', admin: 'prj-admin', marketing: 'prj-mkt' },
+    neonProjectId: null,
+    supabaseEnabled: false,
+    emailProvider: null,
   },
 };
 
@@ -27,7 +32,15 @@ const MOCK_CONFIG_NO_IDS: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
   completedSteps: [],
-  deploy: { supabaseEnabled: false },
+  develop: null,
+  deploy: {
+    vercelTeamId: null,
+    domain: null,
+    apps: null,
+    neonProjectId: null,
+    supabaseEnabled: false,
+    emailProvider: null,
+  },
 };
 
 const MOCK_DATA: WizardData = {
