@@ -44,3 +44,5 @@ coverage/
 
 # opensrc context (fetched on demand)
 opensrc/
+.claude/
+.agents/
