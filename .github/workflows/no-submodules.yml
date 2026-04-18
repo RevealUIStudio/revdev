@@ -1,0 +1,31 @@
+name: No Submodules
+
+# Mirrors RevealUI's policy: cross-repo deps publish via workspace packages,
+# npm, Cargo, or Go modules — never .gitmodules. This workflow fails if any
+# submodule artifact appears in the repo.
+
+on:
+  push:
+    branches: [main, test]
+  pull_request:
+    branches: [main, test]
+  schedule:
+    - cron: '0 6 * * 0' # weekly Sunday 6 AM UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: no-submodules-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  audit:
+    name: Submodule Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run no-submodules audit
+        run: bash scripts/audit-no-submodules.sh
