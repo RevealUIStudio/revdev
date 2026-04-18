@@ -26,6 +26,16 @@ const EXEMPT_METHODS = new Set([
  * Returns the detected tier, or 'free' if no valid license is found.
  * The daemon runs in degraded mode on free tier: session management
  * works, but spawning, inference, and merge pipeline are gated.
+ *
+ * TODO(licensing): the current format `RVUI-<tier>-<32 hex chars>` is not
+ * cryptographically bound — any regex-matching string is accepted as valid.
+ * Planned upgrade: `RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>` with:
+ *   - Ed25519 signature over `<tier>.<expiresAt>` verified against a vendor
+ *     public key baked into the daemon binary.
+ *   - `expiresAt` unix timestamp; keys reject after that point.
+ *   - Vendor-side key-generation CLI; signing private key stored in revvault.
+ * Blocks casual forgery; determined attackers can still patch the binary,
+ * but that is a separate threat model from tier-gate enforcement.
  */
 export function checkLicense(): { tier: LicenseTier; valid: boolean } {
   const key = process.env.REVEALUI_LICENSE_KEY;

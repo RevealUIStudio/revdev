@@ -31,9 +31,9 @@ import (
 	bm "charm.land/wish/v2/bubbletea"
 	"github.com/charmbracelet/ssh"
 
-	"github.com/RevealUIStudio/revdev/apps/terminal/api"
-	"github.com/RevealUIStudio/revdev/apps/terminal/proxy"
-	"github.com/RevealUIStudio/revdev/apps/terminal/tui"
+	"github.com/RevealUIStudio/revdev/apps/console/api"
+	"github.com/RevealUIStudio/revdev/apps/console/proxy"
+	"github.com/RevealUIStudio/revdev/apps/console/tui"
 )
 
 func main() {

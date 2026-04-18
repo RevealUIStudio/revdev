@@ -55,7 +55,7 @@ describe('deploy bridge (browser mocks)', () => {
     expect(result.state).toBe('READY');
     expect(result.uid).toBe('dep-1');
     expect(result.url).toBe('mock.vercel.app');
-    expect(result.created).toBeTypeOf('number');
+    expect(result.created).toBeTypeOf('bigint');
   });
 
   // ── Database ──────────────────────────────────────────────────────────────

@@ -602,7 +602,7 @@ export async function startDaemon(
   console.log('[daemon] Schema initialized');
 
   // Remove stale socket
-  const { unlink } = await import('node:fs/promises');
+  const { unlink, chmod } = await import('node:fs/promises');
   await unlink(cfg.socketPath).catch(() => {});
 
   // Start Unix socket server
@@ -704,9 +704,34 @@ export async function startDaemon(
     socket.on('error', () => {});
   });
 
-  return new Promise((resolve) => {
-    server.listen(cfg.socketPath, () => {
-      console.log(`[daemon] Listening on ${cfg.socketPath}`);
+  return new Promise((resolve, reject) => {
+    // Restrict the socket to the owning UID. umask 0o077 causes bind(2) to
+    // create the socket file with mode 0600 from the moment it exists — no
+    // race window where another local user could open it. The follow-up
+    // chmod is belt-and-suspenders if something mutated umask concurrently.
+    const prevUmask = process.umask(0o077);
+    let umaskRestored = false;
+    const restoreUmask = () => {
+      if (!umaskRestored) {
+        process.umask(prevUmask);
+        umaskRestored = true;
+      }
+    };
+
+    server.once('error', (err) => {
+      restoreUmask();
+      reject(err);
+    });
+
+    server.listen(cfg.socketPath, async () => {
+      restoreUmask();
+      try {
+        await chmod(cfg.socketPath, 0o600);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      console.log(`[daemon] Listening on ${cfg.socketPath} (mode 0600)`);
       console.log('[daemon] Ready for connections');
 
       resolve({

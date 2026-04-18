@@ -291,3 +291,127 @@ pub fn remove(
         .ok_or_else(|| format!("No agent session with id {session_id}"))?;
     Ok(())
 }
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Serde contract for AgentBackend — the frontend relies on exact
+    // string tags for Snap/Ollama when configuring an agent spawn call.
+    #[test]
+    fn agent_backend_serializes_to_expected_tag() {
+        let snap = serde_json::to_string(&AgentBackend::Snap).unwrap();
+        let ollama = serde_json::to_string(&AgentBackend::Ollama).unwrap();
+        assert_eq!(snap, "\"Snap\"");
+        assert_eq!(ollama, "\"Ollama\"");
+    }
+
+    #[test]
+    fn agent_backend_deserializes_from_tag() {
+        let snap: AgentBackend = serde_json::from_str("\"Snap\"").unwrap();
+        let ollama: AgentBackend = serde_json::from_str("\"Ollama\"").unwrap();
+        assert!(matches!(snap, AgentBackend::Snap));
+        assert!(matches!(ollama, AgentBackend::Ollama));
+    }
+
+    // For state-machine tests we need real `Child` instances. The tests are
+    // gated on `unix` because constructing a portable short-lived child
+    // cross-platform is more trouble than it's worth; Studio's primary dev
+    // and CI targets are macOS and Linux.
+    #[cfg(unix)]
+    fn make_exited_process(name: &str, status: &str) -> AgentProcess {
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg("exit 0")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null())
+            .spawn()
+            .expect("spawn exit 0");
+        // Wait so the child becomes a zombie that's already reaped; state tests
+        // don't actually touch the Child unless `stop` is called.
+        let _ = child.wait();
+        AgentProcess {
+            name: name.into(),
+            model: "test-model".into(),
+            backend: AgentBackend::Ollama,
+            prompt: "hi".into(),
+            child,
+            status: status.into(),
+        }
+    }
+
+    #[cfg(unix)]
+    fn state_with(procs: Vec<(String, AgentProcess)>) -> Arc<Mutex<HashMap<String, AgentProcess>>> {
+        let mut map = HashMap::new();
+        for (id, proc) in procs {
+            map.insert(id, proc);
+        }
+        Arc::new(Mutex::new(map))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn list_returns_empty_for_no_sessions() {
+        let state = state_with(vec![]);
+        let out = list(state).unwrap();
+        assert_eq!(out.len(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn list_projects_sessions_to_info() {
+        let state = state_with(vec![
+            ("s1".into(), make_exited_process("alice", "stopped")),
+            ("s2".into(), make_exited_process("bob", "errored")),
+        ]);
+        let mut out = list(state).unwrap();
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].id, "s1");
+        assert_eq!(out[0].name, "alice");
+        assert_eq!(out[0].status, "stopped");
+        assert_eq!(out[1].id, "s2");
+        assert_eq!(out[1].name, "bob");
+        assert_eq!(out[1].status, "errored");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_rejects_running_session() {
+        let state = state_with(vec![("s1".into(), make_exited_process("a", "running"))]);
+        let err = remove("s1", state.clone()).unwrap_err();
+        assert!(
+            err.contains("running"),
+            "error should mention 'running', got: {err}"
+        );
+        // Session must still be present.
+        assert_eq!(list(state).unwrap().len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_succeeds_on_stopped_session() {
+        let state = state_with(vec![("s1".into(), make_exited_process("a", "stopped"))]);
+        remove("s1", state.clone()).unwrap();
+        assert_eq!(list(state).unwrap().len(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_errors_on_unknown_session() {
+        let state = state_with(vec![]);
+        let err = remove("nope", state).unwrap_err();
+        assert!(err.contains("nope"), "error should mention the id: {err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_errors_on_unknown_session() {
+        let state = state_with(vec![]);
+        let err = stop("nope", state).unwrap_err();
+        assert!(err.contains("nope"), "error should mention the id: {err}");
+    }
+}

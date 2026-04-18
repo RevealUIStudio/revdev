@@ -80,7 +80,6 @@ pub struct SyncResult {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[cfg(target_os = "windows")]
 #[ts(export, export_to = "bindings/", rename = "RepoInfo")]
 pub struct RepoEntry {
     pub name: String,

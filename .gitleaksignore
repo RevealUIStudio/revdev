@@ -1,0 +1,21 @@
+# Suppress false positives for gitleaks secret scanning.
+#
+# Each line below suppresses a specific finding by its fingerprint:
+#   <commit>:<path>:<rule>:<line>
+#
+# These are test-fixture license keys in unit tests. They match the
+# RevDev license regex (`^RVUI-(pro|max|enterprise)-[a-f0-9]{32}$`)
+# but the format is regex-validated only — no cryptographic binding
+# (tracked for upgrade to Ed25519 signatures in packages/daemon/src/license.ts).
+# So the test strings cannot unlock anything a forged string couldn't
+# also unlock, by design. They exist in history from two commits.
+
+# guard.test.ts — test license keys for max/enterprise tier paths
+5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:102
+5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:109
+173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:102
+173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:109
+
+# coordination.test.ts — test license key required for license-gated coordination RPCs
+173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/coordination.test.ts:generic-api-key:69
+5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/coordination.test.ts:generic-api-key:69

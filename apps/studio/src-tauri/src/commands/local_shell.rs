@@ -6,17 +6,20 @@ use tauri::State;
 use super::error::StudioError;
 use crate::local_shell::LocalShellState;
 
-/// Open a local PTY shell. Returns session ID.
+/// Open a local PTY shell. Returns session ID. When `shell_program` is
+/// omitted the backend picks a platform default (`wsl.exe` on Windows,
+/// `$SHELL` elsewhere).
 #[tauri::command]
 pub fn shell_open(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
+    shell_program: Option<String>,
     app_handle: tauri::AppHandle,
     state: State<'_, LocalShellState>,
 ) -> Result<String, StudioError> {
-    crate::local_shell::open(cols, rows, cwd, app_handle, state.sessions.clone())
-        .map_err(|e| StudioError::Process(e))
+    crate::local_shell::open(cols, rows, cwd, shell_program, app_handle, state.sessions.clone())
+        .map_err(StudioError::Process)
 }
 
 /// Close a local shell session.

@@ -54,7 +54,10 @@ export default function StepEmail({
       });
       await onUpdateConfig({
         deploy: {
-          ...config.deploy,
+          vercelTeamId: config.deploy?.vercelTeamId ?? null,
+          domain: config.deploy?.domain ?? null,
+          apps: config.deploy?.apps ?? null,
+          neonProjectId: config.deploy?.neonProjectId ?? null,
           supabaseEnabled: config.deploy?.supabaseEnabled ?? false,
           emailProvider: 'gmail',
         },

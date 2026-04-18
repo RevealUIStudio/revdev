@@ -21,27 +21,25 @@ use spawner::SpawnerState;
 use ssh::SshState;
 use state::AppState;
 use tauri::{Emitter, Manager};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 
 pub fn run() {
     let platform = platform::create_platform();
 
-    // Global hotkey: Ctrl+Shift+L opens the tile gallery from anywhere.
-    let shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
-        .with_shortcut("CmdOrCtrl+Shift+L")
-        .expect("failed to parse global shortcut")
-        .with_handler(|app, _shortcut, _event| {
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.show();
-                let _ = win.set_focus();
-                let _ = win.emit("navigate", "gallery");
-            }
-        })
-        .build();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(shortcut_plugin)
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, _event| {
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                        let _ = win.emit("navigate", "gallery");
+                    }
+                })
+                .build(),
+        )
         .manage(AppState::new(platform))
         .manage(SshState::default())
         .manage(LocalShellState::default())
@@ -50,6 +48,19 @@ pub fn run() {
         .setup(|app| {
             tray::setup_tray(&app.handle())?;
             harness_watcher::start(app.handle().clone());
+
+            // Register the tile-gallery hotkey dynamically so registration
+            // failures (e.g. a stale WSLg compositor claim) degrade to a
+            // warning instead of crashing the whole app.
+            let shortcut = Shortcut::new(
+                Some(Modifiers::CONTROL | Modifiers::SHIFT),
+                Code::KeyL,
+            );
+            if let Err(err) = app.global_shortcut().register(shortcut) {
+                eprintln!(
+                    "warning: failed to register CmdOrCtrl+Shift+L global shortcut: {err}"
+                );
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

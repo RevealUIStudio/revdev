@@ -14,10 +14,12 @@ target/
 # Tauri
 apps/studio/src-tauri/target/
 apps/studio/src-tauri/gen/
+apps/studio/src-tauri/bindings/
+apps/studio/src/generated/
 
 # Go
-apps/terminal/terminal
-apps/terminal/rvui
+apps/console/console
+apps/console/rvui
 
 # Environment
 .env
@@ -42,3 +44,5 @@ coverage/
 
 # opensrc context (fetched on demand)
 opensrc/
+.claude/
+.agents/

@@ -17,6 +17,8 @@ const MOCK_CONFIG: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
   completedSteps: [],
+  deploy: null,
+  develop: null,
 };
 
 const MOCK_DATA: WizardData = {
@@ -204,7 +206,7 @@ describe('StepStripe', () => {
   });
 
   it('shows phase progress labels during execution', async () => {
-    let resolveValidate: (v: boolean) => void;
+    let resolveValidate: ((v: boolean) => void) | undefined;
     mockStripeValidateKeys.mockImplementation(
       () =>
         new Promise<boolean>((r) => {
