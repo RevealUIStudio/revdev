@@ -43,9 +43,7 @@ export default function StepEmail({
         return;
       }
 
-      // TODO: Wire up Gmail test send via Studio API
-      setTestSent(true);
-
+      // Save credentials even though test send isn't wired yet
       onUpdateData({
         emailProvider: 'gmail',
         googleServiceAccountEmail: serviceAccountEmail.trim(),
@@ -62,6 +60,13 @@ export default function StepEmail({
           emailProvider: 'gmail',
         },
       });
+
+      // Email test send not yet wired to a real SMTP probe.
+      // Rather than faking success, inform the user honestly.
+      setError(
+        'Email test send is not yet implemented. Config saved — verify ' +
+          'email delivery manually after deployment.',
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send test email');
       setTestSent(false);
@@ -136,7 +141,12 @@ export default function StepEmail({
 
         {testSent && <p className="text-sm text-green-400">Test email sent — check your inbox.</p>}
 
-        <Button variant="primary" onClick={onNext} disabled={!testSent} className="mt-2 self-end">
+        <Button
+          variant="primary"
+          onClick={onNext}
+          disabled={!isConfigured}
+          className="mt-2 self-end"
+        >
           Next
         </Button>
       </div>

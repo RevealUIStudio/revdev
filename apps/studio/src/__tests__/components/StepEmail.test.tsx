@@ -64,7 +64,7 @@ describe('StepEmail', () => {
     expect(screen.getByText('Send Test Email')).toBeInTheDocument();
   });
 
-  it('disables Next until test email is sent', () => {
+  it('disables Next until credentials are configured', () => {
     renderStep();
 
     expect(screen.getByText('Next')).toBeDisabled();
@@ -94,7 +94,7 @@ describe('StepEmail', () => {
     expect(screen.getByText('Send Test Email')).not.toBeDisabled();
   });
 
-  it('shows success message after test email is sent', async () => {
+  it('shows honest error and saves config when test email is attempted', async () => {
     const { onUpdateData, onUpdateConfig } = renderStep();
 
     fireEvent.change(
@@ -111,10 +111,10 @@ describe('StepEmail', () => {
     fireEvent.click(screen.getByText('Send Test Email'));
 
     await waitFor(() => {
-      expect(screen.getByText('Test email sent — check your inbox.')).toBeInTheDocument();
+      expect(screen.getByText(/not yet implemented/)).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Next')).not.toBeDisabled();
+    // Config still saved even though test send isn't wired
     expect(onUpdateData).toHaveBeenCalledWith({
       emailProvider: 'gmail',
       googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
@@ -154,7 +154,7 @@ describe('StepEmail', () => {
     fireEvent.click(screen.getByText('Send Test Email'));
 
     await waitFor(() => {
-      expect(screen.getByText('Test email sent — check your inbox.')).toBeInTheDocument();
+      expect(screen.getByText(/not yet implemented/)).toBeInTheDocument();
     });
 
     expect(onUpdateData).toHaveBeenCalledWith(
