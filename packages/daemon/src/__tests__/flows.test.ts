@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_DEFAULTS } from '../config.js';
 import { checkLicense, isExemptMethod, LICENSE_TIERS } from '../license.js';
 import { SCHEMA_SQL } from '../storage/schema.js';
+import {
+  clearTestLicenseEnv,
+  generateTestLicense,
+  setTestLicenseEnv,
+} from './test-license-helper.js';
 
 describe('license', () => {
   it('returns free tier when no key is set', () => {
     const original = process.env.REVEALUI_LICENSE_KEY;
-    delete process.env.REVEALUI_LICENSE_KEY;
+    clearTestLicenseEnv();
 
     const result = checkLicense();
     expect(result.tier).toBe('free');
@@ -15,12 +20,20 @@ describe('license', () => {
     if (original) process.env.REVEALUI_LICENSE_KEY = original;
   });
 
-  it('validates a pro license key format', () => {
-    process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-abcdef0123456789abcdef0123456789';
+  it('validates a pro v2 license key', () => {
+    setTestLicenseEnv(generateTestLicense('pro'));
     const result = checkLicense();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);
-    delete process.env.REVEALUI_LICENSE_KEY;
+    clearTestLicenseEnv();
+  });
+
+  it('rejects v1 license keys', () => {
+    process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-abcdef0123456789abcdef0123456789';
+    const result = checkLicense();
+    expect(result.tier).toBe('free');
+    expect(result.valid).toBe(false);
+    clearTestLicenseEnv();
   });
 
   it('rejects invalid license key formats', () => {
@@ -28,7 +41,7 @@ describe('license', () => {
     const result = checkLicense();
     expect(result.tier).toBe('free');
     expect(result.valid).toBe(false);
-    delete process.env.REVEALUI_LICENSE_KEY;
+    clearTestLicenseEnv();
   });
 
   it('exports all known license tiers', () => {
