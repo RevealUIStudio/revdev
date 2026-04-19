@@ -7,7 +7,13 @@
  *
  * Covers §5.15 exit criteria: "two or more agents coordinate via the daemon
  * without human relay," proven at the RPC layer.
+ *
+ * @vitest-environment node
  */
+// Daemon startup can take >10s in CI (key generation + socket bind).
+import { vi } from 'vitest';
+
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
@@ -62,11 +68,11 @@ let close: () => Promise<void>;
 let originalLicenseKey: string | undefined;
 
 beforeAll(async () => {
-  // Coordination RPCs are license-gated (Pro+). Tests inject a valid
-  // enterprise key so the guard lets mail/files/tasks calls through.
-  // Local dev machines usually have this set already; CI does not.
+  // Coordination RPCs are license-gated (Pro+). Tests generate a real
+  // Ed25519-signed v2 key so the guard lets calls through.
+  const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
   originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
-  process.env.REVEALUI_LICENSE_KEY = 'RVUI-enterprise-0123456789abcdef0123456789abcdef';
+  setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-coord-'));
   socketPath = join(dataDir, 'harness.sock');
   const d = await startDaemon({ socketPath, dataDir });
@@ -81,6 +87,8 @@ afterAll(async () => {
   } else {
     process.env.REVEALUI_LICENSE_KEY = originalLicenseKey;
   }
+  const { clearTestLicenseEnv } = await import('./test-license-helper.js');
+  clearTestLicenseEnv();
 });
 
 // ---------------------------------------------------------------------------
