@@ -2,8 +2,11 @@
 //! when state changes. Replaces client-side polling with push-based updates.
 //!
 //! Events emitted:
-//!   `harness:state`  — full state snapshot (sessions, tasks, reservations, connected)
+//!   `harness:state`  — full state snapshot (sessions, tasks, reservations, status)
 //!   `harness:mail`   — inbox messages for a specific agent
+//!
+//! Uses exponential backoff when disconnected (2s → 4s → 8s → ... → 30s max),
+//! resets to 2s immediately on successful reconnection.
 
 use crate::commands::harness::{HarnessMessage, HarnessReservation, HarnessSession, HarnessTask};
 use serde::Serialize;
@@ -16,6 +19,9 @@ use tokio::time;
 /// Full daemon state snapshot emitted on `harness:state`.
 #[derive(Clone, Serialize)]
 pub struct HarnessStateEvent {
+    /// Connection status: "connected", "connecting", or "disconnected"
+    pub status: String,
+    /// Back-compat boolean (true when status == "connected")
     pub connected: bool,
     pub sessions: Vec<HarnessSession>,
     pub tasks: Vec<HarnessTask>,
@@ -28,11 +34,33 @@ pub struct HarnessMailEvent {
     pub messages: Vec<HarnessMessage>,
 }
 
-/// Poll interval — 2 seconds is responsive enough for a local daemon.
+/// Poll interval when connected — 2 seconds is responsive for a local daemon.
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
-/// Retry delay when the daemon is unreachable.
-const RETRY_DELAY: Duration = Duration::from_secs(5);
+/// Exponential backoff state for disconnected polling.
+struct Backoff {
+    current: Duration,
+    max: Duration,
+}
+
+impl Backoff {
+    fn new() -> Self {
+        Self {
+            current: Duration::from_secs(2),
+            max: Duration::from_secs(30),
+        }
+    }
+
+    fn next_delay(&mut self) -> Duration {
+        let delay = self.current;
+        self.current = (self.current * 2).min(self.max);
+        delay
+    }
+
+    fn reset(&mut self) {
+        self.current = Duration::from_secs(2);
+    }
+}
 
 /// Start the background watcher. Call once during app setup.
 pub fn start(app: AppHandle) {
@@ -40,6 +68,7 @@ pub fn start(app: AppHandle) {
         let mut last_state_hash: u64 = 0;
         let mut last_mail_hash: u64 = 0;
         let mut was_connected = false;
+        let mut backoff = Backoff::new();
 
         loop {
             // Check daemon health
@@ -49,11 +78,12 @@ pub fn start(app: AppHandle) {
                     .is_ok();
 
             if !connected {
-                // Emit disconnected state only on transition
+                // Emit state change on transition or first connecting attempt
                 if was_connected {
                     let _ = app.emit(
                         "harness:state",
                         HarnessStateEvent {
+                            status: "disconnected".to_string(),
                             connected: false,
                             sessions: vec![],
                             tasks: vec![],
@@ -64,10 +94,27 @@ pub fn start(app: AppHandle) {
                     last_state_hash = 0;
                     last_mail_hash = 0;
                 }
-                time::sleep(RETRY_DELAY).await;
+
+                // Emit "connecting" while retrying with backoff
+                let delay = backoff.next_delay();
+                let _ = app.emit(
+                    "harness:state",
+                    HarnessStateEvent {
+                        status: "connecting".to_string(),
+                        connected: false,
+                        sessions: vec![],
+                        tasks: vec![],
+                        reservations: vec![],
+                    },
+                );
+                time::sleep(delay).await;
                 continue;
             }
 
+            // Reset backoff on successful connection
+            if !was_connected {
+                backoff.reset();
+            }
             was_connected = true;
 
             // Fetch state in parallel
@@ -103,6 +150,7 @@ pub fn start(app: AppHandle) {
                 let _ = app.emit(
                     "harness:state",
                     HarnessStateEvent {
+                        status: "connected".to_string(),
                         connected: true,
                         sessions,
                         tasks,
