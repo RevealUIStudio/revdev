@@ -74,10 +74,13 @@ let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
 let originalLicenseKey: string | undefined;
+let originalPublicKey: string | undefined;
 
 beforeAll(async () => {
+  const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
   originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
-  process.env.REVEALUI_LICENSE_KEY = 'RVUI-enterprise-0123456789abcdef0123456789abcdef';
+  originalPublicKey = process.env.REVDEV_LICENSE_PUBLIC_KEY;
+  setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-e2e-'));
   socketPath = join(dataDir, 'harness.sock');
   const d = await startDaemon({ socketPath, dataDir });
@@ -87,11 +90,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await close?.();
   await rm(dataDir, { recursive: true, force: true });
-  if (originalLicenseKey === undefined) {
-    delete process.env.REVEALUI_LICENSE_KEY;
-  } else {
-    process.env.REVEALUI_LICENSE_KEY = originalLicenseKey;
-  }
+  const { clearTestLicenseEnv } = await import('./test-license-helper.js');
+  clearTestLicenseEnv();
+  if (originalLicenseKey) process.env.REVEALUI_LICENSE_KEY = originalLicenseKey;
+  if (originalPublicKey) process.env.REVDEV_LICENSE_PUBLIC_KEY = originalPublicKey;
 });
 
 // ---------------------------------------------------------------------------
