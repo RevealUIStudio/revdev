@@ -41,8 +41,10 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.4.3",
     "@revdev/protocol": "workspace:*",
+    "@revealui/contracts": "^1.4.0",
     "@revealui/core": "0.6.0",
-    "@revealui/utils": "0.3.4"
+    "@revealui/utils": "0.3.4",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",

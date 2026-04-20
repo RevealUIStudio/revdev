@@ -151,12 +151,18 @@ importers:
       '@revdev/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@revealui/contracts':
+        specifier: ^1.4.0
+        version: 1.4.0(typescript@6.0.2)
       '@revealui/core':
         specifier: 0.6.0
         version: 0.6.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@6.0.2)
       '@revealui/utils':
         specifier: 0.3.4
         version: 0.3.4
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^25.5.2

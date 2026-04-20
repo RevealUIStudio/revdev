@@ -31,6 +31,7 @@ import {
   trackRpcCall,
 } from './observability.js';
 import { SCHEMA_SQL } from './storage/schema.js';
+import { invalidParamsResponse, validateParams } from './validation/index.js';
 
 const log = createLogger({ service: 'revdev-daemon' });
 
@@ -668,6 +669,13 @@ export async function startDaemon(
         const guard = guardRpcMethod(req.method);
         if (!guard.allowed) {
           socket.write(`${licenseErrorResponse(req.id, guard)}\n`);
+          continue;
+        }
+
+        // Validate params
+        const validation = validateParams(req.method, req.params);
+        if (!validation.valid) {
+          socket.write(`${invalidParamsResponse(req.id, validation.error!)}\n`);
           continue;
         }
 
