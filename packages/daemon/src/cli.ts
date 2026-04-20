@@ -15,10 +15,13 @@
 
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { createLogger } from '@revealui/utils/logger';
 import './inference.js';
 import './vcs.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { startDaemon } from './server.js';
+
+const log = createLogger({ service: 'revdev-daemon', component: 'cli' });
 
 const args = process.argv.slice(2);
 
@@ -54,21 +57,19 @@ const config = {
 
 const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;
 
-console.log('');
-console.log('  RevDev Daemon v0.1.0');
-console.log('  ────────────────────');
+log.info('RevDev Daemon v0.1.0 starting');
 
 const daemon = await startDaemon(config);
 
 // Write PID file so supervisors and Studio can find us
 await mkdir(dirname(pidFile), { recursive: true });
 await writeFile(pidFile, String(process.pid));
-console.log(`[daemon] PID ${process.pid} written to ${pidFile}`);
+log.info('PID file written', { pid: process.pid, pidFile });
 
 // Graceful shutdown — clean up PID file and socket
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
-    console.log(`\n[daemon] Received ${signal}, shutting down...`);
+    log.info('received signal, shutting down', { signal });
     await daemon.close();
     await unlink(pidFile).catch(() => {});
     process.exit(0);

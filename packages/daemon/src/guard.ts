@@ -1,14 +1,16 @@
 /**
  * RPC license guard — enforces runtime paywall on daemon methods.
  *
+ * Uses @revealui/core for RS256 JWT verification + feature flags.
  * Free tier: session management only (register, update, end, list, ping).
- * Pro+: full access to spawning, inference, merge pipeline, memory, etc.
+ * Pro+: feature-gated access based on tier (inference=max, memory=max, etc.).
  *
  * This is the runtime enforcement layer. The FSL-1.1-MIT license provides
  * legal protection; this guard provides operational protection.
  */
 
-import { checkLicense, isExemptMethod, type LicenseTier } from './license.js';
+import { getCurrentTier, initializeLicense, isLicensed } from '@revealui/core/license';
+import { checkLicense, initDaemonLicense, isMethodAllowed, type LicenseTier } from './license.js';
 
 export interface RpcGuardResult {
   allowed: boolean;
@@ -16,68 +18,47 @@ export interface RpcGuardResult {
   reason?: string;
 }
 
-/** Cached license state — checked once at startup, refreshable on demand. */
-let cachedLicense: { tier: LicenseTier; valid: boolean } | null = null;
-
 /**
  * Initialize license state. Call once at daemon startup.
- * Logs the detected tier as a startup banner.
+ * Performs async JWT verification, then logs the tier banner.
  */
-export function initLicenseGuard(): { tier: LicenseTier; valid: boolean } {
-  cachedLicense = checkLicense();
-
-  if (cachedLicense.valid) {
-    console.log(`[license] RevDev daemon running with ${cachedLicense.tier.toUpperCase()} license`);
-  } else {
-    console.log('[license] RevDev daemon running in FREE (degraded) mode');
-    console.log('[license] Set REVEALUI_LICENSE_KEY to unlock Pro features');
-    console.log('[license] Available: agent spawning, inference, merge pipeline, memory');
-  }
-
-  return cachedLicense;
-}
-
-/** Force a license recheck (e.g. if env var was updated). */
-export function refreshLicense(): { tier: LicenseTier; valid: boolean } {
-  cachedLicense = checkLicense();
-  return cachedLicense;
-}
-
-/** Get current cached license state. */
-export function getLicenseState(): { tier: LicenseTier; valid: boolean } {
-  if (!cachedLicense) {
-    cachedLicense = checkLicense();
-  }
-  return cachedLicense;
+export async function initLicenseGuard(): Promise<{ tier: LicenseTier; valid: boolean }> {
+  const tier = await initDaemonLicense();
+  const { valid } = checkLicense();
+  return { tier, valid };
 }
 
 /**
- * Guard an RPC method call against the current license tier.
+ * Guard an RPC method call against the current license tier and feature flags.
  *
- * Returns { allowed: true } for exempt methods and valid Pro+ licenses.
- * Returns { allowed: false, reason } for gated methods on free tier.
+ * Returns { allowed: true } for exempt methods and methods the tier grants.
+ * Returns { allowed: false, reason } for gated methods on insufficient tier.
  */
 export function guardRpcMethod(method: string): RpcGuardResult {
-  const license = getLicenseState();
+  const tier = getCurrentTier();
 
-  // Exempt methods always pass (session management, ping)
-  if (isExemptMethod(method)) {
-    return { allowed: true, tier: license.tier };
+  if (isMethodAllowed(method)) {
+    return { allowed: true, tier };
   }
 
-  // Valid Pro+ license: full access
-  if (license.valid) {
-    return { allowed: true, tier: license.tier };
-  }
-
-  // Free tier: blocked
   return {
     allowed: false,
-    tier: 'free',
+    tier,
     reason:
-      `Method "${method}" requires a Pro or higher license. ` +
+      `Method "${method}" requires a higher license tier. ` +
       'Set REVEALUI_LICENSE_KEY or upgrade at https://revealui.com/pro',
   };
+}
+
+/** Force a license recheck (e.g. if env var was updated at runtime). */
+export async function refreshLicense(): Promise<{ tier: LicenseTier; valid: boolean }> {
+  const tier = await initializeLicense();
+  return { tier, valid: isLicensed('pro') };
+}
+
+/** Get current cached license state (synchronous after init). */
+export function getLicenseState(): { tier: LicenseTier; valid: boolean } {
+  return checkLicense();
 }
 
 /**

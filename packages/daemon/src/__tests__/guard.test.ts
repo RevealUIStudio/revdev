@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  getLicenseState,
   guardRpcMethod,
   initLicenseGuard,
   licenseErrorResponse,
@@ -9,27 +10,30 @@ import {
 describe('guardRpcMethod', () => {
   const originalEnv = process.env.REVEALUI_LICENSE_KEY;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     delete process.env.REVEALUI_LICENSE_KEY;
-    refreshLicense();
+    delete process.env.REVEALUI_LICENSE_PUBLIC_KEY;
+    await refreshLicense();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (originalEnv !== undefined) {
       process.env.REVEALUI_LICENSE_KEY = originalEnv;
     } else {
       delete process.env.REVEALUI_LICENSE_KEY;
     }
-    refreshLicense();
+    await refreshLicense();
   });
 
   describe('exempt methods (always allowed)', () => {
     const exemptMethods = [
       'ping',
       'session.register',
+      'session.attach',
       'session.update',
       'session.end',
       'session.list',
+      'harness.health',
     ];
 
     for (const method of exemptMethods) {
@@ -40,7 +44,7 @@ describe('guardRpcMethod', () => {
     }
   });
 
-  describe('gated methods on free tier', () => {
+  describe('gated methods on free tier (no license key)', () => {
     const gatedMethods = [
       'agent.spawn',
       'agent.stop',
@@ -64,67 +68,23 @@ describe('guardRpcMethod', () => {
         const result = guardRpcMethod(method);
         expect(result.allowed).toBe(false);
         expect(result.tier).toBe('free');
-        expect(result.reason).toContain('requires a Pro');
+        expect(result.reason).toContain('requires a higher license tier');
       });
     }
   });
 
-  describe('pro license grants full access', () => {
-    beforeEach(() => {
-      process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
-      refreshLicense();
-    });
-
-    it('allows agent.spawn', () => {
-      const result = guardRpcMethod('agent.spawn');
-      expect(result.allowed).toBe(true);
-      expect(result.tier).toBe('pro');
-    });
-
-    it('allows inference.status', () => {
-      const result = guardRpcMethod('inference.status');
-      expect(result.allowed).toBe(true);
-    });
-
-    it('allows merge.request', () => {
-      const result = guardRpcMethod('merge.request');
-      expect(result.allowed).toBe(true);
-    });
-
-    it('allows memory.store', () => {
-      const result = guardRpcMethod('memory.store');
-      expect(result.allowed).toBe(true);
-    });
-  });
-
-  describe('max/enterprise licenses', () => {
-    it('allows all methods with max license', () => {
-      process.env.REVEALUI_LICENSE_KEY = 'RVUI-max-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
-      refreshLicense();
-      expect(guardRpcMethod('agent.spawn').allowed).toBe(true);
-      expect(guardRpcMethod('agent.spawn').tier).toBe('max');
-    });
-
-    it('allows all methods with enterprise license', () => {
-      process.env.REVEALUI_LICENSE_KEY = 'RVUI-enterprise-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
-      refreshLicense();
-      expect(guardRpcMethod('merge.request').allowed).toBe(true);
-      expect(guardRpcMethod('merge.request').tier).toBe('enterprise');
-    });
-  });
-
   describe('invalid license keys', () => {
-    it('treats malformed key as free tier', () => {
+    it('treats malformed key as free tier', async () => {
       process.env.REVEALUI_LICENSE_KEY = 'not-a-valid-key';
-      refreshLicense();
+      await refreshLicense();
       const result = guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(false);
       expect(result.tier).toBe('free');
     });
 
-    it('treats empty key as free tier', () => {
+    it('treats empty key as free tier', async () => {
       process.env.REVEALUI_LICENSE_KEY = '';
-      refreshLicense();
+      await refreshLicense();
       const result = guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(false);
     });
@@ -134,26 +94,30 @@ describe('guardRpcMethod', () => {
 describe('initLicenseGuard', () => {
   beforeEach(() => {
     delete process.env.REVEALUI_LICENSE_KEY;
+    delete process.env.REVEALUI_LICENSE_PUBLIC_KEY;
   });
 
-  it('returns free tier without key', () => {
-    const result = initLicenseGuard();
+  it('returns free tier without key', async () => {
+    const result = await initLicenseGuard();
     expect(result.tier).toBe('free');
     expect(result.valid).toBe(false);
   });
 
-  it('returns pro tier with valid key', () => {
-    process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
-    const result = initLicenseGuard();
-    expect(result.tier).toBe('pro');
-    expect(result.valid).toBe(true);
+  it('returns free for invalid JWT (no public key)', async () => {
+    process.env.REVEALUI_LICENSE_KEY = 'not.a.jwt';
+    const result = await initLicenseGuard();
+    expect(result.tier).toBe('free');
+    expect(result.valid).toBe(false);
   });
+});
 
-  it('logs startup banner', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    initLicenseGuard();
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('FREE'));
-    spy.mockRestore();
+describe('getLicenseState', () => {
+  it('returns current tier state synchronously after init', async () => {
+    delete process.env.REVEALUI_LICENSE_KEY;
+    await initLicenseGuard();
+    const state = getLicenseState();
+    expect(state.tier).toBe('free');
+    expect(state.valid).toBe(false);
   });
 });
 

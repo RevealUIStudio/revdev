@@ -14,7 +14,21 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Mock the license system — all methods allowed (enterprise tier).
+vi.mock('@revealui/core/license', () => ({
+  initializeLicense: vi.fn(async () => 'enterprise'),
+  getCurrentTier: vi.fn(() => 'enterprise'),
+  isLicensed: vi.fn(() => true),
+  resetLicenseState: vi.fn(),
+}));
+vi.mock('@revealui/core/features', () => ({
+  isFeatureEnabled: vi.fn(() => true),
+  getFeatures: vi.fn(() => ({})),
+  getFeaturesForTier: vi.fn(() => ({})),
+}));
+
 import { startDaemon } from '../server.js';
 
 // ---------------------------------------------------------------------------
@@ -73,11 +87,8 @@ function rpcAsActor(
 let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
-let originalLicenseKey: string | undefined;
 
 beforeAll(async () => {
-  originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
-  process.env.REVEALUI_LICENSE_KEY = 'RVUI-enterprise-0123456789abcdef0123456789abcdef';
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-e2e-'));
   socketPath = join(dataDir, 'harness.sock');
   const d = await startDaemon({ socketPath, dataDir });
@@ -87,11 +98,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await close?.();
   await rm(dataDir, { recursive: true, force: true });
-  if (originalLicenseKey === undefined) {
-    delete process.env.REVEALUI_LICENSE_KEY;
-  } else {
-    process.env.REVEALUI_LICENSE_KEY = originalLicenseKey;
-  }
 });
 
 // ---------------------------------------------------------------------------

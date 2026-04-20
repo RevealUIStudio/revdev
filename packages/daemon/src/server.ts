@@ -19,9 +19,12 @@ import { mkdir } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import { createLogger } from '@revealui/utils/logger';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
 import { SCHEMA_SQL } from './storage/schema.js';
+
+const log = createLogger({ service: 'revdev-daemon' });
 
 // ---------------------------------------------------------------------------
 // Types
@@ -588,18 +591,23 @@ export async function startDaemon(
 ): Promise<{ close: () => Promise<void> }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
 
-  // Initialize license guard (logs banner)
-  initLicenseGuard();
+  // Initialize license guard (async JWT verification, logs banner)
+  const license = await initLicenseGuard();
+  if (license.valid) {
+    log.info(`running with ${license.tier.toUpperCase()} license`, { tier: license.tier });
+  } else {
+    log.warn('running in FREE (degraded) mode — set REVEALUI_LICENSE_KEY to unlock Pro features');
+  }
 
   // Ensure data directory exists
   await mkdir(cfg.dataDir, { recursive: true });
   await mkdir(dirname(cfg.socketPath), { recursive: true });
 
   // Initialize PGlite
-  console.log(`[daemon] Initializing database at ${cfg.dataDir}`);
+  log.info('initializing database', { dataDir: cfg.dataDir });
   const db = new PGlite(cfg.dataDir);
   await db.exec(SCHEMA_SQL);
-  console.log('[daemon] Schema initialized');
+  log.info('schema initialized');
 
   // Remove stale socket
   const { unlink, chmod } = await import('node:fs/promises');
@@ -731,15 +739,15 @@ export async function startDaemon(
         reject(err);
         return;
       }
-      console.log(`[daemon] Listening on ${cfg.socketPath} (mode 0600)`);
-      console.log('[daemon] Ready for connections');
+      log.info('listening', { socketPath: cfg.socketPath, mode: '0600' });
+      log.info('ready for connections');
 
       resolve({
         close: async () => {
           server.close();
           await db.close();
           await unlink(cfg.socketPath).catch(() => {});
-          console.log('[daemon] Shut down');
+          log.info('shut down');
         },
       });
     });

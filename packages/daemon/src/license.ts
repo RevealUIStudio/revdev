@@ -1,60 +1,89 @@
 /**
  * License validation for the RevDev daemon.
  *
- * The daemon is a Pro feature — it requires a valid RevealUI Pro or
- * Enterprise license. Developer tooling commands (start, health) are
- * exempt to allow daemon lifecycle management without a license check.
+ * Delegates to @revealui/core/license for RS256 JWT verification with:
+ *   - Cryptographic signature validation (vendor public key)
+ *   - Expiration + grace period enforcement
+ *   - Tier-based feature gating
+ *   - Encrypted key support (AES-256-GCM)
  *
- * When running as a standalone daemon (outside the RevealUI monorepo),
- * license validation is done via the REVEALUI_LICENSE_KEY env var.
+ * The daemon runs in degraded mode on free tier: session management
+ * works, but spawning, inference, and merge pipeline are gated.
  */
 
-export const LICENSE_TIERS = ['free', 'pro', 'max', 'enterprise'] as const;
-export type LicenseTier = (typeof LICENSE_TIERS)[number];
+import { isFeatureEnabled } from '@revealui/core/features';
+import {
+  getCurrentTier,
+  initializeLicense,
+  isLicensed,
+  type LicenseTier,
+} from '@revealui/core/license';
 
+export type { LicenseTier };
+export const LICENSE_TIERS = ['free', 'pro', 'max', 'enterprise'] as const;
+
+/** Methods that never require a license (session lifecycle + health). */
 const EXEMPT_METHODS = new Set([
   'ping',
   'session.register',
+  'session.attach',
   'session.update',
   'session.end',
   'session.list',
+  'harness.health',
 ]);
 
 /**
+ * Feature-to-method mapping. Each daemon RPC method is gated by a feature flag
+ * rather than a blanket "Pro+" check. This allows tier-specific access control.
+ */
+const METHOD_FEATURE_MAP: Record<string, keyof import('@revealui/core/features').FeatureFlags> = {
+  'inference.status': 'aiInference',
+  'inference.pull': 'aiInference',
+  'inference.start': 'aiInference',
+  'inference.stop': 'aiInference',
+  'inference.chat': 'aiInference',
+  'inference.generate': 'aiInference',
+  'memory.store': 'aiMemory',
+  'memory.query': 'aiMemory',
+};
+
+/**
+ * Initialize the license system. Must be called once at daemon startup.
+ * Returns the detected tier for logging.
+ */
+export async function initDaemonLicense(): Promise<LicenseTier> {
+  return await initializeLicense();
+}
+
+/**
  * Check whether the current license allows daemon operation.
- *
- * Returns the detected tier, or 'free' if no valid license is found.
- * The daemon runs in degraded mode on free tier: session management
- * works, but spawning, inference, and merge pipeline are gated.
- *
- * TODO(licensing): the current format `RVUI-<tier>-<32 hex chars>` is not
- * cryptographically bound — any regex-matching string is accepted as valid.
- * Planned upgrade: `RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>` with:
- *   - Ed25519 signature over `<tier>.<expiresAt>` verified against a vendor
- *     public key baked into the daemon binary.
- *   - `expiresAt` unix timestamp; keys reject after that point.
- *   - Vendor-side key-generation CLI; signing private key stored in revvault.
- * Blocks casual forgery; determined attackers can still patch the binary,
- * but that is a separate threat model from tier-gate enforcement.
+ * Wraps @revealui/core for backward compat with existing guard.ts.
  */
 export function checkLicense(): { tier: LicenseTier; valid: boolean } {
-  const key = process.env.REVEALUI_LICENSE_KEY;
-
-  if (!key) {
-    return { tier: 'free', valid: false };
-  }
-
-  // License key format: RVUI-<tier>-<hash>
-  const match = key.match(/^RVUI-(pro|max|enterprise)-[a-f0-9]{32}$/i);
-  if (!match) {
-    return { tier: 'free', valid: false };
-  }
-
-  const tier = match[1]?.toLowerCase() as LicenseTier;
-  return { tier, valid: true };
+  const tier = getCurrentTier();
+  const valid = isLicensed('pro');
+  return { tier, valid };
 }
 
 /** Returns true if the given RPC method is exempt from license checks. */
 export function isExemptMethod(method: string): boolean {
   return EXEMPT_METHODS.has(method);
+}
+
+/**
+ * Check if a specific method is allowed by the current license tier.
+ * Uses feature flags for granular gating where a mapping exists,
+ * falls back to Pro+ requirement for unmapped methods.
+ */
+export function isMethodAllowed(method: string): boolean {
+  if (isExemptMethod(method)) return true;
+
+  const feature = METHOD_FEATURE_MAP[method];
+  if (feature) {
+    return isFeatureEnabled(feature);
+  }
+
+  // Default: require Pro+ for any non-exempt, non-mapped method
+  return isLicensed('pro');
 }

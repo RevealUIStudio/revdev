@@ -13,7 +13,22 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Mock the license system so coordination tests don't need a real JWT.
+// All methods are allowed (enterprise tier).
+vi.mock('@revealui/core/license', () => ({
+  initializeLicense: vi.fn(async () => 'enterprise'),
+  getCurrentTier: vi.fn(() => 'enterprise'),
+  isLicensed: vi.fn(() => true),
+  resetLicenseState: vi.fn(),
+}));
+vi.mock('@revealui/core/features', () => ({
+  isFeatureEnabled: vi.fn(() => true),
+  getFeatures: vi.fn(() => ({})),
+  getFeaturesForTier: vi.fn(() => ({})),
+}));
+
 import { startDaemon } from '../server.js';
 
 // ---------------------------------------------------------------------------
@@ -59,14 +74,8 @@ function rpc(
 let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
-let originalLicenseKey: string | undefined;
 
 beforeAll(async () => {
-  // Coordination RPCs are license-gated (Pro+). Tests inject a valid
-  // enterprise key so the guard lets mail/files/tasks calls through.
-  // Local dev machines usually have this set already; CI does not.
-  originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
-  process.env.REVEALUI_LICENSE_KEY = 'RVUI-enterprise-0123456789abcdef0123456789abcdef';
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-coord-'));
   socketPath = join(dataDir, 'harness.sock');
   const d = await startDaemon({ socketPath, dataDir });
@@ -76,11 +85,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await close?.();
   await rm(dataDir, { recursive: true, force: true });
-  if (originalLicenseKey === undefined) {
-    delete process.env.REVEALUI_LICENSE_KEY;
-  } else {
-    process.env.REVEALUI_LICENSE_KEY = originalLicenseKey;
-  }
 });
 
 // ---------------------------------------------------------------------------

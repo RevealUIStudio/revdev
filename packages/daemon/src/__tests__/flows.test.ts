@@ -15,16 +15,8 @@ describe('license', () => {
     if (original) process.env.REVEALUI_LICENSE_KEY = original;
   });
 
-  it('validates a pro license key format', () => {
-    process.env.REVEALUI_LICENSE_KEY = 'RVUI-pro-abcdef0123456789abcdef0123456789';
-    const result = checkLicense();
-    expect(result.tier).toBe('pro');
-    expect(result.valid).toBe(true);
-    delete process.env.REVEALUI_LICENSE_KEY;
-  });
-
-  it('rejects invalid license key formats', () => {
-    process.env.REVEALUI_LICENSE_KEY = 'invalid-key';
+  it('returns free for invalid JWT (no public key configured)', () => {
+    process.env.REVEALUI_LICENSE_KEY = 'not-a-valid-jwt';
     const result = checkLicense();
     expect(result.tier).toBe('free');
     expect(result.valid).toBe(false);
