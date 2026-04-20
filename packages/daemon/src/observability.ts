@@ -5,6 +5,7 @@
  * and exposes them via the `harness.health` RPC method and a future HTTP endpoint.
  */
 
+import type { PGlite } from '@electric-sql/pglite';
 import {
   createCustomHealthCheck,
   createMemoryHealthCheck,
@@ -13,7 +14,6 @@ import {
   startMemoryMonitoring,
   updateActiveConnections,
 } from '@revealui/core/observability';
-import type { PGlite } from '@electric-sql/pglite';
 
 // ---------------------------------------------------------------------------
 // Daemon-specific metrics
@@ -57,14 +57,18 @@ export const activeSessions = metrics.gauge(
 export function initObservability(db: PGlite): void {
   // PGlite health check — can the database respond?
   healthCheck.register(
-    createCustomHealthCheck('pglite', async () => {
-      try {
-        await db.query('SELECT 1');
-        return { status: 'healthy', duration: 0 };
-      } catch {
-        return { status: 'unhealthy', duration: 0, message: 'PGlite query failed' };
-      }
-    }, true),
+    createCustomHealthCheck(
+      'pglite',
+      async () => {
+        try {
+          await db.query('SELECT 1');
+          return { status: 'healthy', duration: 0 };
+        } catch {
+          return { status: 'unhealthy', duration: 0, message: 'PGlite query failed' };
+        }
+      },
+      true,
+    ),
   );
 
   // Memory health check — warn at 85% usage

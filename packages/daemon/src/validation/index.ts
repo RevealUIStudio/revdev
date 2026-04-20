@@ -9,8 +9,8 @@
 import { z } from 'zod';
 import { schemas } from './schemas.js';
 
-export { schemas } from './schemas.js';
 export * from './limits.js';
+export { schemas } from './schemas.js';
 
 export interface ValidationResult {
   valid: boolean;
