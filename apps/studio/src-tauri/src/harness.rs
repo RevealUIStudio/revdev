@@ -3,6 +3,10 @@
 //! Connects to the daemon's Unix domain socket at
 //! `~/.local/share/revealui/harness.sock` and sends newline-delimited
 //! JSON-RPC requests.
+//!
+//! Resilience: each call is wrapped in a 10s timeout with up to 3 retries
+//! (100ms, 500ms, 2s backoff) for transient IO errors. Parse failures and
+//! daemon-level RPC errors are never retried.
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,15 +14,33 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(unix)]
 use tokio::net::UnixStream;
+#[cfg(unix)]
+use tokio::time::{timeout, Duration};
 use tokio::sync::OnceCell;
 
 const SOCKET_REL_PATH: &str = ".local/share/revealui/harness.sock";
 
+/// Per-attempt timeout for daemon RPC calls.
+#[cfg(unix)]
+const RPC_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Maximum retry attempts for transient failures.
+#[cfg(unix)]
+const MAX_RETRIES: usize = 3;
+
+/// Backoff delays between retry attempts (ms).
+#[cfg(unix)]
+const RETRY_DELAYS_MS: [u64; 3] = [100, 500, 2000];
+
 fn socket_path() -> String {
+    // Allow override for integration tests
+    if let Ok(path) = std::env::var("REVDEV_TEST_SOCKET") {
+        return path;
+    }
     if let Some(home) = dirs::home_dir() {
         format!("{}/{}", home.display(), SOCKET_REL_PATH)
     } else {
-        format!("/tmp/revealui-harness.sock")
+        "/tmp/revealui-harness.sock".to_string()
     }
 }
 
@@ -108,7 +130,49 @@ async fn rpc_call_raw(
     params: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let path = socket_path();
-    let stream = UnixStream::connect(&path)
+    let mut last_err = String::new();
+
+    for attempt in 0..MAX_RETRIES {
+        match timeout(RPC_TIMEOUT, rpc_call_once(&path, method, &params)).await {
+            Ok(Ok(value)) => return Ok(value),
+            Ok(Err(err)) => {
+                // Parse failures and RPC-level errors are permanent — don't retry
+                if err.starts_with("Parse failed:") || !is_transient_error(&err) {
+                    return Err(err);
+                }
+                last_err = err;
+            }
+            Err(_) => {
+                last_err = format!("RPC timeout after {}s: {method}", RPC_TIMEOUT.as_secs());
+            }
+        }
+
+        // Backoff before next attempt (skip after final attempt)
+        if attempt < MAX_RETRIES - 1 {
+            tokio::time::sleep(Duration::from_millis(RETRY_DELAYS_MS[attempt])).await;
+        }
+    }
+
+    Err(last_err)
+}
+
+/// Returns true if the error string indicates a transient failure worth retrying.
+#[cfg(unix)]
+fn is_transient_error(err: &str) -> bool {
+    err.starts_with("Harness daemon not running:")
+        || err.starts_with("Write failed:")
+        || err.starts_with("Read failed:")
+        || err.starts_with("RPC timeout")
+}
+
+/// Execute a single RPC call over a fresh Unix socket connection.
+#[cfg(unix)]
+async fn rpc_call_once(
+    path: &str,
+    method: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let stream = UnixStream::connect(path)
         .await
         .map_err(|e| format!("Harness daemon not running: {e}"))?;
     let (reader, mut writer) = stream.into_split();
@@ -118,7 +182,7 @@ async fn rpc_call_raw(
         jsonrpc: "2.0",
         id,
         method,
-        params,
+        params: params.clone(),
     };
 
     let mut payload = serde_json::to_vec(&request).map_err(|e| e.to_string())?;

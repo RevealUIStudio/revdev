@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod daemon_ctl;
 mod harness;
 mod harness_watcher;
 mod inference;
@@ -9,6 +10,7 @@ mod spawner;
 mod ssh;
 mod state;
 mod tray;
+mod updater;
 
 use commands::{
     agent as agent_cmds, apps, config as config_cmds, deploy, git as git_cmds,
@@ -29,6 +31,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, _event| {
@@ -170,6 +173,12 @@ pub fn run() {
             terminal::terminal_detect,
             terminal::terminal_install,
             launcher::focus_window,
+            daemon_ctl::daemon_status,
+            daemon_ctl::daemon_start,
+            daemon_ctl::daemon_stop,
+            daemon_ctl::daemon_restart,
+            updater::check_for_update,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running RevealUI Studio");
