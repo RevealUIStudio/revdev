@@ -920,5 +920,29 @@ export function harnessCheckFile(filePath: string): Promise<HarnessReservation |
   return invoke<HarnessReservation | null>('harness_check_file', { filePath });
 }
 
+// ── Daemon Lifecycle ───────────────────────────────────────────────────────
+
+export interface DaemonStatus {
+  running: boolean;
+  pid: number | null;
+  reachable: boolean;
+}
+
+export function daemonStatus(): Promise<DaemonStatus> {
+  return invoke<DaemonStatus>('daemon_status');
+}
+
+export function daemonStart(): Promise<number> {
+  return invoke<number>('daemon_start');
+}
+
+export function daemonStop(): Promise<void> {
+  return invoke<void>('daemon_stop');
+}
+
+export function daemonRestart(): Promise<number> {
+  return invoke<number>('daemon_restart');
+}
+
 // Re-export AgentSession so consumers don't need to reach into types directly
 export type { AgentSession };
