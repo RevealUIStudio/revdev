@@ -22,6 +22,14 @@ import { PGlite } from '@electric-sql/pglite';
 import { createLogger } from '@revealui/utils/logger';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
+import {
+  getPrometheusMetrics,
+  getSystemHealth,
+  initObservability,
+  onConnect,
+  onDisconnect,
+  trackRpcCall,
+} from './observability.js';
 import { SCHEMA_SQL } from './storage/schema.js';
 
 const log = createLogger({ service: 'revdev-daemon' });
@@ -534,18 +542,30 @@ registerHandler('events.query', async (params, db) => {
 
 // -- Health -----------------------------------------------------------------
 
-registerHandler('harness.health', async (_params, db) => {
+registerHandler('harness.health', async (params, db) => {
   const sessions = await db.query<{ count: string }>(
     `SELECT COUNT(*)::text as count FROM agent_sessions WHERE ended_at IS NULL`,
   );
   const tasks = await db.query<{ count: string }>(
     `SELECT COUNT(*)::text as count FROM tasks WHERE status = 'open'`,
   );
+
+  // Include full health check results if requested
+  const includeChecks = params.detailed === true;
+  const health = includeChecks ? await getSystemHealth() : null;
+
+  // Include Prometheus metrics if requested
+  const includeMetrics = params.metrics === true;
+  const prometheusMetrics = includeMetrics ? getPrometheusMetrics() : undefined;
+
   return {
-    status: 'healthy',
+    status: health?.status ?? 'healthy',
     activeSessions: Number(sessions.rows[0]?.count ?? 0),
     openTasks: Number(tasks.rows[0]?.count ?? 0),
     uptime: process.uptime(),
+    memoryUsage: process.memoryUsage().heapUsed,
+    ...(health ? { checks: health.checks } : {}),
+    ...(prometheusMetrics ? { metrics: prometheusMetrics } : {}),
   };
 });
 
@@ -609,12 +629,16 @@ export async function startDaemon(
   await db.exec(SCHEMA_SQL);
   log.info('schema initialized');
 
+  // Initialize observability (metrics + health checks)
+  initObservability(db);
+
   // Remove stale socket
   const { unlink, chmod } = await import('node:fs/promises');
   await unlink(cfg.socketPath).catch(() => {});
 
   // Start Unix socket server
   const server = createServer((socket: Socket) => {
+    onConnect();
     const ctx: SocketContext = { agentId: null, agentName: null, boundVia: null };
     let buffer = '';
 
@@ -680,10 +704,13 @@ export async function startDaemon(
           continue;
         }
 
+        const startMs = Date.now();
         try {
           const result = await handler(req.params ?? {}, db, ctx);
+          trackRpcCall(req.method, 'ok', Date.now() - startMs);
           socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
         } catch (err) {
+          trackRpcCall(req.method, 'error', Date.now() - startMs);
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
@@ -699,6 +726,7 @@ export async function startDaemon(
     });
 
     socket.on('close', async () => {
+      onDisconnect();
       // Auto-release transient reservations when a long-lived agent
       // disconnects. Fresh-per-call clients (boundVia = 'param') don't
       // trigger cleanup — their identity outlives this socket.
