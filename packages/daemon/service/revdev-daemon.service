@@ -1,0 +1,21 @@
+[Unit]
+Description=RevDev Harness Daemon — AI agent coordination runtime
+Documentation=https://github.com/RevealUIStudio/revdev
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/revdev-daemon
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+
+# Environment
+Environment=NODE_ENV=production
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
