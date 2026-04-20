@@ -19,9 +19,21 @@ import { mkdir } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import { createLogger } from '@revealui/utils/logger';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
+import {
+  getPrometheusMetrics,
+  getSystemHealth,
+  initObservability,
+  onConnect,
+  onDisconnect,
+  trackRpcCall,
+} from './observability.js';
 import { SCHEMA_SQL } from './storage/schema.js';
+import { invalidParamsResponse, validateParams } from './validation/index.js';
+
+const log = createLogger({ service: 'revdev-daemon' });
 
 // ---------------------------------------------------------------------------
 // Types
@@ -596,10 +608,13 @@ export async function startDaemon(
   await mkdir(dirname(cfg.socketPath), { recursive: true });
 
   // Initialize PGlite
-  console.log(`[daemon] Initializing database at ${cfg.dataDir}`);
+  log.info('initializing database', { dataDir: cfg.dataDir });
   const db = new PGlite(cfg.dataDir);
   await db.exec(SCHEMA_SQL);
-  console.log('[daemon] Schema initialized');
+  log.info('schema initialized');
+
+  // Initialize observability (metrics + health checks)
+  initObservability(db);
 
   // Remove stale socket
   const { unlink, chmod } = await import('node:fs/promises');
@@ -607,6 +622,7 @@ export async function startDaemon(
 
   // Start Unix socket server
   const server = createServer((socket: Socket) => {
+    onConnect();
     const ctx: SocketContext = { agentId: null, agentName: null, boundVia: null };
     let buffer = '';
 
@@ -636,6 +652,13 @@ export async function startDaemon(
         const guard = guardRpcMethod(req.method);
         if (!guard.allowed) {
           socket.write(`${licenseErrorResponse(req.id, guard)}\n`);
+          continue;
+        }
+
+        // Validate params
+        const validation = validateParams(req.method, req.params);
+        if (!validation.valid) {
+          socket.write(`${invalidParamsResponse(req.id, validation.error!)}\n`);
           continue;
         }
 
@@ -672,10 +695,13 @@ export async function startDaemon(
           continue;
         }
 
+        const startMs = Date.now();
         try {
           const result = await handler(req.params ?? {}, db, ctx);
+          trackRpcCall(req.method, 'ok', Date.now() - startMs);
           socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
         } catch (err) {
+          trackRpcCall(req.method, 'error', Date.now() - startMs);
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
@@ -691,6 +717,7 @@ export async function startDaemon(
     });
 
     socket.on('close', async () => {
+      onDisconnect();
       // Auto-release transient reservations when a long-lived agent
       // disconnects. Fresh-per-call clients (boundVia = 'param') don't
       // trigger cleanup — their identity outlives this socket.
@@ -731,15 +758,15 @@ export async function startDaemon(
         reject(err);
         return;
       }
-      console.log(`[daemon] Listening on ${cfg.socketPath} (mode 0600)`);
-      console.log('[daemon] Ready for connections');
+      log.info('listening', { socketPath: cfg.socketPath, mode: '0600' });
+      log.info('ready for connections');
 
       resolve({
         close: async () => {
           server.close();
           await db.close();
           await unlink(cfg.socketPath).catch(() => {});
-          console.log('[daemon] Shut down');
+          log.info('shut down');
         },
       });
     });
