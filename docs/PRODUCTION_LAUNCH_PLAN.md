@@ -11,7 +11,7 @@ Last updated: 2026-04-20
 
 | Capability | Status |
 |---|---|
-| RS256 JWT license validation | Integrated (needs keypair) |
+| Ed25519 license validation | Integrated (needs keypair) |
 | Feature-based method gating | Done |
 | Structured JSON logging | Done |
 | Prometheus metrics + health checks | Done |

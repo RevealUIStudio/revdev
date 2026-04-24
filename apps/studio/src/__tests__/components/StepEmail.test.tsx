@@ -57,11 +57,10 @@ describe('StepEmail', () => {
     expect(screen.getByPlaceholderText('noreply@yourdomain.com')).toBeInTheDocument();
   });
 
-  it('renders test email input and send button', () => {
+  it('surfaces an honest note that in-wizard test send is not wired', () => {
     renderStep();
 
-    expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Send Test Email')).toBeInTheDocument();
+    expect(screen.getByText(/test send is not wired/i)).toBeInTheDocument();
   });
 
   it('disables Next until credentials are configured', () => {
@@ -70,13 +69,13 @@ describe('StepEmail', () => {
     expect(screen.getByText('Next')).toBeDisabled();
   });
 
-  it('disables Send Test Email when fields are empty', () => {
+  it('disables Save Config when credentials are empty', () => {
     renderStep();
 
-    expect(screen.getByText('Send Test Email')).toBeDisabled();
+    expect(screen.getByText('Save Config')).toBeDisabled();
   });
 
-  it('enables Send Test Email when all required fields are filled', () => {
+  it('enables Save Config when service account email + private key are filled', () => {
     renderStep();
 
     fireEvent.change(
@@ -87,14 +86,11 @@ describe('StepEmail', () => {
       // gitleaks:allow
       target: { value: 'test-private-key-fixture' },
     });
-    fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
-      target: { value: 'test@example.com' },
-    });
 
-    expect(screen.getByText('Send Test Email')).not.toBeDisabled();
+    expect(screen.getByText('Save Config')).not.toBeDisabled();
   });
 
-  it('shows honest error and saves config when test email is attempted', async () => {
+  it('persists credentials when Save Config is clicked', async () => {
     const { onUpdateData, onUpdateConfig } = renderStep();
 
     fireEvent.change(
@@ -105,36 +101,20 @@ describe('StepEmail', () => {
       // gitleaks:allow
       target: { value: 'test-private-key-fixture' },
     });
-    fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
-      target: { value: 'test@example.com' },
-    });
-    fireEvent.click(screen.getByText('Send Test Email'));
+    fireEvent.click(screen.getByText('Save Config'));
 
     await waitFor(() => {
-      expect(screen.getByText(/not yet implemented/)).toBeInTheDocument();
-    });
-
-    // Config still saved even though test send isn't wired
-    expect(onUpdateData).toHaveBeenCalledWith({
-      emailProvider: 'gmail',
-      googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
-      googlePrivateKey: 'test-private-key-fixture',
-      emailFrom: '',
+      expect(onUpdateData).toHaveBeenCalledWith({
+        emailProvider: 'gmail',
+        googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
+        googlePrivateKey: 'test-private-key-fixture',
+        emailFrom: '',
+      });
     });
     expect(onUpdateConfig).toHaveBeenCalled();
   });
 
-  it('disables Send Test Email when service account fields are missing', () => {
-    renderStep();
-
-    fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
-      target: { value: 'test@example.com' },
-    });
-
-    expect(screen.getByText('Send Test Email')).toBeDisabled();
-  });
-
-  it('updates from address in wizard data', async () => {
+  it('includes the from-address in the saved config', async () => {
     const { onUpdateData } = renderStep();
 
     fireEvent.change(
@@ -148,20 +128,15 @@ describe('StepEmail', () => {
     fireEvent.change(screen.getByPlaceholderText('noreply@yourdomain.com'), {
       target: { value: 'noreply@example.com' },
     });
-    fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
-      target: { value: 'test@example.com' },
-    });
-    fireEvent.click(screen.getByText('Send Test Email'));
+    fireEvent.click(screen.getByText('Save Config'));
 
     await waitFor(() => {
-      expect(screen.getByText(/not yet implemented/)).toBeInTheDocument();
+      expect(onUpdateData).toHaveBeenCalledWith(
+        expect.objectContaining({
+          emailFrom: 'noreply@example.com',
+        }),
+      );
     });
-
-    expect(onUpdateData).toHaveBeenCalledWith(
-      expect.objectContaining({
-        emailFrom: 'noreply@example.com',
-      }),
-    );
   });
 
   it('pre-fills from existing wizard data', () => {
