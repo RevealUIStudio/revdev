@@ -58,10 +58,11 @@ jobs:
           config-file: ./.github/codeql/codeql-config.yml
 
       # JS/TS-specific setup: install deps so CodeQL sees the full module graph
+      # (pnpm version sourced from package.json "packageManager" field; don't set
+      # `version:` here — pnpm/action-setup@v4 rejects the combination since
+      # late 2026 with ERR_PNPM_BAD_PM_VERSION)
       - if: matrix.language == 'javascript-typescript'
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - if: matrix.language == 'javascript-typescript'
         uses: actions/setup-node@v4
