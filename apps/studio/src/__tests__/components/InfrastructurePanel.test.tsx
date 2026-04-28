@@ -67,8 +67,12 @@ describe('InfrastructurePanel', () => {
 
   it('highlights active tab', () => {
     render(<InfrastructurePanel />);
-    const appTab = screen.getAllByText('App Launcher')[0].closest('button');
-    expect(appTab?.className).toContain('border-orange-500');
+    // The Daemon tab is active by default (per InfrastructurePanel's
+    // useState<InfraTab>('daemon') initial value). Earlier this test
+    // asserted on App Launcher, which silently went stale when the
+    // default flipped — tracked under the chore that fixed it.
+    const daemonTab = screen.getAllByText('Daemon')[0].closest('button');
+    expect(daemonTab?.className).toContain('border-orange-500');
   });
 
   it('switches tab highlight when clicking DevPod', () => {
