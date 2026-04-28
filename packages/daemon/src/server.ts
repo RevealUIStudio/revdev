@@ -74,6 +74,7 @@ const IDENTITY_EXEMPT = new Set([
   'session.attach',
   'session.list',
   'harness.health',
+  'harness.prune',
   'inference.status',
   'inference.pull',
   'inference.start',
@@ -81,6 +82,85 @@ const IDENTITY_EXEMPT = new Set([
   'inference.chat',
   'inference.generate',
 ]);
+
+// ---------------------------------------------------------------------------
+// Stale-session pruning state (GAP-153)
+//
+// Module-level by design — each daemon process is a singleton, so a single
+// state object suffices. The integration test suite at coordination.test.ts
+// runs daemons sequentially, not concurrently, so cross-test contamination
+// is not a concern. If the test pattern ever changes to spawn concurrent
+// daemons in the same process, this needs to become a per-db Map.
+// ---------------------------------------------------------------------------
+
+interface PruneState {
+  lastRunAt: Date | null;
+  lastAgedCount: number;
+  lastDeletedCount: number;
+}
+
+const pruneState: PruneState = {
+  lastRunAt: null,
+  lastAgedCount: 0,
+  lastDeletedCount: 0,
+};
+
+/**
+ * Run a single prune pass against the daemon database.
+ *
+ * Two-phase cleanup:
+ *   1. Sessions older than `staleDays` with no `ended_at` are marked ended
+ *      with `exit_summary = 'pruned-stale'`. Models cases where the daemon
+ *      itself crashed (or was SIGKILL'd) before the per-socket auto-end
+ *      had a chance to fire.
+ *   2. Sessions ended longer than `hardDeleteDays` are hard-deleted to keep
+ *      `agent_sessions` from growing without bound.
+ *
+ * Idempotent — running twice in a row produces the same end state. Safe to
+ * invoke on demand via the `harness.prune` RPC for ops use, in addition to
+ * the periodic timer set up in `startDaemon`.
+ */
+async function runPrune(
+  db: PGlite,
+  staleDays: number,
+  hardDeleteDays: number,
+): Promise<{ aged: number; deleted: number }> {
+  // Clamp non-negative + finite. Defends against bad caller input — a
+  // negative or NaN threshold would otherwise widen the WHERE clause to
+  // include all-or-no rows depending on Postgres semantics.
+  const stale = Number.isFinite(staleDays) ? Math.max(0, staleDays) : 7;
+  const hard = Number.isFinite(hardDeleteDays) ? Math.max(0, hardDeleteDays) : 30;
+
+  // Parameterized interval avoids SQL injection on the days value.
+  const aged = await db.query<{ id: string }>(
+    `UPDATE agent_sessions
+        SET ended_at = NOW(),
+            exit_summary = COALESCE(exit_summary, 'pruned-stale')
+      WHERE ended_at IS NULL
+        AND started_at < NOW() - INTERVAL '1 day' * $1
+      RETURNING id`,
+    [stale],
+  );
+  const deleted = await db.query<{ id: string }>(
+    `DELETE FROM agent_sessions
+      WHERE ended_at IS NOT NULL
+        AND ended_at < NOW() - INTERVAL '1 day' * $1
+      RETURNING id`,
+    [hard],
+  );
+  pruneState.lastRunAt = new Date();
+  pruneState.lastAgedCount = aged.rows.length;
+  pruneState.lastDeletedCount = deleted.rows.length;
+  if (pruneState.lastAgedCount > 0 || pruneState.lastDeletedCount > 0) {
+    log.info('prune complete', {
+      aged: pruneState.lastAgedCount,
+      deleted: pruneState.lastDeletedCount,
+      staleDays: stale,
+      hardDeleteDays: hard,
+    });
+  }
+  return { aged: pruneState.lastAgedCount, deleted: pruneState.lastDeletedCount };
+}
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -555,6 +635,26 @@ registerHandler('harness.health', async (_params, db) => {
     activeSessions: Number(sessions.rows[0]?.count ?? 0),
     openTasks: Number(tasks.rows[0]?.count ?? 0),
     uptime: process.uptime(),
+    prune: {
+      lastRunAt: pruneState.lastRunAt?.toISOString() ?? null,
+      lastAgedCount: pruneState.lastAgedCount,
+      lastDeletedCount: pruneState.lastDeletedCount,
+    },
+  };
+});
+
+registerHandler('harness.prune', async (params, db) => {
+  // Allow ops / tests to run a prune pass on demand. Defaults match
+  // DAEMON_DEFAULTS so callers can invoke with no params.
+  const staleDays = num(params.staleDays, DAEMON_DEFAULTS.staleSessionDays);
+  const hardDeleteDays = num(params.hardDeleteDays, DAEMON_DEFAULTS.hardDeleteDays);
+  const result = await runPrune(db, staleDays, hardDeleteDays);
+  return {
+    aged: result.aged,
+    deleted: result.deleted,
+    runAt: pruneState.lastRunAt?.toISOString() ?? null,
+    staleDays,
+    hardDeleteDays,
   };
 });
 
@@ -615,6 +715,25 @@ export async function startDaemon(
 
   // Initialize observability (metrics + health checks)
   initObservability(db);
+
+  // Periodic prune of stale + old-completed sessions (GAP-153). Disabled
+  // when pruneIntervalMs is 0. unref() so the timer doesn't keep the
+  // process alive on its own. The startup prune runs after a short delay
+  // so it doesn't block the listen call.
+  let pruneTimer: NodeJS.Timeout | null = null;
+  if (cfg.pruneIntervalMs > 0) {
+    pruneTimer = setInterval(() => {
+      runPrune(db, cfg.staleSessionDays, cfg.hardDeleteDays).catch((err) =>
+        log.warn('periodic prune failed', { error: String(err) }),
+      );
+    }, cfg.pruneIntervalMs);
+    pruneTimer.unref();
+    setTimeout(() => {
+      runPrune(db, cfg.staleSessionDays, cfg.hardDeleteDays).catch((err) =>
+        log.warn('startup prune failed', { error: String(err) }),
+      );
+    }, 5000).unref();
+  }
 
   // Remove stale socket
   const { unlink, chmod } = await import('node:fs/promises');
@@ -721,6 +840,16 @@ export async function startDaemon(
       // Auto-release transient reservations when a long-lived agent
       // disconnects. Fresh-per-call clients (boundVia = 'param') don't
       // trigger cleanup — their identity outlives this socket.
+      //
+      // Note: we do NOT auto-end the session row on socket close. The
+      // daemon's session model is LOGICAL agent identity (not socket
+      // lifetime): hooks open-call-close in <100ms per RPC and bind to
+      // existing sessions via `actorAgentId` params; Studio etc. may
+      // disconnect and reattach. The only end triggers are explicit
+      // session.end and the periodic prune (GAP-153). A future
+      // refinement (keepalive flag in session.register, or socket-
+      // lifetime threshold) could re-introduce socket-close auto-end
+      // for genuinely-long-lived agents — see GAP-153 notes.
       if (ctx.agentId && (ctx.boundVia === 'register' || ctx.boundVia === 'attach')) {
         await db
           .query(`DELETE FROM file_reservations WHERE agent_id = $1`, [ctx.agentId])
@@ -763,6 +892,7 @@ export async function startDaemon(
 
       resolve({
         close: async () => {
+          if (pruneTimer) clearInterval(pruneTimer);
           server.close();
           await db.close();
           await unlink(cfg.socketPath).catch(() => {});
