@@ -197,6 +197,334 @@ export async function listFleetSessions(): Promise<FleetSessionRow[]> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 3 — mail / files / tasks / events sync helpers (GAP-154 §work Phase 3)
+//
+// Same best-effort pattern as the Phase 2 session helpers: fail soft, log,
+// don't break the RPC. Each helper maps the daemon's PGlite schema to the
+// Neon coordination_* schema 1:1, handling the divergences inline (status
+// enum translation, missing columns deferred to metadata JSONB, etc.).
+// ---------------------------------------------------------------------------
+
+/** Mirror a daemon `mail.send` row into coordination_mail. */
+export async function syncMailSend(params: {
+  fromAgent: string;
+  toAgent: string;
+  subject: string;
+  body: string;
+}): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    await c`
+      INSERT INTO coordination_mail (from_agent, to_agent, subject, body)
+      VALUES (${params.fromAgent}, ${params.toAgent}, ${params.subject}, ${params.body})
+    `;
+  } catch (err) {
+    log.warn('syncMailSend failed', {
+      fromAgent: params.fromAgent,
+      toAgent: params.toAgent,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Mirror a daemon `mail.broadcast` (one row per recipient). The daemon's
+ * INSERT loop in mail.broadcast fans out — this helper takes the same
+ * recipient list to keep the per-row write parity with PGlite.
+ */
+export async function syncMailBroadcast(params: {
+  fromAgent: string;
+  toAgents: string[];
+  subject: string;
+  body: string;
+}): Promise<void> {
+  if (!client) return;
+  if (params.toAgents.length === 0) return;
+  try {
+    const c = client;
+    for (const to of params.toAgents) {
+      await c`
+        INSERT INTO coordination_mail (from_agent, to_agent, subject, body)
+        VALUES (${params.fromAgent}, ${to}, ${params.subject}, ${params.body})
+      `;
+    }
+  } catch (err) {
+    log.warn('syncMailBroadcast failed', {
+      fromAgent: params.fromAgent,
+      recipients: params.toAgents.length,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Mirror a daemon `mail.markRead` to Neon. The daemon uses SERIAL ids
+ * scoped to its local PGlite — those ids will not match Neon's SERIAL ids
+ * (different sequences). We therefore mark by (toAgent, fromAgent,
+ * subject, createdAt-window) heuristic rather than id. For Phase 3 we
+ * just bulk-mark all unread mail FROM the fromAgent TO the markReader.
+ *
+ * NOTE: this is a best-effort approximation. If two agents send overlapping
+ * "ping" subjects, marking one read on the daemon will mark BOTH on Neon.
+ * Phase 3+ may add a stable cross-DB id (UUID) to avoid this; logged as a
+ * known limitation here.
+ */
+export async function syncMailMarkRead(params: {
+  reader: string;
+  ids: number[]; // daemon-local PGlite ids
+  // Best-effort: also pass the (subject + body) tuples to scope the Neon
+  // UPDATE more precisely. If absent, falls back to "mark all unread to
+  // this reader" which is over-broad.
+  hints?: Array<{ subject: string; body: string }>;
+}): Promise<void> {
+  if (!client) return;
+  if (params.ids.length === 0) return;
+  try {
+    const c = client;
+    if (params.hints && params.hints.length > 0) {
+      // Mark unread rows whose (subject, body) match any hint.
+      for (const hint of params.hints) {
+        await c`
+          UPDATE coordination_mail
+            SET read = TRUE
+          WHERE to_agent = ${params.reader}
+            AND read = FALSE
+            AND subject = ${hint.subject}
+            AND body = ${hint.body}
+        `;
+      }
+    } else {
+      // Over-broad fallback. Match the count being marked locally to
+      // bound the impact: only mark the N oldest unread rows.
+      const limit = params.ids.length;
+      await c`
+        UPDATE coordination_mail
+          SET read = TRUE
+        WHERE id IN (
+          SELECT id FROM coordination_mail
+          WHERE to_agent = ${params.reader} AND read = FALSE
+          ORDER BY created_at ASC
+          LIMIT ${limit}
+        )
+      `;
+    }
+  } catch (err) {
+    log.warn('syncMailMarkRead failed', { reader: params.reader, error: String(err) });
+  }
+}
+
+/**
+ * Mirror a daemon `files.reserve` row(s) into coordination_file_claims.
+ * Schema divergence: daemon has TTL + reason; Neon has only (file_path,
+ * session_id, claimed_at) composite PK. We sync only the subset; TTL
+ * expiry on the daemon side does NOT propagate to Neon (a future cleanup
+ * pass needs to handle that). For Phase 3 this is a known limitation.
+ */
+export async function syncFilesReserve(params: {
+  sessionId: string;
+  paths: string[];
+}): Promise<void> {
+  if (!client) return;
+  if (params.paths.length === 0) return;
+  try {
+    const c = client;
+    for (const p of params.paths) {
+      await c`
+        INSERT INTO coordination_file_claims (file_path, session_id)
+        VALUES (${p}, ${params.sessionId})
+        ON CONFLICT (file_path, session_id) DO UPDATE
+          SET claimed_at = NOW()
+      `;
+    }
+  } catch (err) {
+    log.warn('syncFilesReserve failed', {
+      sessionId: params.sessionId,
+      pathCount: params.paths.length,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Mirror a daemon `files.release` to Neon. With no paths, releases all
+ * claims for the session (matches daemon semantics).
+ */
+export async function syncFilesRelease(params: {
+  sessionId: string;
+  paths: string[];
+}): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    if (params.paths.length === 0) {
+      await c`
+        DELETE FROM coordination_file_claims
+        WHERE session_id = ${params.sessionId}
+      `;
+    } else {
+      await c`
+        DELETE FROM coordination_file_claims
+        WHERE session_id = ${params.sessionId}
+          AND file_path = ANY(${params.paths}::text[])
+      `;
+    }
+  } catch (err) {
+    log.warn('syncFilesRelease failed', {
+      sessionId: params.sessionId,
+      pathCount: params.paths.length,
+      error: String(err),
+    });
+  }
+}
+
+/** Mirror a daemon `tasks.create` row into coordination_work_items. */
+export async function syncTaskCreate(params: {
+  id: string;
+  title: string;
+  description: string;
+  priority: number;
+}): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    await c`
+      INSERT INTO coordination_work_items (id, title, description, status, priority)
+      VALUES (
+        ${params.id},
+        ${params.title || params.id},
+        ${params.description || null},
+        'open',
+        ${params.priority}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        priority = EXCLUDED.priority,
+        status = 'open',
+        owner_agent = NULL,
+        owner_session = NULL,
+        completed_at = NULL,
+        updated_at = NOW()
+    `;
+  } catch (err) {
+    log.warn('syncTaskCreate failed', { taskId: params.id, error: String(err) });
+  }
+}
+
+/** Mirror a daemon `tasks.claim` to Neon. */
+export async function syncTaskClaim(params: { taskId: string; ownerAgent: string }): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    await c`
+      UPDATE coordination_work_items
+        SET status = 'claimed',
+            owner_agent = ${params.ownerAgent},
+            updated_at = NOW()
+      WHERE id = ${params.taskId}
+        AND (status = 'open' OR owner_agent = ${params.ownerAgent})
+    `;
+  } catch (err) {
+    log.warn('syncTaskClaim failed', { taskId: params.taskId, error: String(err) });
+  }
+}
+
+/**
+ * Mirror a daemon `tasks.complete` to Neon. Translates daemon status
+ * 'completed' → Neon status 'done' (different enum values across schemas).
+ * Folds the optional summary into the description for parity with the
+ * daemon's `description = description || ' — ' || summary` pattern.
+ */
+export async function syncTaskComplete(params: {
+  taskId: string;
+  ownerAgent: string;
+  summary: string | null;
+}): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    if (params.summary) {
+      await c`
+        UPDATE coordination_work_items
+          SET status = 'done',
+              completed_at = NOW(),
+              description = COALESCE(description, '') || ' — ' || ${params.summary},
+              updated_at = NOW()
+        WHERE id = ${params.taskId}
+          AND owner_agent = ${params.ownerAgent}
+      `;
+    } else {
+      await c`
+        UPDATE coordination_work_items
+          SET status = 'done',
+              completed_at = NOW(),
+              updated_at = NOW()
+        WHERE id = ${params.taskId}
+          AND owner_agent = ${params.ownerAgent}
+      `;
+    }
+  } catch (err) {
+    log.warn('syncTaskComplete failed', { taskId: params.taskId, error: String(err) });
+  }
+}
+
+/** Mirror a daemon `tasks.release` to Neon. */
+export async function syncTaskRelease(params: {
+  taskId: string;
+  ownerAgent: string;
+}): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    await c`
+      UPDATE coordination_work_items
+        SET status = 'open',
+            owner_agent = NULL,
+            owner_session = NULL,
+            updated_at = NOW()
+      WHERE id = ${params.taskId}
+        AND owner_agent = ${params.ownerAgent}
+    `;
+  } catch (err) {
+    log.warn('syncTaskRelease failed', { taskId: params.taskId, error: String(err) });
+  }
+}
+
+/**
+ * Mirror a daemon `events.log` to coordination_events.
+ * The daemon's `events` schema has no `session_id` or `level` columns;
+ * Neon's coordination_events has both — `session_id` is left null (the
+ * caller's session id is conveyed only via agent_id), and `level`
+ * defaults to 'info' on the Neon side.
+ */
+export async function syncEventLog(params: {
+  agentId: string;
+  type: string;
+  payload: unknown;
+}): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    await c`
+      INSERT INTO coordination_events (agent_id, type, level, payload)
+      VALUES (
+        ${params.agentId},
+        ${params.type},
+        'info',
+        ${JSON.stringify(params.payload ?? {})}::jsonb
+      )
+    `;
+  } catch (err) {
+    log.warn('syncEventLog failed', {
+      agentId: params.agentId,
+      type: params.type,
+      error: String(err),
+    });
+  }
+}
+
 /** Reset module state. Test-only. */
 export function _resetForTesting(): void {
   client = null;
