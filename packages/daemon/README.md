@@ -82,7 +82,7 @@ Environment variables (all optional):
 | `REVDEV_DAEMON_SOCKET` | `~/.local/share/revealui/harness.sock` | Unix socket bind path |
 | `REVDEV_DAEMON_DATA` | `~/.local/share/revealui` | PGlite data directory |
 | `REVDEV_DAEMON_PID` | `~/.local/share/revealui/harness.pid` | PID file location |
-| `REVDEV_DAEMON_LOG` | `/tmp/revdev-daemon.log` | Log file for `--detach` mode |
+| `REVDEV_DAEMON_LOG` | `~/.local/share/revealui/daemon.log` | Log file for `--detach` mode |
 | `POSTGRES_URL` | (none → sync disabled) | Neon URL for cross-machine `coordination_*` sync (GAP-154) |
 
 ## License tiers

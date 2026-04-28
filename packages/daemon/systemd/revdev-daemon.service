@@ -15,10 +15,14 @@ RestartSec=2
 # to keep running across logouts. Without lingering, systemd-user units
 # stop when the user's last session exits.
 Environment=NODE_ENV=production
-# Read-only by default; mount tmpfs for the runtime state we own.
+# Hardening: mount tmpfs for any /tmp use we have. Don't lock down the
+# filesystem with ProtectSystem=strict — the daemon shells out to git
+# (`git worktree add/remove` in vcs.ts, etc.) and those touch project
+# `.git` directories outside ~/.local/share/revealui. ProtectSystem=full
+# protects /usr, /boot, /efi but leaves $HOME writable, which the git
+# RPCs need.
 PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=%h/.local/share/revealui
+ProtectSystem=full
 
 [Install]
 WantedBy=default.target
