@@ -309,3 +309,120 @@ describe('two-agent coordination', () => {
     expect(bobInbox.messages.some((m) => m.subject === 'all-hands')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GAP-153 — periodic prune of stale + old-completed sessions.
+//
+// We use `harness.prune` (the on-demand RPC) with very small thresholds
+// (fractional days, ≈ a few seconds) so the test doesn't have to wait for
+// the periodic timer or the 7-day production threshold. The runPrune
+// helper accepts fractional days because the SQL uses
+// `INTERVAL '1 day' * $param`.
+// ---------------------------------------------------------------------------
+
+describe('GAP-153: stale-session prune', () => {
+  it('harness.health includes prune state (initially zeroed)', async () => {
+    const health = (await rpc(socketPath, 'harness.health')) as {
+      prune?: { lastRunAt: string | null; lastAgedCount: number; lastDeletedCount: number };
+    };
+    expect(health.prune).toBeDefined();
+    // lastRunAt may or may not have run by now (the 5s startup setTimeout
+    // is unref'd but might fire); but the shape must be correct.
+    expect(typeof health.prune?.lastAgedCount).toBe('number');
+    expect(typeof health.prune?.lastDeletedCount).toBe('number');
+  });
+
+  it('ages out a session whose age exceeds the stale threshold', async () => {
+    // Register a stable-id session, then wait briefly so its started_at
+    // is older than the threshold we'll pass to prune.
+    await rpc(socketPath, 'session.register', {
+      agentId: 'stale-test',
+      agentName: 'stale-test',
+      backend: 'test',
+    });
+
+    // Sanity: row is currently active in session.list (which filters
+    // to ended_at IS NULL).
+    const before = (await rpc(socketPath, 'session.list')) as {
+      sessions: Array<{ id: string }>;
+    };
+    expect(before.sessions.find((s) => s.id === 'stale-test')).toBeDefined();
+
+    await new Promise((r) => setTimeout(r, 1100));
+
+    // staleDays = 0.00001 → ≈ 0.86s. With the 1.1s sleep above, the
+    // session is past the threshold.
+    const result = (await rpc(socketPath, 'harness.prune', {
+      staleDays: 0.00001,
+      hardDeleteDays: 365,
+    })) as { aged: number; deleted: number };
+    expect(result.aged).toBeGreaterThanOrEqual(1);
+    expect(result.deleted).toBe(0);
+
+    // After prune, the row is no longer in session.list (proof its
+    // ended_at + exit_summary were populated by runPrune; session.list
+    // hides any row with ended_at IS NOT NULL).
+    const after = (await rpc(socketPath, 'session.list')) as {
+      sessions: Array<{ id: string }>;
+    };
+    expect(after.sessions.find((s) => s.id === 'stale-test')).toBeUndefined();
+  });
+
+  it('hard-deletes a session ended longer than hardDeleteDays', async () => {
+    // Register, end, then prune with a tiny hardDeleteDays.
+    await rpc(socketPath, 'session.register', {
+      agentId: 'hard-delete-test',
+      agentName: 'hard-delete-test',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'session.end', {
+      actorAgentId: 'hard-delete-test',
+      sessionId: 'hard-delete-test',
+      summary: 'test end',
+    });
+    await new Promise((r) => setTimeout(r, 1100));
+
+    const result = (await rpc(socketPath, 'harness.prune', {
+      staleDays: 365,
+      hardDeleteDays: 0.00001,
+    })) as { aged: number; deleted: number };
+
+    expect(result.deleted).toBeGreaterThanOrEqual(1);
+
+    const listing = (await rpc(socketPath, 'session.list')) as {
+      sessions: Array<{ id: string }>;
+    };
+    expect(listing.sessions.find((s) => s.id === 'hard-delete-test')).toBeUndefined();
+  });
+
+  it('harness.health reports prune state after a prune run', async () => {
+    await rpc(socketPath, 'harness.prune', { staleDays: 365, hardDeleteDays: 365 });
+    const health = (await rpc(socketPath, 'harness.health')) as {
+      prune: { lastRunAt: string | null; lastAgedCount: number; lastDeletedCount: number };
+    };
+    expect(health.prune.lastRunAt).not.toBeNull();
+    // The aged/deleted counts reflect the LAST prune, which used very
+    // permissive thresholds — should be 0 for both.
+    expect(health.prune.lastAgedCount).toBe(0);
+    expect(health.prune.lastDeletedCount).toBe(0);
+  });
+
+  it('clamps negative thresholds to zero (defensive)', async () => {
+    // staleDays=0 → "older than NOW" → matches every session with
+    // ended_at IS NULL. We need at least one such session to verify
+    // the clamp is wider than negative-would-be (which Postgres
+    // semantics handle the same way as 0 here, but the explicit
+    // clamp is what we're checking the call doesn't error on).
+    await rpc(socketPath, 'session.register', {
+      agentId: 'clamp-test',
+      agentName: 'clamp-test',
+      backend: 'test',
+    });
+    const result = (await rpc(socketPath, 'harness.prune', {
+      staleDays: -100,
+      hardDeleteDays: 365,
+    })) as { aged: number };
+    // Negative was clamped to 0 → matches all unended sessions.
+    expect(result.aged).toBeGreaterThanOrEqual(1);
+  });
+});
