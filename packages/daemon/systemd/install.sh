@@ -27,8 +27,14 @@ if [ ! -f "$DAEMON_PATH" ]; then
 fi
 
 mkdir -p "$UNIT_DIR"
-# Substitute the resolved DAEMON_PATH into the unit file.
-sed "s|/usr/bin/env node %h/suite/revdev/packages/daemon/dist/cli.js|/usr/bin/env node $DAEMON_PATH|" \
+# Substitute the resolved DAEMON_PATH into the unit file. Wrap the path in
+# double quotes so paths with whitespace (e.g. WSL repos under
+# `/mnt/c/Users/<name with space>/...`) survive systemd's argv parsing.
+# Also escape any special chars that would break the sed replacement
+# (forward slashes are fine because we use `|` as the sed delimiter; the
+# real risk is `&` and the quote char itself).
+ESCAPED_PATH=$(printf '%s\n' "$DAEMON_PATH" | sed 's/[&"]/\\&/g')
+sed "s|/usr/bin/env node %h/suite/revdev/packages/daemon/dist/cli.js|/usr/bin/env node \"$ESCAPED_PATH\"|" \
   "$TEMPLATE" > "$UNIT_DIR/revdev-daemon.service"
 
 systemctl --user daemon-reload
