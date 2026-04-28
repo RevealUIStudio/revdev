@@ -259,3 +259,325 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
     expect(health.neonSyncActive).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GAP-154 Phase 3 — mail / files / tasks / events sync wiring.
+// Same mock pattern as Phase 2: inject a recording client, exercise the
+// RPC, assert the right SQL fired with the right values.
+// ---------------------------------------------------------------------------
+
+describe('GAP-154 Phase 3: mail.* dual-write', () => {
+  it('mail.send mirrors to coordination_mail', async () => {
+    // Need a registered sender for the RPC (mail.send requireAgent's it).
+    await rpc(socketPath, 'session.register', {
+      agentId: 'mail-sender',
+      agentName: 'mail-sender',
+      backend: 'test',
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'mail.send', {
+      actorAgentId: 'mail-sender',
+      to: 'mail-recipient',
+      subject: 'phase 3 hi',
+      body: 'hello from a mock',
+    });
+    expect(recordedCalls.length).toBe(1);
+    const [send] = recordedCalls;
+    const sql = send?.strings.join('') ?? '';
+    expect(sql).toMatch(/INSERT\s+INTO\s+coordination_mail/i);
+    expect(send?.values).toEqual([
+      'mail-sender',
+      'mail-recipient',
+      'phase 3 hi',
+      'hello from a mock',
+    ]);
+  });
+
+  it('mail.broadcast fans out one Neon write per recipient', async () => {
+    // Register sender + 2 recipients (broadcast targets all OTHER active
+    // sessions).
+    await rpc(socketPath, 'session.register', {
+      agentId: 'broadcaster',
+      agentName: 'broadcaster',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'session.register', {
+      agentId: 'recipient-a',
+      agentName: 'recipient-a',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'session.register', {
+      agentId: 'recipient-b',
+      agentName: 'recipient-b',
+      backend: 'test',
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'mail.broadcast', {
+      actorAgentId: 'broadcaster',
+      subject: 'broadcast subject',
+      body: 'broadcast body',
+    });
+    // One Neon INSERT per recipient.
+    const inserts = recordedCalls.filter((c) =>
+      /INSERT\s+INTO\s+coordination_mail/i.test(c.strings.join('')),
+    );
+    expect(inserts.length).toBeGreaterThanOrEqual(2);
+    // Recipients should appear in the values somewhere.
+    const allValues = inserts.flatMap((c) => c.values);
+    expect(allValues).toContain('recipient-a');
+    expect(allValues).toContain('recipient-b');
+    // Sender should not appear as a TO target.
+    const tos = inserts.map((c) => c.values[1]);
+    expect(tos).not.toContain('broadcaster');
+  });
+
+  it('mail.markRead uses hints to scope the Neon UPDATE', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'reader',
+      agentName: 'reader',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'session.register', {
+      agentId: 'sender',
+      agentName: 'sender',
+      backend: 'test',
+    });
+    // Send one message, capture its id.
+    const sendResult = (await rpc(socketPath, 'mail.send', {
+      actorAgentId: 'sender',
+      to: 'reader',
+      subject: 'specific subject',
+      body: 'specific body',
+    })) as { id: number };
+    recordedCalls = [];
+
+    await rpc(socketPath, 'mail.markRead', {
+      actorAgentId: 'reader',
+      messageIds: [sendResult.id],
+    });
+    // markRead does: SELECT hints (PGlite fetch — not mocked) + UPDATE
+    // PGlite (also not mocked) + the syncMailMarkRead helper which calls
+    // Neon. The mock recorder receives only the Neon call.
+    const updates = recordedCalls.filter((c) =>
+      /UPDATE\s+coordination_mail/i.test(c.strings.join('')),
+    );
+    expect(updates.length).toBeGreaterThanOrEqual(1);
+    // The hint-scoped UPDATE should reference the subject + body.
+    const update = updates[0];
+    expect(update?.values).toContain('reader');
+    expect(update?.values).toContain('specific subject');
+    expect(update?.values).toContain('specific body');
+  });
+});
+
+describe('GAP-154 Phase 3: files.* dual-write', () => {
+  it('files.reserve mirrors successful claims to coordination_file_claims', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'file-reserver',
+      agentName: 'file-reserver',
+      backend: 'test',
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'files.reserve', {
+      actorAgentId: 'file-reserver',
+      paths: ['src/a.ts', 'src/b.ts'],
+      reason: 'editing',
+      ttlSeconds: 600,
+    });
+    const inserts = recordedCalls.filter((c) =>
+      /INSERT\s+INTO\s+coordination_file_claims/i.test(c.strings.join('')),
+    );
+    expect(inserts.length).toBe(2);
+    const allValues = inserts.flatMap((c) => c.values);
+    expect(allValues).toContain('src/a.ts');
+    expect(allValues).toContain('src/b.ts');
+    expect(allValues).toContain('file-reserver');
+  });
+
+  it('files.release with paths DELETEs scoped to (sessionId, paths)', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'file-releaser',
+      agentName: 'file-releaser',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'files.reserve', {
+      actorAgentId: 'file-releaser',
+      paths: ['src/c.ts'],
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'files.release', {
+      actorAgentId: 'file-releaser',
+      paths: ['src/c.ts'],
+    });
+    const deletes = recordedCalls.filter((c) =>
+      /DELETE\s+FROM\s+coordination_file_claims/i.test(c.strings.join('')),
+    );
+    expect(deletes.length).toBe(1);
+    const sql = deletes[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/file_path\s*=\s*ANY/i);
+    expect(deletes[0]?.values).toContain('file-releaser');
+  });
+
+  it('files.release without paths DELETEs all rows for the session', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'file-releaser-all',
+      agentName: 'file-releaser-all',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'files.reserve', {
+      actorAgentId: 'file-releaser-all',
+      paths: ['src/d.ts'],
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'files.release', {
+      actorAgentId: 'file-releaser-all',
+      // no paths — release all
+    });
+    const deletes = recordedCalls.filter((c) =>
+      /DELETE\s+FROM\s+coordination_file_claims/i.test(c.strings.join('')),
+    );
+    expect(deletes.length).toBe(1);
+    const sql = deletes[0]?.strings.join('') ?? '';
+    expect(sql).not.toMatch(/file_path/i); // no path filter
+    expect(deletes[0]?.values).toEqual(['file-releaser-all']);
+  });
+});
+
+describe('GAP-154 Phase 3: tasks.* dual-write', () => {
+  it('tasks.create mirrors to coordination_work_items with title/description split', async () => {
+    recordedCalls = [];
+    await rpc(socketPath, 'tasks.create', {
+      actorAgentId: 'creator',
+      taskId: 'task-1',
+      title: 'investigate',
+      description: 'check the foo subsystem',
+      priority: 'high',
+    });
+    const inserts = recordedCalls.filter((c) =>
+      /INSERT\s+INTO\s+coordination_work_items/i.test(c.strings.join('')),
+    );
+    expect(inserts.length).toBe(1);
+    expect(inserts[0]?.values).toContain('task-1');
+    expect(inserts[0]?.values).toContain('investigate'); // title
+    expect(inserts[0]?.values).toContain('check the foo subsystem'); // description
+    expect(inserts[0]?.values).toContain(1); // priority='high' → 1
+  });
+
+  it('tasks.claim mirrors UPDATE to coordination_work_items', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'claimer',
+      agentName: 'claimer',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'tasks.create', {
+      actorAgentId: 'creator',
+      taskId: 'task-2',
+      title: 'thing',
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'tasks.claim', {
+      actorAgentId: 'claimer',
+      taskId: 'task-2',
+    });
+    const updates = recordedCalls.filter((c) =>
+      /UPDATE\s+coordination_work_items/i.test(c.strings.join('')),
+    );
+    expect(updates.length).toBe(1);
+    const sql = updates[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/'claimed'/);
+    expect(updates[0]?.values).toContain('claimer');
+    expect(updates[0]?.values).toContain('task-2');
+  });
+
+  it("tasks.complete translates daemon 'completed' → Neon 'done'", async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'completer',
+      agentName: 'completer',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'tasks.create', {
+      actorAgentId: 'creator',
+      taskId: 'task-3',
+      title: 'thing',
+    });
+    await rpc(socketPath, 'tasks.claim', {
+      actorAgentId: 'completer',
+      taskId: 'task-3',
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'tasks.complete', {
+      actorAgentId: 'completer',
+      taskId: 'task-3',
+      summary: 'fixed it',
+    });
+    const updates = recordedCalls.filter((c) =>
+      /UPDATE\s+coordination_work_items/i.test(c.strings.join('')),
+    );
+    expect(updates.length).toBe(1);
+    const sql = updates[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/'done'/);
+    expect(sql).toMatch(/completed_at\s*=\s*NOW\(\)/i);
+    // Summary appended via the COALESCE-||-' — '-||-summary pattern.
+    expect(updates[0]?.values).toContain('fixed it');
+  });
+
+  it('tasks.release mirrors UPDATE setting status=open + owner_agent=NULL', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'releaser',
+      agentName: 'releaser',
+      backend: 'test',
+    });
+    await rpc(socketPath, 'tasks.create', {
+      actorAgentId: 'creator',
+      taskId: 'task-4',
+      title: 'thing',
+    });
+    await rpc(socketPath, 'tasks.claim', {
+      actorAgentId: 'releaser',
+      taskId: 'task-4',
+    });
+    recordedCalls = [];
+    await rpc(socketPath, 'tasks.release', {
+      actorAgentId: 'releaser',
+      taskId: 'task-4',
+    });
+    const updates = recordedCalls.filter((c) =>
+      /UPDATE\s+coordination_work_items/i.test(c.strings.join('')),
+    );
+    expect(updates.length).toBe(1);
+    const sql = updates[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/'open'/);
+    expect(sql).toMatch(/owner_agent\s*=\s*NULL/i);
+    expect(updates[0]?.values).toContain('task-4');
+    expect(updates[0]?.values).toContain('releaser');
+  });
+});
+
+describe('GAP-154 Phase 3: events.log dual-write', () => {
+  it('events.log mirrors to coordination_events with payload as JSONB', async () => {
+    recordedCalls = [];
+    await rpc(socketPath, 'events.log', {
+      actorAgentId: 'event-source',
+      // The handler reads params.agentId as the event source (independent
+      // of dispatch identity). Pass it for assertion clarity even though
+      // ctx.agentId would also work as a fallback.
+      agentId: 'event-source',
+      eventType: 'tool.invoke',
+      payload: { tool: 'Read', durationMs: 42 },
+    });
+    const inserts = recordedCalls.filter((c) =>
+      /INSERT\s+INTO\s+coordination_events/i.test(c.strings.join('')),
+    );
+    expect(inserts.length).toBe(1);
+    expect(inserts[0]?.values).toContain('event-source');
+    expect(inserts[0]?.values).toContain('tool.invoke');
+    // 'info' is inline SQL in syncEventLog (not a parameter) — assert on
+    // the strings, not values.
+    expect(inserts[0]?.strings.join('')).toMatch(/'info'/);
+    // payload is JSON-stringified before binding.
+    const payloadValue = inserts[0]?.values.find(
+      (v) => typeof v === 'string' && v.includes('"tool"'),
+    );
+    expect(payloadValue).toBeDefined();
+  });
+});
