@@ -148,6 +148,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.4.3
         version: 0.4.4
+      '@neondatabase/serverless':
+        specifier: ^1.1.0
+        version: 1.1.0
       '@revdev/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -162,7 +165,7 @@ importers:
         version: 0.3.4
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@electric-sql/pglite@0.4.4)(pg@8.20.0)
+        version: 0.45.2(@electric-sql/pglite@0.4.4)(@neondatabase/serverless@1.1.0)(pg@8.20.0)
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -1011,6 +1014,10 @@ packages:
     peerDependencies:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
+
+  '@neondatabase/serverless@1.1.0':
+    resolution: {integrity: sha512-r3ZZhRjEcfEdKIZnoB1RusNgvHuaBRqfCzV4Gi+5A9yUX0S4HTws/ASWqt13wL4y4I+0rqsWGdA2w7EQXHi3+Q==}
+    engines: {node: '>=19.0.0'}
 
   '@oxc-project/types@0.124.0':
     resolution: {integrity: sha512-VBFWMTBvHxS11Z5Lvlr3IWgrwhMTXV+Md+EQF0Xf60+wAdsGFTBx7X7K/hP4pi8N7dcm1RvcHwDxZ16Qx8keUg==}
@@ -3930,6 +3937,8 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
+  '@neondatabase/serverless@1.1.0': {}
+
   '@oxc-project/types@0.124.0': {}
 
   '@preact/signals-core@1.14.1': {}
@@ -4994,9 +5003,10 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-orm@0.45.2(@electric-sql/pglite@0.4.4)(pg@8.20.0):
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.4.4)(@neondatabase/serverless@1.1.0)(pg@8.20.0):
     optionalDependencies:
       '@electric-sql/pglite': 0.4.4
+      '@neondatabase/serverless': 1.1.0
       pg: 8.20.0
 
   dunder-proto@1.0.1:
