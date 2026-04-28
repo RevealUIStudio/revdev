@@ -26,9 +26,19 @@ import {
   initNeonSync,
   isNeonSyncActive,
   listFleetSessions,
+  syncEventLog,
+  syncFilesRelease,
+  syncFilesReserve,
+  syncMailBroadcast,
+  syncMailMarkRead,
+  syncMailSend,
   syncSessionEnd,
   syncSessionRegister,
   syncSessionUpdate,
+  syncTaskClaim,
+  syncTaskComplete,
+  syncTaskCreate,
+  syncTaskRelease,
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import { SCHEMA_SQL } from './storage/schema.js';
@@ -384,6 +394,8 @@ registerHandler('mail.send', async (params, db, ctx) => {
      VALUES ($1, $2, $3, $4) RETURNING id`,
     [from, to, subject, body],
   );
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
+  await syncMailSend({ fromAgent: from, toAgent: to, subject, body });
   return { sent: true, id: result.rows[0]?.id ?? null };
 });
 
@@ -417,6 +429,13 @@ registerHandler('mail.broadcast', async (params, db, ctx) => {
       [from, target.id, subject, body],
     );
   }
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
+  await syncMailBroadcast({
+    fromAgent: from,
+    toAgents: sessions.rows.map((r) => r.id),
+    subject,
+    body,
+  });
   return { broadcast: true, sent: sessions.rows.length, recipients: sessions.rows.length };
 });
 
@@ -429,11 +448,22 @@ registerHandler('mail.markRead', async (params, db, ctx) => {
     .filter((n) => Number.isFinite(n));
   if (ids.length === 0) return { marked: 0 };
 
+  // Fetch (subject, body) hints BEFORE the update so we can scope the
+  // Neon sync. Without these the sync falls back to "mark N oldest unread"
+  // which is over-broad. See syncMailMarkRead notes.
+  const hintRows = await db.query<{ subject: string; body: string }>(
+    `SELECT subject, body FROM agent_messages
+     WHERE to_agent = $1 AND id = ANY($2::int[]) AND read = FALSE`,
+    [agentId, ids],
+  );
+
   const result = await db.query(
     `UPDATE agent_messages SET read = TRUE
      WHERE to_agent = $1 AND id = ANY($2::int[])`,
     [agentId, ids],
   );
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
+  await syncMailMarkRead({ reader: agentId, ids, hints: hintRows.rows });
   return { marked: result.affectedRows ?? ids.length };
 });
 
@@ -475,6 +505,13 @@ registerHandler('files.reserve', async (params, db, ctx) => {
     reserved.push(p);
   }
 
+  // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3).
+  // Only sync the paths we actually reserved (not conflicts). The TTL +
+  // reason fields don't exist on the Neon side; PGlite remains the source
+  // of truth for expiry. See syncFilesReserve notes.
+  if (reserved.length > 0) {
+    await syncFilesReserve({ sessionId: agentId, paths: reserved });
+  }
   return {
     success: conflicts.length === 0,
     reserved,
@@ -501,6 +538,8 @@ registerHandler('files.release', async (params, db, ctx) => {
   // If no paths given, release all of this agent's reservations.
   if (paths.length === 0) {
     const r = await db.query(`DELETE FROM file_reservations WHERE agent_id = $1`, [agentId]);
+    // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3).
+    await syncFilesRelease({ sessionId: agentId, paths: [] });
     return { released: r.affectedRows ?? 0 };
   }
 
@@ -509,6 +548,8 @@ registerHandler('files.release', async (params, db, ctx) => {
      WHERE agent_id = $1 AND file_path = ANY($2::text[])`,
     [agentId, paths],
   );
+  // Best-effort dual-write (GAP-154 Phase 3).
+  await syncFilesRelease({ sessionId: agentId, paths });
   return { released: r.affectedRows ?? 0 };
 });
 
@@ -540,6 +581,16 @@ registerHandler('tasks.create', async (params, db) => {
     id,
     full || description || title || '(untitled)',
   ]);
+  // Best-effort dual-write to coordination_work_items (GAP-154 Phase 3).
+  // Map daemon's flat description into Neon's title + description split.
+  // Numeric priority on the Neon side: 'low'→0 'normal'→0 'high'→1 'urgent'→2.
+  const priorityNum = priority === 'urgent' ? 2 : priority === 'high' ? 1 : 0;
+  await syncTaskCreate({
+    id,
+    title: title || description || id,
+    description: title && description ? description : '',
+    priority: priorityNum,
+  });
   return { taskId: id, id };
 });
 
@@ -590,6 +641,8 @@ registerHandler('tasks.claim', async (params, db, ctx) => {
       status: current.rows[0]?.status ?? 'unknown',
     };
   }
+  // Best-effort dual-write (GAP-154 Phase 3).
+  await syncTaskClaim({ taskId, ownerAgent: agentId });
   return { success: true, claimed: taskId, owner: agentId };
 });
 
@@ -613,6 +666,11 @@ registerHandler('tasks.complete', async (params, db, ctx) => {
         [taskId, agentId],
       );
   const ok = (r.affectedRows ?? 0) > 0;
+  // Best-effort dual-write (GAP-154 Phase 3).
+  // Translates daemon 'completed' → Neon 'done' inside the helper.
+  if (ok) {
+    await syncTaskComplete({ taskId, ownerAgent: agentId, summary });
+  }
   return { ok, completed: ok ? taskId : null };
 });
 
@@ -627,6 +685,10 @@ registerHandler('tasks.release', async (params, db, ctx) => {
     [taskId, agentId],
   );
   const ok = (r.affectedRows ?? 0) > 0;
+  // Best-effort dual-write (GAP-154 Phase 3).
+  if (ok) {
+    await syncTaskRelease({ taskId, ownerAgent: agentId });
+  }
   return { ok, released: ok ? taskId : null };
 });
 
@@ -641,6 +703,8 @@ registerHandler('events.log', async (params, db, ctx) => {
     eventType,
     JSON.stringify(payload),
   ]);
+  // Best-effort dual-write to coordination_events (GAP-154 Phase 3).
+  await syncEventLog({ agentId, type: eventType, payload });
   return { logged: true };
 });
 
