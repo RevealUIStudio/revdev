@@ -26,6 +26,7 @@
   },
   "files": [
     "dist",
+    "systemd",
     "LICENSE"
   ],
   "scripts": {
@@ -33,6 +34,8 @@
     "clean": "rm -rf dist",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
+    "start:detached": "node dist/cli.js --detach",
+    "setup:systemd": "bash systemd/install.sh",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",

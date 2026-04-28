@@ -1,0 +1,28 @@
+[Unit]
+Description=RevDev coordination daemon
+Documentation=https://github.com/RevealUIStudio/revdev
+After=network-online.target
+
+[Service]
+# Adjust the path if @revdev/daemon is installed somewhere other than the
+# repo checkout. The setup script writes a unit with the correct path on
+# install; this template uses %h (user home) as a sensible default for
+# the contributor case.
+ExecStart=/usr/bin/env node %h/suite/revdev/packages/daemon/dist/cli.js
+Restart=on-failure
+RestartSec=2
+# WSL note: `loginctl enable-linger $(whoami)` is required for the service
+# to keep running across logouts. Without lingering, systemd-user units
+# stop when the user's last session exits.
+Environment=NODE_ENV=production
+# Hardening: mount tmpfs for any /tmp use we have. Don't lock down the
+# filesystem with ProtectSystem=strict — the daemon shells out to git
+# (`git worktree add/remove` in vcs.ts, etc.) and those touch project
+# `.git` directories outside ~/.local/share/revealui. ProtectSystem=full
+# protects /usr, /boot, /efi but leaves $HOME writable, which the git
+# RPCs need.
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=default.target
