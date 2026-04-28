@@ -30,14 +30,7 @@ import {
   syncSessionRegister,
   syncSessionUpdate,
 } from './neon.js';
-import {
-  getPrometheusMetrics,
-  getSystemHealth,
-  initObservability,
-  onConnect,
-  onDisconnect,
-  trackRpcCall,
-} from './observability.js';
+import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import { SCHEMA_SQL } from './storage/schema.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
 

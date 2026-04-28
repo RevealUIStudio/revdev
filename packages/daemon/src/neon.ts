@@ -27,13 +27,12 @@
  * fine single-machine; sync is purely additive.
  */
 
-import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { type NeonQueryFunction, neon } from '@neondatabase/serverless';
 import { createLogger } from '@revealui/utils/logger';
 
 const log = createLogger({ service: 'revdev-daemon-neon' });
 
 let client: NeonQueryFunction<false, false> | null = null;
-let configured = false;
 
 /**
  * Initialize the Neon client from `POSTGRES_URL` env var (or override).
@@ -42,7 +41,6 @@ let configured = false;
  */
 export function initNeonSync(databaseUrl?: string | undefined): void {
   const url = databaseUrl ?? process.env.POSTGRES_URL ?? process.env.DATABASE_URL ?? '';
-  configured = true;
   if (url) {
     client = neon(url);
     log.info('neon sync enabled', { hasUrl: true });
@@ -55,7 +53,6 @@ export function initNeonSync(databaseUrl?: string | undefined): void {
 /** Test seam: inject a fake client for unit tests. */
 export function setNeonClientForTesting(fake: NeonQueryFunction<false, false> | null): void {
   client = fake;
-  configured = true;
 }
 
 /** Returns true if Neon sync is currently active. Useful for diagnostics. */
@@ -203,5 +200,4 @@ export async function listFleetSessions(): Promise<FleetSessionRow[]> {
 /** Reset module state. Test-only. */
 export function _resetForTesting(): void {
   client = null;
-  configured = false;
 }

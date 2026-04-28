@@ -117,15 +117,16 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
     // session row).
     expect(recordedCalls.length).toBe(2);
 
-    const agentCall = recordedCalls[0]!.strings.join('');
+    const [agentRecord, sessionRecord] = recordedCalls;
+    const agentCall = agentRecord?.strings.join('') ?? '';
     expect(agentCall).toMatch(/INSERT\s+INTO\s+coordination_agents/i);
     expect(agentCall).toMatch(/ON\s+CONFLICT/i);
-    expect(recordedCalls[0]!.values).toContain('sync-test-1');
+    expect(agentRecord?.values).toContain('sync-test-1');
 
-    const sessionCall = recordedCalls[1]!.strings.join('');
+    const sessionCall = sessionRecord?.strings.join('') ?? '';
     expect(sessionCall).toMatch(/INSERT\s+INTO\s+coordination_sessions/i);
     expect(sessionCall).toMatch(/'active'/i); // status defaults to active
-    expect(recordedCalls[1]!.values).toContain('sync-test-1');
+    expect(sessionRecord?.values).toContain('sync-test-1');
   });
 
   it('session.update with task triggers UPDATE on coordination_sessions', async () => {
@@ -144,10 +145,11 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
     });
 
     expect(recordedCalls.length).toBe(1);
-    const updateCall = recordedCalls[0]!.strings.join('');
+    const [updateRecord] = recordedCalls;
+    const updateCall = updateRecord?.strings.join('') ?? '';
     expect(updateCall).toMatch(/UPDATE\s+coordination_sessions/i);
     expect(updateCall).toMatch(/SET\s+task/i);
-    expect(recordedCalls[0]!.values).toEqual(['updated task description', 'sync-test-2']);
+    expect(updateRecord?.values).toEqual(['updated task description', 'sync-test-2']);
   });
 
   it('session.update without task does NOT call Neon (nothing to mirror)', async () => {
@@ -182,12 +184,13 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
     });
 
     expect(recordedCalls.length).toBe(1);
-    const endCall = recordedCalls[0]!.strings.join('');
+    const [endRecord] = recordedCalls;
+    const endCall = endRecord?.strings.join('') ?? '';
     expect(endCall).toMatch(/UPDATE\s+coordination_sessions/i);
     expect(endCall).toMatch(/ended_at\s*=\s*NOW\(\)/i);
     expect(endCall).toMatch(/'ended'/i);
     expect(endCall).toMatch(/metadata/i);
-    expect(recordedCalls[0]!.values).toContain('sync-test-4');
+    expect(endRecord?.values).toContain('sync-test-4');
   });
 
   it("session.list with scope='fleet' queries Neon, default scope queries PGlite", async () => {
@@ -214,7 +217,8 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
     expect(fleet.sessions.length).toBe(1);
     expect(fleet.sessions[0]?.id).toBe('remote-agent-on-other-host');
     expect(recordedCalls.length).toBe(1);
-    expect(recordedCalls[0]!.strings.join('')).toMatch(/FROM\s+coordination_sessions/i);
+    const [fleetRecord] = recordedCalls;
+    expect(fleetRecord?.strings.join('') ?? '').toMatch(/FROM\s+coordination_sessions/i);
 
     // Default scope: should NOT touch Neon.
     recordedCalls = [];
