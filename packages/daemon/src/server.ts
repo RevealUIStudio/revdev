@@ -23,6 +23,14 @@ import { createLogger } from '@revealui/utils/logger';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
 import {
+  initNeonSync,
+  isNeonSyncActive,
+  listFleetSessions,
+  syncSessionEnd,
+  syncSessionRegister,
+  syncSessionUpdate,
+} from './neon.js';
+import {
   getPrometheusMetrics,
   getSystemHealth,
   initObservability,
@@ -268,6 +276,11 @@ registerHandler('session.register', async (params, db, ctx) => {
   ctx.agentName = agentName;
   ctx.boundVia = 'register';
 
+  // Best-effort dual-write to Neon. Failures are logged inside the helper;
+  // the RPC succeeds based on the PGlite write above. See GAP-154 §E /
+  // Phase 1 decision #5 ("dual-write failure: best-effort, don't fail RPC").
+  await syncSessionRegister({ agentId: id, agentName, env, task: workDir, pid });
+
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
   return {
@@ -295,22 +308,43 @@ registerHandler('session.attach', async (params, db, ctx) => {
   return { attached: true, agentId };
 });
 
-registerHandler('session.list', async (_params, db) => {
+registerHandler('session.list', async (params, db) => {
+  // Default scope is 'local' — query the daemon's own PGlite, which is
+  // fast (in-process) and authoritative for this machine.
+  // scope='fleet' queries the Neon coordination_sessions table for active
+  // sessions across ALL daemons writing to the same Neon db. This is the
+  // signal callers want for cross-machine peer detection. Returns an
+  // empty list (not an error) when Neon sync is disabled — callers can
+  // distinguish via harness.health.neonSyncActive.
+  const scope = strOrNull(params.scope);
+  if (scope === 'fleet') {
+    const fleet = await listFleetSessions();
+    return { sessions: fleet, scope: 'fleet', neonSyncActive: isNeonSyncActive() };
+  }
   const result = await db.query<Record<string, unknown>>(
     `SELECT * FROM agent_sessions WHERE ended_at IS NULL ORDER BY started_at DESC`,
   );
-  return { sessions: result.rows };
+  return { sessions: result.rows, scope: 'local' };
 });
 
 registerHandler('session.end', async (params, db, ctx) => {
   // Prefer caller's own session, but allow explicit override (e.g. admin cleanup).
   const target = strOrNull(params.sessionId) ?? strOrNull(params.agentId) ?? ctx.agentId;
   if (!target) throw new Error('No session to end');
-  await db.query(`UPDATE agent_sessions SET ended_at = NOW() WHERE id = $1`, [target]);
+  const summary = strOrNull(params.summary);
+  await db.query(
+    `UPDATE agent_sessions
+        SET ended_at = NOW(),
+            exit_summary = COALESCE($2, exit_summary)
+      WHERE id = $1`,
+    [target, summary],
+  );
   if (ctx.agentId === target) {
     ctx.agentId = null;
     ctx.agentName = null;
   }
+  // Best-effort dual-write — see GAP-154 §E.
+  await syncSessionEnd({ sessionId: target, summary });
   return { ended: target };
 });
 
@@ -334,6 +368,12 @@ registerHandler('session.update', async (params, db, ctx) => {
   }
   vals.push(target);
   await db.query(`UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = $${i}`, vals);
+  // Best-effort dual-write — task is the only column the Neon-side
+  // session row exposes from the daemon's update; files / updated_at
+  // are daemon-only concerns. See GAP-154 §E.
+  if (task !== null) {
+    await syncSessionUpdate({ sessionId: target, task });
+  }
   return { updated: target };
 });
 
@@ -640,6 +680,10 @@ registerHandler('harness.health', async (_params, db) => {
       lastAgedCount: pruneState.lastAgedCount,
       lastDeletedCount: pruneState.lastDeletedCount,
     },
+    // GAP-154: signal whether daemon→Neon sync is wired this run. Callers
+    // can use this to decide whether `session.list({scope:'fleet'})`
+    // returning empty means "no peers" or "no fleet visibility".
+    neonSyncActive: isNeonSyncActive(),
   };
 });
 
@@ -702,6 +746,10 @@ export async function startDaemon(
 
   // Initialize license guard (logs banner)
   initLicenseGuard();
+
+  // Initialize Neon sync (GAP-154 Phase 2). No-op when POSTGRES_URL is
+  // unset — daemon runs single-machine fine; sync is purely additive.
+  initNeonSync();
 
   // Ensure data directory exists
   await mkdir(cfg.dataDir, { recursive: true });

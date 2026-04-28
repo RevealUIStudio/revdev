@@ -14,8 +14,13 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startDaemon } from '../server.js';
+
+// Daemon startup (key generation + license guard + PGlite + socket bind)
+// can flirt with 10s in CI. Match the pattern in coordination.test.ts so
+// neither this suite nor its hooks time out on a slow runner.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 // ---------------------------------------------------------------------------
 // Test helpers — mirror the Tauri bridge's fresh-socket-per-call pattern
