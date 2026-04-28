@@ -57,11 +57,13 @@ jobs:
           queries: security-and-quality
           config-file: ./.github/codeql/codeql-config.yml
 
-      # JS/TS-specific setup: install deps so CodeQL sees the full module graph
+      # JS/TS-specific setup: install deps so CodeQL sees the full module graph.
+      # Don't pin a version on pnpm/action-setup — the root package.json's
+      # `packageManager` field already specifies `pnpm@10.12.1`, and the
+      # action errors with "Multiple versions of pnpm specified" if both
+      # are set.
       - if: matrix.language == 'javascript-typescript'
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - if: matrix.language == 'javascript-typescript'
         uses: actions/setup-node@v4
