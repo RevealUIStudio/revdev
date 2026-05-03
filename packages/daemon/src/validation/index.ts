@@ -6,7 +6,6 @@
  * JSON-RPC -32602 (Invalid params) on failure.
  */
 
-import { z } from 'zod';
 import { schemas } from './schemas.js';
 
 export * from './limits.js';
