@@ -154,6 +154,12 @@ function generateKeypair(): void {
 }
 
 // --- Main ---
+// Honor --help before any state-changing action: --generate-keypair writes to
+// revvault, so a `--generate-keypair --help` call must NOT rotate keys.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  parseArgs(); // prints help and exits
+}
+
 if (process.argv.includes('--generate-keypair')) {
   generateKeypair();
   process.exit(0);
