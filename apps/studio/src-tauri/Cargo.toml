@@ -31,7 +31,7 @@ secrecy = "0.10"
 dirs = "6"
 which = "7"
 arboard = "3"
-russh = "0.58"
+russh = "0.60"
 tokio = { version = "1", features = ["sync", "net", "io-util"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
