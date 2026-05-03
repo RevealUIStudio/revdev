@@ -15,9 +15,13 @@ Built with the [Charm](https://charm.sh/) ecosystem:
 
 ## Usage
 
+The intended entry point — once hosted deployment ships — is a single SSH command:
+
 ```bash
-ssh console.revealui.com
+ssh console.revealui.com    # planned — hosted endpoint not yet live
 ```
+
+Until then, run locally via the [Development](#development) section.
 
 ## Development
 
