@@ -23,6 +23,30 @@ Environment=NODE_ENV=production
 # RPCs need.
 PrivateTmp=true
 ProtectSystem=full
+# Memory limits — defense-in-depth against runaway-leak scenarios.
+# Sized off a single reference observation on a WSL/Ubuntu host:
+# steady state ~280 MiB, startup peak ~780 MiB (PGlite schema init
+# + license validation + V8 warm-up). MemoryHigh is ~20 MiB above
+# the observed peak; MemoryMax is ~31% above peak. Combined with
+# the `Restart=on-failure` line above, a runaway leak that exceeds
+# 1G self-heals in <2s (kernel OOM-kills, systemd respawns).
+#
+# These defaults work for the reference install, but the cushion
+# above normal peak is intentionally narrow. Consumers running
+# heavier workloads (many concurrent agents, larger PGlite stores,
+# larger license payloads) may see higher peaks and want to bump
+# these values. Tune via a drop-in instead of editing this template:
+#
+#   ~/.config/systemd/user/revdev-daemon.service.d/override.conf
+#
+# Watch for soft-throttle events with:
+#
+#   journalctl --user -u revdev-daemon | grep -iE 'memory|cgroup'
+#
+# Bump MemoryHigh first; bump MemoryMax only if real leaks reach
+# the hard cap.
+MemoryHigh=800M
+MemoryMax=1G
 
 [Install]
 WantedBy=default.target
