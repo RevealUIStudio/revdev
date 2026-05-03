@@ -11,7 +11,7 @@ Last updated: 2026-04-20
 
 | Capability | Status |
 |---|---|
-| RS256 JWT license validation | Integrated (needs keypair) |
+| Ed25519 license validation | Integrated (needs keypair) |
 | Feature-based method gating | Done |
 | Structured JSON logging | Done |
 | Prometheus metrics + health checks | Done |
@@ -226,29 +226,22 @@ Then:
 
 ---
 
-### H2. Generate License Signing Keypair (RS256)
+### H2. Generate License Signing Keypair (Ed25519)
 
 **Priority**: P0 (BLOCKS license enforcement)  
 **Effort**: 30 minutes  
 **Who**: Founder
 
 ```bash
-# Generate RSA-2048 keypair for license JWT signing
-openssl genrsa -out /tmp/license-private.pem 2048
-openssl rsa -in /tmp/license-private.pem -pubout -out /tmp/license-public.pem
-
-# Store in revvault
-revvault set revdev/license-signing-private-key < /tmp/license-private.pem
-revvault set revdev/license-signing-public-key < /tmp/license-public.pem
-
-# Clean up plaintext
-rm /tmp/license-private.pem /tmp/license-public.pem
+# Generate Ed25519 keypair via the in-repo CLI; auto-stores both keys in revvault.
+# Writes private key to revdev/license-signing-key, public key to revdev/license-public-key.
+pnpm exec tsx scripts/generate-license-key.ts --generate-keypair
 ```
 
 Then:
-1. Set `REVEALUI_LICENSE_PUBLIC_KEY` in daemon environment (production)
-2. Set in CI for integration tests that need Pro+ access
-3. Add the public key to the Studio binary (embed in `tauri.conf.json` or resource)
+1. Set `REVDEV_LICENSE_PUBLIC_KEY` in daemon environment (production) — value is the PEM emitted by `--generate-keypair`, also stored at `revdev/license-public-key` in revvault.
+2. Set in CI for integration tests that need Pro+ access.
+3. Add the public key to the Studio binary (embed in `tauri.conf.json` or resource).
 
 ---
 
@@ -258,25 +251,19 @@ Then:
 **Effort**: 30 minutes  
 **Who**: Founder (after H2)
 
-Use `@revealui/core/license`'s `generateLicenseKey()` function:
+Use the in-repo signing CLI (`scripts/generate-license-key.ts`), which reads the private key from revvault at `revdev/license-signing-key` and emits a v2 license string of the form `RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>`:
 
-```typescript
-import { generateLicenseKey } from '@revealui/core/license';
-import { readFileSync } from 'node:fs';
+```bash
+# 1-year Pro license
+pnpm exec tsx scripts/generate-license-key.ts --tier pro --days 365
 
-const privateKey = readFileSync('/path/to/private.pem', 'utf-8');
-
-// Generate a Pro license for a customer (1 year expiry)
-const key = await generateLicenseKey(
-  { tier: 'pro', customerId: 'customer-uuid', maxSites: 5 },
-  privateKey,
-  365 * 24 * 60 * 60, // 1 year in seconds
-);
-
-console.log(key); // JWT string — deliver to customer
+# Perpetual Enterprise license
+pnpm exec tsx scripts/generate-license-key.ts --tier enterprise --perpetual
 ```
 
-Create a CLI script at `scripts/issue-license.ts` for repeatable key generation.
+Deliver the printed `RVUI.v2.…` string to the customer; they set it in their daemon environment as `REVEALUI_LICENSE_KEY`.
+
+> **Cleanup follow-up:** `scripts/issue-license.ts` duplicates this flow but reads from a different revvault path (`revdev/license-signing-private-key`). Pick one canonical script + path before relying on either in production tooling.
 
 ---
 
@@ -432,8 +419,8 @@ Post-launch:
 All of these must be true before first commercial sale:
 
 - [ ] H1: Tauri signing keypair generated and in GitHub secrets
-- [ ] H2: License RS256 keypair generated and in revvault
-- [ ] H3: Can generate valid customer JWT that unlocks Pro features
+- [ ] H2: License Ed25519 keypair generated and in revvault
+- [ ] H3: Can generate valid customer license key that unlocks Pro features
 - [ ] H4: Auto-update endpoint serves `latest.json`
 - [ ] H5: CI secrets configured for code-signed builds
 - [ ] H6: Daemon running as service on dev machine (dogfood)
