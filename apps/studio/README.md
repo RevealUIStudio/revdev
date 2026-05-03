@@ -1,5 +1,7 @@
 # RevealUI Studio
 
+> **Status:** Functional in dev — connects to the harness daemon, 506 frontend tests passing. Prebuilt binary release is **not** yet shipped (Tauri `studio-release.yml` CI in progress). Run locally via `pnpm tauri:dev` for now.
+
 Native AI experience — agent coordination hub, local inference management, visual agent dashboard, DevPod manager, and secret vault.
 
 Built with Tauri 2 + React 19 + Tailwind CSS v4.
