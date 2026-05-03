@@ -233,15 +233,17 @@ Then:
 **Who**: Founder
 
 ```bash
-# Generate Ed25519 keypair via the in-repo CLI; auto-stores both keys in revvault.
-# Writes private key to revdev/license-signing-key, public key to revdev/license-public-key.
-pnpm exec tsx scripts/generate-license-key.ts --generate-keypair
+# Mint Ed25519 keypair; auto-stores both halves in revvault at
+# revdev/license-signing-{private,public}-key and prints the public key PEM.
+pnpm exec tsx scripts/issue-license.ts --generate-keypair
 ```
 
 Then:
-1. Set `REVDEV_LICENSE_PUBLIC_KEY` in daemon environment (production) — value is the PEM emitted by `--generate-keypair`, also stored at `revdev/license-public-key` in revvault.
+1. Set `REVDEV_LICENSE_PUBLIC_KEY` in daemon environment (production) — value is the PEM the script printed, also stored at `revdev/license-signing-public-key`.
 2. Set in CI for integration tests that need Pro+ access.
 3. Add the public key to the Studio binary (embed in `tauri.conf.json` or resource).
+
+See `docs/KEY_GENERATION.md` for the full operator runbook (also covers the Tauri updater key).
 
 ---
 
@@ -251,19 +253,17 @@ Then:
 **Effort**: 30 minutes  
 **Who**: Founder (after H2)
 
-Use the in-repo signing CLI (`scripts/generate-license-key.ts`), which reads the private key from revvault at `revdev/license-signing-key` and emits a v2 license string of the form `RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>`:
+Same CLI, signing mode — reads the private key from revvault at `revdev/license-signing-private-key` and emits a v2 license string of the form `RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>`:
 
 ```bash
-# 1-year Pro license
-pnpm exec tsx scripts/generate-license-key.ts --tier pro --days 365
+# 1-year Pro license for a named customer
+pnpm exec tsx scripts/issue-license.ts --tier pro --customer "acme-corp" --days 365
 
 # Perpetual Enterprise license
-pnpm exec tsx scripts/generate-license-key.ts --tier enterprise --perpetual
+pnpm exec tsx scripts/issue-license.ts --tier enterprise --perpetual
 ```
 
-Deliver the printed `RVUI.v2.…` string to the customer; they set it in their daemon environment as `REVEALUI_LICENSE_KEY`.
-
-> **Cleanup follow-up:** `scripts/issue-license.ts` duplicates this flow but reads from a different revvault path (`revdev/license-signing-private-key`). Pick one canonical script + path before relying on either in production tooling.
+Deliver the printed `RVUI.v2.…` string to the customer; they set it in their daemon environment as `REVEALUI_LICENSE_KEY`. The `--customer` field is informational only (logged for the issuer's records, not signed into the key).
 
 ---
 
