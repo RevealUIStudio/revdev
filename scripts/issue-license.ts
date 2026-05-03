@@ -1,18 +1,24 @@
 #!/usr/bin/env -S node --import=tsx
 
 /**
- * Issue a RevDev license key (Ed25519-signed v2 format).
+ * Issue a RevDev license key (Ed25519-signed v2 format), or generate the
+ * Ed25519 keypair the daemon uses to verify those keys.
  *
  * Usage:
+ *   # First-time setup — mint vendor keypair, auto-store in revvault.
+ *   npx tsx scripts/issue-license.ts --generate-keypair
+ *
+ *   # Issue customer licenses.
  *   npx tsx scripts/issue-license.ts --tier pro --customer "acme-corp"
  *   npx tsx scripts/issue-license.ts --tier enterprise --perpetual
  *   npx tsx scripts/issue-license.ts --tier max --days 365
  *
- * Reads the signing private key from revvault or REVDEV_LICENSE_PRIVATE_KEY env.
+ * Signing private key is read from revvault at revdev/license-signing-private-key
+ * (or REVDEV_LICENSE_PRIVATE_KEY env, or ~/.revealui/license-private.pem).
  */
 
 import { execSync } from 'node:child_process';
-import { createPrivateKey, sign } from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 interface Options {
@@ -46,11 +52,15 @@ function parseArgs(): Options {
 Issue RevDev License Key (Ed25519 v2)
 
 Usage:
-  npx tsx scripts/issue-license.ts [options]
+  npx tsx scripts/issue-license.ts --generate-keypair
+  npx tsx scripts/issue-license.ts --tier <pro|max|enterprise> [options]
 
 Options:
-  --tier <pro|max|enterprise>   License tier (required)
-  --customer <name>             Customer identifier
+  --generate-keypair            Mint vendor Ed25519 keypair and store in revvault
+                                (revdev/license-signing-{private,public}-key).
+                                Exits before signing.
+  --tier <pro|max|enterprise>   License tier (required for signing)
+  --customer <name>             Customer identifier (informational; not signed)
   --days <n>                    Expiry in days (default: 365)
   --perpetual                   Never expires
   --help                        Show this help
@@ -108,7 +118,47 @@ function issueLicense(opts: Options): string {
   return `RVUI.v2.${opts.tier}.${expiresAt}.${signature}`;
 }
 
+function revvaultSet(path: string, value: string): void {
+  try {
+    execSync(`revvault set --force ${path}`, {
+      input: value,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    console.error(`Failed to store ${path} in revvault.`);
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+function generateKeypair(): void {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+
+  revvaultSet('revdev/license-signing-private-key', privateKey as string);
+  revvaultSet('revdev/license-signing-public-key', publicKey as string);
+
+  console.log('');
+  console.log('  Ed25519 Keypair Generated');
+  console.log('  ─────────────────────────');
+  console.log('  Stored in revvault:');
+  console.log('    revdev/license-signing-private-key');
+  console.log('    revdev/license-signing-public-key');
+  console.log('');
+  console.log('  Public key (set as REVDEV_LICENSE_PUBLIC_KEY in daemon env):');
+  console.log('');
+  console.log(publicKey);
+}
+
 // --- Main ---
+if (process.argv.includes('--generate-keypair')) {
+  generateKeypair();
+  process.exit(0);
+}
+
 const opts = parseArgs();
 const key = issueLicense(opts);
 

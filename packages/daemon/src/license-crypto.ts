@@ -7,9 +7,11 @@
  * - <expiresAt>: unix timestamp (seconds), or "0" for perpetual
  * - <signature>: Ed25519 signature over "<tier>.<expiresAt>" in base64url
  *
- * The vendor public key is baked into this module. The private key lives
- * in revvault at `revdev/license-signing-key` and is only used by the
- * key generation CLI (scripts/generate-license-key.ts).
+ * The vendor public key is read from the REVDEV_LICENSE_PUBLIC_KEY env var
+ * (also stored in revvault at `revdev/license-signing-public-key`). The
+ * matching private key lives in revvault at `revdev/license-signing-private-key`
+ * and is only used by the key issuing CLI (`scripts/issue-license.ts`,
+ * which also has a `--generate-keypair` mode for first-time setup).
  *
  * Threat model: blocks casual forgery. Determined attackers can patch
  * the binary, but that's a separate concern from tier-gate enforcement.
@@ -18,17 +20,14 @@
 import { verify } from 'node:crypto';
 
 /**
- * Vendor Ed25519 public key (PEM).
+ * Vendor Ed25519 public key (PEM), read from REVDEV_LICENSE_PUBLIC_KEY at
+ * call time (tests set the env var after import). To mint a fresh keypair:
  *
- * Generated with: node -e "const { generateKeyPairSync } = require('crypto');
- *   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
- *   console.log(publicKey.export({ type: 'spki', format: 'pem' }));
- *   console.log(privateKey.export({ type: 'pkcs8', format: 'pem' }));"
+ *   pnpm exec tsx scripts/issue-license.ts --generate-keypair
  *
- * Replace this with the actual public key after generating the keypair.
- * The private key goes to revvault: echo '<pem>' | revvault set revdev/license-signing-key
+ * That writes both halves to revvault and prints the PEM-formatted public
+ * key to copy into the daemon's environment / Studio bundle.
  */
-// Read at call time, not module load time — tests set the env var after import.
 function getVendorPublicKey(): string {
   return process.env.REVDEV_LICENSE_PUBLIC_KEY ?? '';
 }

@@ -32,20 +32,15 @@ revvault set revdev/tauri-signing-password
 Signs customer license keys (RVUI.v2 format) so the daemon can verify them.
 
 ```bash
-# Generate Ed25519 keypair
-openssl genpkey -algorithm ed25519 -out /tmp/license-private.pem
-openssl pkey -in /tmp/license-private.pem -pubout -out /tmp/license-public.pem
+# Mint Ed25519 keypair; auto-stores both halves in revvault at
+# revdev/license-signing-{private,public}-key and prints the public PEM.
+# No plaintext key files ever land on disk.
+cd ~/suite/revdev
+npx tsx scripts/issue-license.ts --generate-keypair
 
-# Store in revvault
-revvault set revdev/license-signing-private-key < /tmp/license-private.pem
-revvault set revdev/license-signing-public-key < /tmp/license-public.pem
-
-# Set public key for local daemon
-export REVDEV_LICENSE_PUBLIC_KEY="$(cat /tmp/license-public.pem)"
+# Wire the public key into the local daemon's environment.
 echo 'export REVDEV_LICENSE_PUBLIC_KEY="$(revvault get --full revdev/license-signing-public-key)"' >> ~/.bashrc
-
-# Clean up plaintext
-rm /tmp/license-private.pem /tmp/license-public.pem
+export REVDEV_LICENSE_PUBLIC_KEY="$(revvault get --full revdev/license-signing-public-key)"
 ```
 
 ---
