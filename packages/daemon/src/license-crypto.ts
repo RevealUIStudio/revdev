@@ -1,11 +1,14 @@
 /**
- * Ed25519 license key cryptography for RevDev.
+ * Ed25519 JWT license key cryptography for RevDev.
  *
- * License format: RVUI.v2.<tier>.<expiresAt>.<signature-base64url>
+ * License format: Ed25519-signed JWT (RFC 7519)
+ *   Header: { "alg": "EdDSA", "typ": "JWT" }
+ *   Payload: { tier, iat, iss, aud, customerId?, exp? }
  *
- * - <tier>: pro | max | enterprise
- * - <expiresAt>: unix timestamp (seconds), or "0" for perpetual
- * - <signature>: Ed25519 signature over "<tier>.<expiresAt>" in base64url
+ * - tier: "pro" | "max" | "enterprise"
+ * - exp: unix timestamp (seconds); absent = perpetual
+ * - iss: "https://revealui.com"
+ * - aud: "revealui-license"
  *
  * The vendor public key is read from the REVDEV_LICENSE_PUBLIC_KEY env var
  * (also stored in revvault at `revdev/license-signing-public-key`). The
@@ -13,8 +16,14 @@
  * and is only used by the key issuing CLI (`scripts/issue-license.ts`,
  * which also has a `--generate-keypair` mode for first-time setup).
  *
+ * Verification is hand-decoded (no jose dep): split on ".", base64url-decode
+ * header+payload, assert alg=EdDSA, verify Ed25519 signature over the raw
+ * "<headerB64url>.<payloadB64url>" bytes via node:crypto.verify(null, ...).
+ *
  * Threat model: blocks casual forgery. Determined attackers can patch
  * the binary, but that's a separate concern from tier-gate enforcement.
+ *
+ * Per CR8-P0-01 spec (Phase B), ships after Phase A revealui#735.
  */
 
 import { verify } from 'node:crypto';
@@ -28,86 +37,117 @@ import { verify } from 'node:crypto';
  * That writes both halves to revvault and prints the PEM-formatted public
  * key to copy into the daemon's environment / Studio bundle.
  */
-function getVendorPublicKey(): string {
+export function getVendorPublicKey(): string {
   return process.env.REVDEV_LICENSE_PUBLIC_KEY ?? '';
 }
 
 const VALID_TIERS = new Set(['pro', 'max', 'enterprise']);
 
-export interface LicenseV2Result {
+export interface LicenseJWTResult {
   tier: 'pro' | 'max' | 'enterprise';
   expiresAt: number; // unix seconds, 0 = perpetual
   valid: true;
 }
 
-export interface LicenseV2Failure {
+export interface LicenseJWTFailure {
   tier: 'free';
   valid: false;
   reason: string;
 }
 
+function decodeBase64url(input: string): Buffer {
+  return Buffer.from(input, 'base64url');
+}
+
 /**
- * Verify an Ed25519-signed license key.
+ * Verify an Ed25519-signed JWT license key.
  *
  * Returns the tier + expiration if valid, or { valid: false, reason } if not.
+ * Never throws — all parse/verify errors are returned as failures.
  */
-export function verifyLicenseV2(key: string): LicenseV2Result | LicenseV2Failure {
-  // Parse format: RVUI.v2.<tier>.<expiresAt>.<signature>
-  const parts = key.split('.');
-  if (parts.length !== 5 || parts[0] !== 'RVUI' || parts[1] !== 'v2') {
-    return { tier: 'free', valid: false, reason: 'invalid format' };
-  }
-
-  const [, , tierStr, expiresAtStr, signatureB64] = parts;
-
-  if (!tierStr || !VALID_TIERS.has(tierStr)) {
-    return { tier: 'free', valid: false, reason: `invalid tier: ${tierStr}` };
-  }
-
-  if (!expiresAtStr || !signatureB64) {
-    return { tier: 'free', valid: false, reason: 'missing fields' };
-  }
-
-  const expiresAt = parseInt(expiresAtStr, 10);
-  if (Number.isNaN(expiresAt)) {
-    return { tier: 'free', valid: false, reason: 'invalid expiresAt' };
-  }
-
-  // Check expiration (0 = perpetual, never expires)
-  if (expiresAt > 0) {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    if (nowSeconds > expiresAt) {
-      return { tier: 'free', valid: false, reason: 'license expired' };
-    }
-  }
-
-  // Verify Ed25519 signature
-  const vendorKey = getVendorPublicKey();
-  if (!vendorKey) {
-    return {
-      tier: 'free',
-      valid: false,
-      reason: 'REVDEV_LICENSE_PUBLIC_KEY not set — cannot verify signature',
-    };
-  }
-
-  const message = `${tierStr}.${expiresAtStr}`;
-  const signature = Buffer.from(signatureB64, 'base64url');
-
+export function verifyLicenseJWT(
+  token: string,
+  publicKey: string,
+): LicenseJWTResult | LicenseJWTFailure {
   try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return { tier: 'free', valid: false, reason: 'invalid format' };
+    }
+
+    const [headerB64, payloadB64, signatureB64] = parts as [string, string, string];
+
+    // Decode + parse header
+    let header: Record<string, unknown>;
+    try {
+      header = JSON.parse(decodeBase64url(headerB64).toString('utf-8')) as Record<string, unknown>;
+    } catch {
+      return { tier: 'free', valid: false, reason: 'invalid format' };
+    }
+
+    if (header.alg !== 'EdDSA') {
+      return { tier: 'free', valid: false, reason: 'unsupported algorithm' };
+    }
+
+    // Decode + parse payload
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(decodeBase64url(payloadB64).toString('utf-8')) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return { tier: 'free', valid: false, reason: 'invalid format' };
+    }
+
+    // Validate tier
+    const tier = payload.tier;
+    if (typeof tier !== 'string' || !VALID_TIERS.has(tier)) {
+      return { tier: 'free', valid: false, reason: `invalid tier: ${String(tier)}` };
+    }
+
+    // Validate exp (absent = perpetual; present = must be a number)
+    const exp = payload.exp;
+    if (exp !== undefined && typeof exp !== 'number') {
+      return { tier: 'free', valid: false, reason: 'invalid exp claim' };
+    }
+
+    // Check expiration if exp is present
+    if (typeof exp === 'number') {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (nowSeconds > exp) {
+        return { tier: 'free', valid: false, reason: 'license expired' };
+      }
+    }
+
+    if (!publicKey) {
+      return {
+        tier: 'free',
+        valid: false,
+        reason: 'REVDEV_LICENSE_PUBLIC_KEY not set — cannot verify signature',
+      };
+    }
+
+    // The signed message is the literal "<headerB64url>.<payloadB64url>" string
+    const message = `${headerB64}.${payloadB64}`;
+    const signatureBuffer = decodeBase64url(signatureB64);
+
     // Ed25519 doesn't use a separate digest — pass null as algorithm
-    const isValid = verify(null, Buffer.from(message), vendorKey, signature);
+    const isValid = verify(null, Buffer.from(message, 'utf-8'), publicKey, signatureBuffer);
 
     if (!isValid) {
       return { tier: 'free', valid: false, reason: 'invalid signature' };
     }
-  } catch {
-    return { tier: 'free', valid: false, reason: 'signature verification failed' };
-  }
 
-  return {
-    tier: tierStr as 'pro' | 'max' | 'enterprise',
-    expiresAt,
-    valid: true,
-  };
+    // expiresAt: 0 = perpetual (mirrors dotted-v2 semantics)
+    const expiresAt = typeof exp === 'number' ? exp : 0;
+
+    return {
+      tier: tier as 'pro' | 'max' | 'enterprise',
+      expiresAt,
+      valid: true,
+    };
+  } catch {
+    return { tier: 'free', valid: false, reason: 'invalid format' };
+  }
 }

@@ -7,7 +7,16 @@
  *
  * When running as a standalone daemon (outside the RevealUI monorepo),
  * license validation is done via the REVEALUI_LICENSE_KEY env var.
+ *
+ * License format: Ed25519-signed JWT (RFC 7519) — keys start with "eyJ".
+ * Issued by the RevealUI license API or `revdev/scripts/issue-license.ts`.
+ *
+ * Legacy formats (RVUI.v2.*, RVUI-*) are rejected per CR8-P0-01 Q2
+ * (immediate dotted-v2 removal, no deprecation window, 2026-05-04).
  */
+
+// Import statically — same ESM module, no circular risk.
+import { getVendorPublicKey, verifyLicenseJWT } from './license-crypto.js';
 
 export const LICENSE_TIERS = ['free', 'pro', 'max', 'enterprise'] as const;
 export type LicenseTier = (typeof LICENSE_TIERS)[number];
@@ -26,17 +35,7 @@ const EXEMPT_METHODS = new Set([
  * Returns the detected tier, or 'free' if no valid license is found.
  * The daemon runs in degraded mode on free tier: session management
  * works, but spawning, inference, and merge pipeline are gated.
- *
- * License format:
- *   v2 (Ed25519): RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>
- *   v1 (legacy):  RVUI-<tier>-<32 hex chars> — DEPRECATED, rejected
- *
- * v1 keys are no longer accepted. If you have a v1 key, contact
- * support@revealui.com for a v2 replacement.
  */
-// Import verifyLicenseV2 statically — same ESM module, no circular risk.
-import { verifyLicenseV2 } from './license-crypto.js';
-
 export function checkLicense(): { tier: LicenseTier; valid: boolean } {
   const key = process.env.REVEALUI_LICENSE_KEY;
 
@@ -44,9 +43,9 @@ export function checkLicense(): { tier: LicenseTier; valid: boolean } {
     return { tier: 'free', valid: false };
   }
 
-  // v2 format: RVUI.v2.<tier>.<expiresAt>.<signature>
-  if (key.startsWith('RVUI.v2.')) {
-    const result = verifyLicenseV2(key);
+  // JWT format (Ed25519-signed): header starts with base64url-encoded "{"
+  if (key.startsWith('eyJ')) {
+    const result = verifyLicenseJWT(key, getVendorPublicKey());
     if (result.valid) {
       return { tier: result.tier, valid: true };
     }
@@ -56,11 +55,12 @@ export function checkLicense(): { tier: LicenseTier; valid: boolean } {
     return { tier: 'free', valid: false };
   }
 
-  // v1 format: RVUI-<tier>-<hash> — REJECTED (not cryptographically bound)
-  if (key.match(/^RVUI-/i)) {
+  // Legacy formats — REJECTED outright per CR8-P0-01 Q2
+  if (key.startsWith('RVUI.v2.') || key.match(/^RVUI-/i)) {
     process.stderr.write(
-      '[revdev] v1 license keys (RVUI-<tier>-<hash>) are no longer accepted. ' +
-        'Contact support@revealui.com for a v2 Ed25519-signed key.\n',
+      '[revdev] Legacy license formats (RVUI.v2.*, RVUI-*) are no longer accepted. ' +
+        'Mint an Ed25519-signed JWT via the RevealUI license API or ' +
+        '`revdev/scripts/issue-license.ts`.\n',
     );
     return { tier: 'free', valid: false };
   }
