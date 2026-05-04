@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --import=tsx
 
 /**
- * Issue a RevDev license key (Ed25519-signed v2 format), or generate the
+ * Issue a RevDev license key (Ed25519-signed JWT), or generate the
  * Ed25519 keypair the daemon uses to verify those keys.
  *
  * Usage:
@@ -15,6 +15,10 @@
  *
  * Signing private key is read from revvault at revdev/license-signing-private-key
  * (or REVDEV_LICENSE_PRIVATE_KEY env, or ~/.revealui/license-private.pem).
+ *
+ * Output: Ed25519-signed JWT (RFC 7519). Header: { alg: "EdDSA", typ: "JWT" }.
+ * Payload: { tier, iat, iss, aud, customerId?, exp? }.
+ * Format matches the RevealUI license API issuer (revealui#735, Phase A).
  */
 
 import { execSync } from 'node:child_process';
@@ -49,7 +53,7 @@ function parseArgs(): Options {
       case '--help':
       case '-h':
         console.log(`
-Issue RevDev License Key (Ed25519 v2)
+Issue RevDev License Key (Ed25519-signed JWT)
 
 Usage:
   npx tsx scripts/issue-license.ts --generate-keypair
@@ -60,10 +64,12 @@ Options:
                                 (revdev/license-signing-{private,public}-key).
                                 Exits before signing.
   --tier <pro|max|enterprise>   License tier (required for signing)
-  --customer <name>             Customer identifier (informational; not signed)
+  --customer <name>             Customer identifier (embedded in JWT payload)
   --days <n>                    Expiry in days (default: 365)
-  --perpetual                   Never expires
+  --perpetual                   Never expires (omits exp claim)
   --help                        Show this help
+
+Output format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the daemon.
 `);
         process.exit(0);
     }
@@ -108,14 +114,29 @@ function issueLicense(opts: Options): string {
   const privateKeyPem = getPrivateKey();
   const privateKey = createPrivateKey(privateKeyPem);
 
-  const expiresAt = opts.perpetual
-    ? '0'
-    : String(Math.floor(Date.now() / 1000) + (opts.days ?? 365) * 86400);
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'EdDSA', typ: 'JWT' };
+  const payload: Record<string, unknown> = {
+    tier: opts.tier,
+    iat: now,
+    iss: 'https://revealui.com',
+    aud: 'revealui-license',
+  };
 
-  const message = `${opts.tier}.${expiresAt}`;
+  if (opts.customer) {
+    payload['customerId'] = opts.customer;
+  }
+
+  if (!opts.perpetual) {
+    payload['exp'] = now + (opts.days ?? 365) * 86400;
+  }
+
+  const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const message = `${headerB64}.${payloadB64}`;
   const signature = sign(null, Buffer.from(message), privateKey).toString('base64url');
 
-  return `RVUI.v2.${opts.tier}.${expiresAt}.${signature}`;
+  return `${message}.${signature}`;
 }
 
 function revvaultSet(path: string, value: string): void {
@@ -174,6 +195,7 @@ console.log('  ──────────────────');
 console.log(`  Tier:     ${opts.tier.toUpperCase()}`);
 console.log(`  Customer: ${opts.customer ?? '(not specified)'}`);
 console.log(`  Expires:  ${opts.perpetual ? 'Never (perpetual)' : `${opts.days ?? 365} days`}`);
+console.log(`  Format:   Ed25519-signed JWT (RFC 7519)`);
 console.log('');
 console.log('  Key:');
 console.log(`  ${key}`);
