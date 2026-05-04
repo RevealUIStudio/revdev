@@ -26,7 +26,12 @@ import type {
 /** Fallback poll interval for browser dev mode (no Tauri events available) */
 const BROWSER_POLL_MS = 5_000;
 
+export type HarnessStatus = 'connected' | 'connecting' | 'disconnected' | 'error';
+
 export interface UseHarnessReturn {
+  /** Rich connection status for UI indicators */
+  status: HarnessStatus;
+  /** Back-compat: true when status === 'connected' */
   connected: boolean;
   sessions: HarnessSession[];
   messages: HarnessMessage[];
@@ -83,6 +88,7 @@ async function fetchHarnessState(agentId: string | undefined): Promise<{
 }
 
 export function useHarness(agentId?: string): UseHarnessReturn {
+  const [status, setStatus] = useState<HarnessStatus>('disconnected');
   const [connected, setConnected] = useState(false);
   const [sessions, setSessions] = useState<HarnessSession[]>([]);
   const [messages, setMessages] = useState<HarnessMessage[]>([]);
@@ -126,6 +132,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       const { listen } = await import('@tauri-apps/api/event');
 
       interface StatePayload {
+        status?: string;
         connected: boolean;
         sessions: HarnessSession[];
         tasks: HarnessTask[];
@@ -138,7 +145,15 @@ export function useHarness(agentId?: string): UseHarnessReturn {
 
       const unlistenState = await listen<StatePayload>('harness:state', (event) => {
         if (cancelled) return;
-        const { connected: conn, sessions: sess, tasks: tsk, reservations: res } = event.payload;
+        const {
+          status: st,
+          connected: conn,
+          sessions: sess,
+          tasks: tsk,
+          reservations: res,
+        } = event.payload;
+        const resolvedStatus = (st as HarnessStatus) ?? (conn ? 'connected' : 'disconnected');
+        setStatus(resolvedStatus);
         setConnected(conn);
         setSessions(sess);
         setTasks(tsk);
@@ -240,6 +255,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
   }
 
   return {
+    status,
     connected,
     sessions,
     messages,

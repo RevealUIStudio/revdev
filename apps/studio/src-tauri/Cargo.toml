@@ -22,6 +22,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 revvault-core = { git = "https://github.com/RevealUIStudio/revvault.git", package = "revvault-core" }
@@ -30,7 +31,7 @@ secrecy = "0.10"
 dirs = "6"
 which = "7"
 arboard = "3"
-russh = "0.58"
+russh = "0.60"
 tokio = { version = "1", features = ["sync", "net", "io-util"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
@@ -46,3 +47,6 @@ git2 = { version = "0.20", default-features = false, features = ["vendored-opens
 similar = "2"
 dissimilar = "1"
 ts-rs = { version = "10", features = ["serde-compat"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

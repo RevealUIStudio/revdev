@@ -24,16 +24,12 @@ export default function StepEmail({
   );
   const [privateKey, setPrivateKey] = useState(data.googlePrivateKey || '');
   const [emailFrom, setEmailFrom] = useState(data.emailFrom || '');
-  const [testEmail, setTestEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [testSent, setTestSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isConfigured = serviceAccountEmail.trim().length > 0 && privateKey.trim().length > 0;
 
-  async function handleSendTest() {
-    if (!testEmail.trim()) return;
-
+  async function handleSaveConfig() {
     setLoading(true);
     setError(null);
 
@@ -42,9 +38,6 @@ export default function StepEmail({
         setError('Service account email and private key are required');
         return;
       }
-
-      // TODO: Wire up Gmail test send via Studio API
-      setTestSent(true);
 
       onUpdateData({
         emailProvider: 'gmail',
@@ -63,8 +56,7 @@ export default function StepEmail({
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send test email');
-      setTestSent(false);
+      setError(err instanceof Error ? err.message : 'Failed to save email config');
     } finally {
       setLoading(false);
     }
@@ -112,33 +104,24 @@ export default function StepEmail({
           />
         </div>
 
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <Input
-              id="test-email"
-              label="Test Email Address"
-              type="email"
-              placeholder="you@example.com"
-              value={testEmail}
-              onChange={(e) => setTestEmail(e.target.value)}
-              disabled={loading}
-            />
-          </div>
+        <p className="text-xs text-neutral-400">
+          In-wizard test send is not wired yet — verify delivery from the Admin app after
+          deployment.
+        </p>
+
+        <div className="flex gap-3 self-end">
           <Button
-            variant="primary"
-            onClick={handleSendTest}
+            variant="secondary"
+            onClick={handleSaveConfig}
             loading={loading}
-            disabled={!(testEmail.trim() && isConfigured) || loading}
+            disabled={!isConfigured || loading}
           >
-            Send Test Email
+            Save Config
+          </Button>
+          <Button variant="primary" onClick={onNext} disabled={!isConfigured}>
+            Next
           </Button>
         </div>
-
-        {testSent && <p className="text-sm text-green-400">Test email sent — check your inbox.</p>}
-
-        <Button variant="primary" onClick={onNext} disabled={!testSent} className="mt-2 self-end">
-          Next
-        </Button>
       </div>
     </WizardStep>
   );

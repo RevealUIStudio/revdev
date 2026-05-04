@@ -19,9 +19,32 @@ import { mkdir } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import { createLogger } from '@revealui/utils/logger';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
+import {
+  initNeonSync,
+  isNeonSyncActive,
+  listFleetSessions,
+  syncEventLog,
+  syncFilesRelease,
+  syncFilesReserve,
+  syncMailBroadcast,
+  syncMailMarkRead,
+  syncMailSend,
+  syncSessionEnd,
+  syncSessionRegister,
+  syncSessionUpdate,
+  syncTaskClaim,
+  syncTaskComplete,
+  syncTaskCreate,
+  syncTaskRelease,
+} from './neon.js';
+import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import { SCHEMA_SQL } from './storage/schema.js';
+import { invalidParamsResponse, validateParams } from './validation/index.js';
+
+const log = createLogger({ service: 'revdev-daemon' });
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,6 +85,7 @@ const IDENTITY_EXEMPT = new Set([
   'session.attach',
   'session.list',
   'harness.health',
+  'harness.prune',
   'inference.status',
   'inference.pull',
   'inference.start',
@@ -69,6 +93,85 @@ const IDENTITY_EXEMPT = new Set([
   'inference.chat',
   'inference.generate',
 ]);
+
+// ---------------------------------------------------------------------------
+// Stale-session pruning state (GAP-153)
+//
+// Module-level by design — each daemon process is a singleton, so a single
+// state object suffices. The integration test suite at coordination.test.ts
+// runs daemons sequentially, not concurrently, so cross-test contamination
+// is not a concern. If the test pattern ever changes to spawn concurrent
+// daemons in the same process, this needs to become a per-db Map.
+// ---------------------------------------------------------------------------
+
+interface PruneState {
+  lastRunAt: Date | null;
+  lastAgedCount: number;
+  lastDeletedCount: number;
+}
+
+const pruneState: PruneState = {
+  lastRunAt: null,
+  lastAgedCount: 0,
+  lastDeletedCount: 0,
+};
+
+/**
+ * Run a single prune pass against the daemon database.
+ *
+ * Two-phase cleanup:
+ *   1. Sessions older than `staleDays` with no `ended_at` are marked ended
+ *      with `exit_summary = 'pruned-stale'`. Models cases where the daemon
+ *      itself crashed (or was SIGKILL'd) before the per-socket auto-end
+ *      had a chance to fire.
+ *   2. Sessions ended longer than `hardDeleteDays` are hard-deleted to keep
+ *      `agent_sessions` from growing without bound.
+ *
+ * Idempotent — running twice in a row produces the same end state. Safe to
+ * invoke on demand via the `harness.prune` RPC for ops use, in addition to
+ * the periodic timer set up in `startDaemon`.
+ */
+async function runPrune(
+  db: PGlite,
+  staleDays: number,
+  hardDeleteDays: number,
+): Promise<{ aged: number; deleted: number }> {
+  // Clamp non-negative + finite. Defends against bad caller input — a
+  // negative or NaN threshold would otherwise widen the WHERE clause to
+  // include all-or-no rows depending on Postgres semantics.
+  const stale = Number.isFinite(staleDays) ? Math.max(0, staleDays) : 7;
+  const hard = Number.isFinite(hardDeleteDays) ? Math.max(0, hardDeleteDays) : 30;
+
+  // Parameterized interval avoids SQL injection on the days value.
+  const aged = await db.query<{ id: string }>(
+    `UPDATE agent_sessions
+        SET ended_at = NOW(),
+            exit_summary = COALESCE(exit_summary, 'pruned-stale')
+      WHERE ended_at IS NULL
+        AND started_at < NOW() - INTERVAL '1 day' * $1
+      RETURNING id`,
+    [stale],
+  );
+  const deleted = await db.query<{ id: string }>(
+    `DELETE FROM agent_sessions
+      WHERE ended_at IS NOT NULL
+        AND ended_at < NOW() - INTERVAL '1 day' * $1
+      RETURNING id`,
+    [hard],
+  );
+  pruneState.lastRunAt = new Date();
+  pruneState.lastAgedCount = aged.rows.length;
+  pruneState.lastDeletedCount = deleted.rows.length;
+  if (pruneState.lastAgedCount > 0 || pruneState.lastDeletedCount > 0) {
+    log.info('prune complete', {
+      aged: pruneState.lastAgedCount,
+      deleted: pruneState.lastDeletedCount,
+      staleDays: stale,
+      hardDeleteDays: hard,
+    });
+  }
+  return { aged: pruneState.lastAgedCount, deleted: pruneState.lastDeletedCount };
+}
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -176,6 +279,11 @@ registerHandler('session.register', async (params, db, ctx) => {
   ctx.agentName = agentName;
   ctx.boundVia = 'register';
 
+  // Best-effort dual-write to Neon. Failures are logged inside the helper;
+  // the RPC succeeds based on the PGlite write above. See GAP-154 §E /
+  // Phase 1 decision #5 ("dual-write failure: best-effort, don't fail RPC").
+  await syncSessionRegister({ agentId: id, agentName, env, task: workDir, pid });
+
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
   return {
@@ -188,37 +296,63 @@ registerHandler('session.register', async (params, db, ctx) => {
 });
 
 registerHandler('session.attach', async (params, db, ctx) => {
-  const agentId = strOrNull(params.agentId);
-  if (!agentId) throw new Error('session.attach: missing agentId');
+  // Accept canonical sessionId, fall back to agentId alias (in this codebase
+  // the session row's `id` column IS the agentId — they're the same value
+  // bound at session.register time).
+  const sessionId = strOrNull(params.sessionId) ?? strOrNull(params.agentId);
+  if (!sessionId) throw new Error('session.attach: missing sessionId or agentId');
   const r = await db.query<{ id: string; env: string }>(
     `SELECT id, env FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,
-    [agentId],
+    [sessionId],
   );
   if (r.rows.length === 0) {
-    throw new Error(`session.attach: unknown or ended session ${agentId}`);
+    throw new Error(`session.attach: unknown or ended session ${sessionId}`);
   }
-  ctx.agentId = agentId;
+  ctx.agentId = sessionId;
   ctx.agentName = r.rows[0]?.env.split(':')[1] ?? null;
   ctx.boundVia = 'attach';
-  return { attached: true, agentId };
+  return { attached: true, sessionId, agentId: sessionId };
 });
 
-registerHandler('session.list', async (_params, db) => {
+registerHandler('session.list', async (params, db) => {
+  // Default scope is 'local' — query the daemon's own PGlite, which is
+  // fast (in-process) and authoritative for this machine.
+  // scope='fleet' queries the Neon coordination_sessions table for active
+  // sessions across ALL daemons writing to the same Neon db. This is the
+  // signal callers want for cross-machine peer detection. Returns an
+  // empty list (not an error) when Neon sync is disabled — callers can
+  // distinguish via harness.health.neonSyncActive.
+  const scope = strOrNull(params.scope);
+  if (scope === 'fleet') {
+    const fleet = await listFleetSessions();
+    return { sessions: fleet, scope: 'fleet', neonSyncActive: isNeonSyncActive() };
+  }
   const result = await db.query<Record<string, unknown>>(
     `SELECT * FROM agent_sessions WHERE ended_at IS NULL ORDER BY started_at DESC`,
   );
-  return { sessions: result.rows };
+  return { sessions: result.rows, scope: 'local' };
 });
 
 registerHandler('session.end', async (params, db, ctx) => {
   // Prefer caller's own session, but allow explicit override (e.g. admin cleanup).
   const target = strOrNull(params.sessionId) ?? strOrNull(params.agentId) ?? ctx.agentId;
   if (!target) throw new Error('No session to end');
-  await db.query(`UPDATE agent_sessions SET ended_at = NOW() WHERE id = $1`, [target]);
+  // Canonical: exitSummary (matches DB column `exit_summary`).
+  // Compat alias: summary (for callers using shorter name).
+  const exitSummary = strOrNull(params.exitSummary) ?? strOrNull(params.summary);
+  await db.query(
+    `UPDATE agent_sessions
+        SET ended_at = NOW(),
+            exit_summary = COALESCE($2, exit_summary)
+      WHERE id = $1`,
+    [target, exitSummary],
+  );
   if (ctx.agentId === target) {
     ctx.agentId = null;
     ctx.agentName = null;
   }
+  // Best-effort dual-write — see GAP-154 §E.
+  await syncSessionEnd({ sessionId: target, summary: exitSummary });
   return { ended: target };
 });
 
@@ -242,6 +376,12 @@ registerHandler('session.update', async (params, db, ctx) => {
   }
   vals.push(target);
   await db.query(`UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = $${i}`, vals);
+  // Best-effort dual-write — task is the only column the Neon-side
+  // session row exposes from the daemon's update; files / updated_at
+  // are daemon-only concerns. See GAP-154 §E.
+  if (task !== null) {
+    await syncSessionUpdate({ sessionId: target, task });
+  }
   return { updated: target };
 });
 
@@ -259,6 +399,8 @@ registerHandler('mail.send', async (params, db, ctx) => {
      VALUES ($1, $2, $3, $4) RETURNING id`,
     [from, to, subject, body],
   );
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
+  await syncMailSend({ fromAgent: from, toAgent: to, subject, body });
   return { sent: true, id: result.rows[0]?.id ?? null };
 });
 
@@ -292,6 +434,13 @@ registerHandler('mail.broadcast', async (params, db, ctx) => {
       [from, target.id, subject, body],
     );
   }
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
+  await syncMailBroadcast({
+    fromAgent: from,
+    toAgents: sessions.rows.map((r) => r.id),
+    subject,
+    body,
+  });
   return { broadcast: true, sent: sessions.rows.length, recipients: sessions.rows.length };
 });
 
@@ -304,11 +453,22 @@ registerHandler('mail.markRead', async (params, db, ctx) => {
     .filter((n) => Number.isFinite(n));
   if (ids.length === 0) return { marked: 0 };
 
+  // Fetch (subject, body) hints BEFORE the update so we can scope the
+  // Neon sync. Without these the sync falls back to "mark N oldest unread"
+  // which is over-broad. See syncMailMarkRead notes.
+  const hintRows = await db.query<{ subject: string; body: string }>(
+    `SELECT subject, body FROM agent_messages
+     WHERE to_agent = $1 AND id = ANY($2::int[]) AND read = FALSE`,
+    [agentId, ids],
+  );
+
   const result = await db.query(
     `UPDATE agent_messages SET read = TRUE
      WHERE to_agent = $1 AND id = ANY($2::int[])`,
     [agentId, ids],
   );
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
+  await syncMailMarkRead({ reader: agentId, ids, hints: hintRows.rows });
   return { marked: result.affectedRows ?? ids.length };
 });
 
@@ -350,6 +510,13 @@ registerHandler('files.reserve', async (params, db, ctx) => {
     reserved.push(p);
   }
 
+  // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3).
+  // Only sync the paths we actually reserved (not conflicts). The TTL +
+  // reason fields don't exist on the Neon side; PGlite remains the source
+  // of truth for expiry. See syncFilesReserve notes.
+  if (reserved.length > 0) {
+    await syncFilesReserve({ sessionId: agentId, paths: reserved });
+  }
   return {
     success: conflicts.length === 0,
     reserved,
@@ -376,6 +543,8 @@ registerHandler('files.release', async (params, db, ctx) => {
   // If no paths given, release all of this agent's reservations.
   if (paths.length === 0) {
     const r = await db.query(`DELETE FROM file_reservations WHERE agent_id = $1`, [agentId]);
+    // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3).
+    await syncFilesRelease({ sessionId: agentId, paths: [] });
     return { released: r.affectedRows ?? 0 };
   }
 
@@ -384,6 +553,8 @@ registerHandler('files.release', async (params, db, ctx) => {
      WHERE agent_id = $1 AND file_path = ANY($2::text[])`,
     [agentId, paths],
   );
+  // Best-effort dual-write (GAP-154 Phase 3).
+  await syncFilesRelease({ sessionId: agentId, paths });
   return { released: r.affectedRows ?? 0 };
 });
 
@@ -415,6 +586,16 @@ registerHandler('tasks.create', async (params, db) => {
     id,
     full || description || title || '(untitled)',
   ]);
+  // Best-effort dual-write to coordination_work_items (GAP-154 Phase 3).
+  // Map daemon's flat description into Neon's title + description split.
+  // Numeric priority on the Neon side: 'low'→0 'normal'→0 'high'→1 'urgent'→2.
+  const priorityNum = priority === 'urgent' ? 2 : priority === 'high' ? 1 : 0;
+  await syncTaskCreate({
+    id,
+    title: title || description || id,
+    description: title && description ? description : '',
+    priority: priorityNum,
+  });
   return { taskId: id, id };
 });
 
@@ -465,6 +646,8 @@ registerHandler('tasks.claim', async (params, db, ctx) => {
       status: current.rows[0]?.status ?? 'unknown',
     };
   }
+  // Best-effort dual-write (GAP-154 Phase 3).
+  await syncTaskClaim({ taskId, ownerAgent: agentId });
   return { success: true, claimed: taskId, owner: agentId };
 });
 
@@ -488,6 +671,11 @@ registerHandler('tasks.complete', async (params, db, ctx) => {
         [taskId, agentId],
       );
   const ok = (r.affectedRows ?? 0) > 0;
+  // Best-effort dual-write (GAP-154 Phase 3).
+  // Translates daemon 'completed' → Neon 'done' inside the helper.
+  if (ok) {
+    await syncTaskComplete({ taskId, ownerAgent: agentId, summary });
+  }
   return { ok, completed: ok ? taskId : null };
 });
 
@@ -502,6 +690,10 @@ registerHandler('tasks.release', async (params, db, ctx) => {
     [taskId, agentId],
   );
   const ok = (r.affectedRows ?? 0) > 0;
+  // Best-effort dual-write (GAP-154 Phase 3).
+  if (ok) {
+    await syncTaskRelease({ taskId, ownerAgent: agentId });
+  }
   return { ok, released: ok ? taskId : null };
 });
 
@@ -516,6 +708,8 @@ registerHandler('events.log', async (params, db, ctx) => {
     eventType,
     JSON.stringify(payload),
   ]);
+  // Best-effort dual-write to coordination_events (GAP-154 Phase 3).
+  await syncEventLog({ agentId, type: eventType, payload });
   return { logged: true };
 });
 
@@ -543,6 +737,30 @@ registerHandler('harness.health', async (_params, db) => {
     activeSessions: Number(sessions.rows[0]?.count ?? 0),
     openTasks: Number(tasks.rows[0]?.count ?? 0),
     uptime: process.uptime(),
+    prune: {
+      lastRunAt: pruneState.lastRunAt?.toISOString() ?? null,
+      lastAgedCount: pruneState.lastAgedCount,
+      lastDeletedCount: pruneState.lastDeletedCount,
+    },
+    // GAP-154: signal whether daemon→Neon sync is wired this run. Callers
+    // can use this to decide whether `session.list({scope:'fleet'})`
+    // returning empty means "no peers" or "no fleet visibility".
+    neonSyncActive: isNeonSyncActive(),
+  };
+});
+
+registerHandler('harness.prune', async (params, db) => {
+  // Allow ops / tests to run a prune pass on demand. Defaults match
+  // DAEMON_DEFAULTS so callers can invoke with no params.
+  const staleDays = num(params.staleDays, DAEMON_DEFAULTS.staleSessionDays);
+  const hardDeleteDays = num(params.hardDeleteDays, DAEMON_DEFAULTS.hardDeleteDays);
+  const result = await runPrune(db, staleDays, hardDeleteDays);
+  return {
+    aged: result.aged,
+    deleted: result.deleted,
+    runAt: pruneState.lastRunAt?.toISOString() ?? null,
+    staleDays,
+    hardDeleteDays,
   };
 });
 
@@ -550,32 +768,50 @@ registerHandler('harness.health', async (_params, db) => {
 
 registerHandler('memory.store', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
-  const key = str(params.key);
-  const value = str(params.value);
-  const tags = asStringArray(params.tags);
+  const memoryType = str(params.memoryType);
+  const content = str(params.content);
+  const metadataInput =
+    params.metadata && typeof params.metadata === 'object' && !Array.isArray(params.metadata)
+      ? (params.metadata as Record<string, unknown>)
+      : {};
   await db.query(
     `INSERT INTO agent_memory (agent_id, memory_type, content, metadata)
      VALUES ($1, $2, $3, $4::jsonb)`,
-    [agentId, key, value, JSON.stringify({ tags })],
+    [agentId, memoryType, content, JSON.stringify(metadataInput)],
   );
-  return { stored: key };
+  return { stored: memoryType };
 });
 
 registerHandler('memory.query', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
+  const memoryType = strOrNull(params.memoryType);
   const query = strOrNull(params.query);
+  const tags = asStringArray(params.tags);
   const limit = Math.min(num(params.limit, 10), 200);
-  const sql = query
-    ? `SELECT * FROM agent_memory
-       WHERE agent_id = $1 AND content ILIKE $2
-       ORDER BY created_at DESC LIMIT $3`
-    : `SELECT * FROM agent_memory
-       WHERE agent_id = $1
-       ORDER BY created_at DESC LIMIT $2`;
-  const result = await db.query<Record<string, unknown>>(
-    sql,
-    query ? [agentId, `%${query}%`, limit] : [agentId, limit],
-  );
+
+  // Build WHERE clause dynamically based on which filters are present.
+  const where: string[] = ['agent_id = $1'];
+  const args: unknown[] = [agentId];
+  let p = 2;
+  if (memoryType) {
+    where.push(`memory_type = $${p++}`);
+    args.push(memoryType);
+  }
+  if (query) {
+    where.push(`content ILIKE $${p++}`);
+    args.push(`%${query}%`);
+  }
+  if (tags && tags.length > 0) {
+    // PG ?| operator: any tag in the array matches a tag in metadata->'tags'.
+    where.push(`metadata->'tags' ?| $${p++}::text[]`);
+    args.push(tags);
+  }
+  args.push(limit);
+  const sql = `SELECT * FROM agent_memory
+     WHERE ${where.join(' AND ')}
+     ORDER BY created_at DESC LIMIT $${p}`;
+
+  const result = await db.query<Record<string, unknown>>(sql, args);
   return { memories: result.rows };
 });
 
@@ -591,15 +827,41 @@ export async function startDaemon(
   // Initialize license guard (logs banner)
   initLicenseGuard();
 
+  // Initialize Neon sync (GAP-154 Phase 2). No-op when POSTGRES_URL is
+  // unset — daemon runs single-machine fine; sync is purely additive.
+  initNeonSync();
+
   // Ensure data directory exists
   await mkdir(cfg.dataDir, { recursive: true });
   await mkdir(dirname(cfg.socketPath), { recursive: true });
 
   // Initialize PGlite
-  console.log(`[daemon] Initializing database at ${cfg.dataDir}`);
+  log.info('initializing database', { dataDir: cfg.dataDir });
   const db = new PGlite(cfg.dataDir);
   await db.exec(SCHEMA_SQL);
-  console.log('[daemon] Schema initialized');
+  log.info('schema initialized');
+
+  // Initialize observability (metrics + health checks)
+  initObservability(db);
+
+  // Periodic prune of stale + old-completed sessions (GAP-153). Disabled
+  // when pruneIntervalMs is 0. unref() so the timer doesn't keep the
+  // process alive on its own. The startup prune runs after a short delay
+  // so it doesn't block the listen call.
+  let pruneTimer: NodeJS.Timeout | null = null;
+  if (cfg.pruneIntervalMs > 0) {
+    pruneTimer = setInterval(() => {
+      runPrune(db, cfg.staleSessionDays, cfg.hardDeleteDays).catch((err) =>
+        log.warn('periodic prune failed', { error: String(err) }),
+      );
+    }, cfg.pruneIntervalMs);
+    pruneTimer.unref();
+    setTimeout(() => {
+      runPrune(db, cfg.staleSessionDays, cfg.hardDeleteDays).catch((err) =>
+        log.warn('startup prune failed', { error: String(err) }),
+      );
+    }, 5000).unref();
+  }
 
   // Remove stale socket
   const { unlink, chmod } = await import('node:fs/promises');
@@ -607,6 +869,7 @@ export async function startDaemon(
 
   // Start Unix socket server
   const server = createServer((socket: Socket) => {
+    onConnect();
     const ctx: SocketContext = { agentId: null, agentName: null, boundVia: null };
     let buffer = '';
 
@@ -636,6 +899,13 @@ export async function startDaemon(
         const guard = guardRpcMethod(req.method);
         if (!guard.allowed) {
           socket.write(`${licenseErrorResponse(req.id, guard)}\n`);
+          continue;
+        }
+
+        // Validate params
+        const validation = validateParams(req.method, req.params);
+        if (!validation.valid) {
+          socket.write(`${invalidParamsResponse(req.id, validation.error!)}\n`);
           continue;
         }
 
@@ -672,10 +942,13 @@ export async function startDaemon(
           continue;
         }
 
+        const startMs = Date.now();
         try {
           const result = await handler(req.params ?? {}, db, ctx);
+          trackRpcCall(req.method, 'ok', Date.now() - startMs);
           socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
         } catch (err) {
+          trackRpcCall(req.method, 'error', Date.now() - startMs);
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
@@ -691,9 +964,20 @@ export async function startDaemon(
     });
 
     socket.on('close', async () => {
+      onDisconnect();
       // Auto-release transient reservations when a long-lived agent
       // disconnects. Fresh-per-call clients (boundVia = 'param') don't
       // trigger cleanup — their identity outlives this socket.
+      //
+      // Note: we do NOT auto-end the session row on socket close. The
+      // daemon's session model is LOGICAL agent identity (not socket
+      // lifetime): hooks open-call-close in <100ms per RPC and bind to
+      // existing sessions via `actorAgentId` params; Studio etc. may
+      // disconnect and reattach. The only end triggers are explicit
+      // session.end and the periodic prune (GAP-153). A future
+      // refinement (keepalive flag in session.register, or socket-
+      // lifetime threshold) could re-introduce socket-close auto-end
+      // for genuinely-long-lived agents — see GAP-153 notes.
       if (ctx.agentId && (ctx.boundVia === 'register' || ctx.boundVia === 'attach')) {
         await db
           .query(`DELETE FROM file_reservations WHERE agent_id = $1`, [ctx.agentId])
@@ -731,15 +1015,16 @@ export async function startDaemon(
         reject(err);
         return;
       }
-      console.log(`[daemon] Listening on ${cfg.socketPath} (mode 0600)`);
-      console.log('[daemon] Ready for connections');
+      log.info('listening', { socketPath: cfg.socketPath, mode: '0600' });
+      log.info('ready for connections');
 
       resolve({
         close: async () => {
+          if (pruneTimer) clearInterval(pruneTimer);
           server.close();
           await db.close();
           await unlink(cfg.socketPath).catch(() => {});
-          console.log('[daemon] Shut down');
+          log.info('shut down');
         },
       });
     });

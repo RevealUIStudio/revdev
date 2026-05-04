@@ -57,10 +57,11 @@ jobs:
           queries: security-and-quality
           config-file: ./.github/codeql/codeql-config.yml
 
-      # JS/TS-specific setup: install deps so CodeQL sees the full module graph
-      # (pnpm version sourced from package.json "packageManager" field; don't set
-      # `version:` here — pnpm/action-setup@v4 rejects the combination since
-      # late 2026 with ERR_PNPM_BAD_PM_VERSION)
+      # JS/TS-specific setup: install deps so CodeQL sees the full module graph.
+      # Don't pin a version on pnpm/action-setup — the root package.json's
+      # `packageManager` field already specifies `pnpm@10.12.1`, and the
+      # action errors with "Multiple versions of pnpm specified" if both
+      # are set.
       - if: matrix.language == 'javascript-typescript'
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
