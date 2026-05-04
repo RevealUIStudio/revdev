@@ -124,11 +124,11 @@ function issueLicense(opts: Options): string {
   };
 
   if (opts.customer) {
-    payload['customerId'] = opts.customer;
+    payload.customerId = opts.customer;
   }
 
   if (!opts.perpetual) {
-    payload['exp'] = now + (opts.days ?? 365) * 86400;
+    payload.exp = now + (opts.days ?? 365) * 86400;
   }
 
   const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
