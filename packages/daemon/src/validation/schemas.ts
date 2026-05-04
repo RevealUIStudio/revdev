@@ -2,7 +2,18 @@
  * Zod schemas for all daemon RPC method params.
  *
  * Each schema validates + constrains the input for one RPC method.
- * Uses @revealui/contracts where shared schemas exist.
+ * Field names are derived from the underlying DB columns (in
+ * `storage/schema.ts`) and align with the RevealUI fleet's
+ * agent-memory + agent-coordination contracts (see
+ * `revealui/packages/contracts/src/agents`,
+ * `revealui/packages/db/src/schema/agents.ts`,
+ * `revealui/packages/mcp/src/servers/revealui-memory.ts`,
+ * `revealui/packages/harnesses/src/server/rpc-server.ts` —
+ * all use the typed-record framing
+ * `memoryType`/`content`/`metadata`, not KV-store `key`/`value`).
+ *
+ * Drift between schemas and handler/bridge param names was tracked
+ * in GAP-173 and reconciled in `fix/validation-schema-reconcile`.
  */
 
 import { z } from 'zod';
@@ -35,6 +46,18 @@ const safePath = z
 const agentId = z.string().max(MAX_NAME_LENGTH).optional();
 const actorAgentId = z.string().max(MAX_NAME_LENGTH).optional();
 
+/**
+ * Task priority enum — canonical naming used by bridge MCP tool +
+ * handler. Matches RevealUI contracts naming convention.
+ */
+const taskPriority = z.enum(['low', 'medium', 'high', 'critical']).optional();
+
+/**
+ * Mail priority enum — kept narrow (3 values) since mail is
+ * coordination-tier, not the full task priority spectrum.
+ */
+const mailPriority = z.enum(['low', 'normal', 'high']).optional();
+
 // ---------------------------------------------------------------------------
 // Method schemas
 // ---------------------------------------------------------------------------
@@ -47,26 +70,46 @@ export const schemas: Record<string, z.ZodType> = {
       agentName: z.string().max(MAX_NAME_LENGTH).optional(),
       workDir: z.string().max(MAX_PATH_LENGTH).optional(),
       backend: z.string().max(64).optional(),
+      // Compat aliases — handler reads workDir||task and backend||env.
+      task: z.string().max(MAX_PATH_LENGTH).optional(),
+      env: z.string().max(64).optional(),
+      pid: z.number().int().nonnegative().optional(),
       actorAgentId,
     })
     .passthrough(),
 
   'session.attach': z
     .object({
-      sessionId: z.string().max(MAX_NAME_LENGTH),
+      // Canonical: sessionId (matches DB column `agent_sessions.id` and
+      // session.register's response field). Handler accepts agentId as
+      // alias since in this codebase sessionId == agentId.
+      sessionId: z.string().max(MAX_NAME_LENGTH).optional(),
+      agentId: z.string().max(MAX_NAME_LENGTH).optional(),
       actorAgentId,
     })
-    .passthrough(),
+    .passthrough()
+    .refine((v) => v.sessionId || v.agentId, {
+      message: 'session.attach requires sessionId or agentId',
+    }),
 
   'session.list': z
     .object({
+      // 'local' (default) queries the in-process PGlite; 'fleet' queries
+      // Neon's coordination_sessions table for cross-machine peers.
+      scope: z.enum(['local', 'fleet']).optional(),
       actorAgentId,
     })
     .passthrough(),
 
   'session.end': z
     .object({
+      // Canonical: exitSummary (matches DB column `exit_summary`).
+      // Handler accepts `summary` as alias.
       exitSummary: z.string().max(MAX_BODY_LENGTH).optional(),
+      summary: z.string().max(MAX_BODY_LENGTH).optional(),
+      // Compat: handler accepts sessionId or agentId for cross-session targeting.
+      sessionId: z.string().max(MAX_NAME_LENGTH).optional(),
+      agentId: z.string().max(MAX_NAME_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
@@ -75,6 +118,9 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       task: z.string().max(MAX_BODY_LENGTH).optional(),
       files: z.string().max(MAX_BODY_LENGTH).optional(),
+      // Compat: handler accepts sessionId or agentId for cross-session targeting.
+      sessionId: z.string().max(MAX_NAME_LENGTH).optional(),
+      agentId: z.string().max(MAX_NAME_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
@@ -82,12 +128,18 @@ export const schemas: Record<string, z.ZodType> = {
   // -- Mail -------------------------------------------------------------------
   'mail.send': z
     .object({
-      to: z.string().max(MAX_NAME_LENGTH),
+      to: z.string().max(MAX_NAME_LENGTH).optional(),
+      // Compat alias: handler accepts toAgent.
+      toAgent: z.string().max(MAX_NAME_LENGTH).optional(),
       subject: z.string().max(MAX_SUBJECT_LENGTH),
       body: z.string().max(MAX_BODY_LENGTH),
+      priority: mailPriority,
       actorAgentId,
     })
-    .passthrough(),
+    .passthrough()
+    .refine((v) => v.to || v.toAgent, {
+      message: 'mail.send requires to or toAgent',
+    }),
 
   'mail.inbox': z
     .object({
@@ -152,6 +204,7 @@ export const schemas: Record<string, z.ZodType> = {
       taskId: z.string().max(MAX_NAME_LENGTH).optional(),
       title: z.string().max(MAX_SUBJECT_LENGTH).optional(),
       description: z.string().max(MAX_BODY_LENGTH).optional(),
+      priority: taskPriority,
       full: z.string().max(MAX_BODY_LENGTH).optional(),
       actorAgentId,
     })
@@ -175,6 +228,7 @@ export const schemas: Record<string, z.ZodType> = {
   'tasks.complete': z
     .object({
       taskId: z.string().max(MAX_NAME_LENGTH),
+      summary: z.string().max(MAX_BODY_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
@@ -196,6 +250,8 @@ export const schemas: Record<string, z.ZodType> = {
           message: `Event payload exceeds ${MAX_PAYLOAD_SIZE} bytes`,
         })
         .optional(),
+      // Handler accepts agentId override; falls back to ctx.agentId.
+      agentId: z.string().max(MAX_NAME_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
@@ -209,6 +265,11 @@ export const schemas: Record<string, z.ZodType> = {
     .passthrough(),
 
   // -- Memory -----------------------------------------------------------------
+  // Field names match DB columns (`agent_memory.memory_type`, `.content`,
+  // `.metadata`) and the RevealUI fleet's typed-record framing
+  // (contracts/agents, db/schema/agents, mcp/servers/revealui-memory,
+  // harnesses/server/rpc-server). Pre-#20 colloquial `key`/`value`/`tags`
+  // names were retired in fix/validation-schema-reconcile (GAP-173).
   'memory.store': z
     .object({
       memoryType: z.string().max(64),
@@ -221,6 +282,10 @@ export const schemas: Record<string, z.ZodType> = {
   'memory.query': z
     .object({
       memoryType: z.string().max(64).optional(),
+      // Full-text content filter — distinct from memoryType (categorical).
+      query: z.string().max(MAX_NAME_LENGTH).optional(),
+      // Tag filter — searches metadata.tags JSONB.
+      tags: z.array(z.string().max(64)).max(MAX_IDS_BATCH).optional(),
       limit: z.number().int().min(1).max(MAX_QUERY_LIMIT).optional(),
       actorAgentId,
     })
@@ -276,18 +341,24 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       branch: z.string().max(256),
       baseBranch: z.string().max(256).optional(),
+      // Optional override for derived worktree path.
+      path: z.string().max(MAX_PATH_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
 
   'worktree.list': z
     .object({
+      // Filter by owning agent; handler defaults to all when omitted.
+      agentId: z.string().max(MAX_NAME_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
 
   'worktree.remove': z
     .object({
+      // Required: worktree.remove handler throws when branch is absent.
+      branch: z.string().max(256),
       actorAgentId,
     })
     .passthrough(),
@@ -296,11 +367,21 @@ export const schemas: Record<string, z.ZodType> = {
   'merge.request': z
     .object({
       taskId: z.string().max(MAX_NAME_LENGTH).optional(),
-      sourceBranch: z.string().max(256),
+      // Canonical: sourceBranch (matches DB column `merge_requests.source_branch`).
+      sourceBranch: z.string().max(256).optional(),
+      // Compat alias — handler accepts `branch` as alias for sourceBranch.
+      branch: z.string().max(256).optional(),
+      // Canonical: baseBranch (matches DB column `merge_requests.base_branch`).
       baseBranch: z.string().max(256).optional(),
+      // Compat alias — handler accepts `targetBranch` as alias for baseBranch.
+      targetBranch: z.string().max(256).optional(),
+      description: z.string().max(MAX_BODY_LENGTH).optional(),
       actorAgentId,
     })
-    .passthrough(),
+    .passthrough()
+    .refine((v) => v.sourceBranch || v.branch, {
+      message: 'merge.request requires sourceBranch or branch',
+    }),
 
   'merge.status': z
     .object({
@@ -312,6 +393,8 @@ export const schemas: Record<string, z.ZodType> = {
   'merge.list': z
     .object({
       status: z.string().max(32).optional(),
+      // Filter by owning agent; handler defaults to all when omitted.
+      agentId: z.string().max(MAX_NAME_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
