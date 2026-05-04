@@ -27,16 +27,16 @@ const EXEMPT_METHODS = new Set([
  * The daemon runs in degraded mode on free tier: session management
  * works, but spawning, inference, and merge pipeline are gated.
  *
- * TODO(licensing): the current format `RVUI-<tier>-<32 hex chars>` is not
- * cryptographically bound — any regex-matching string is accepted as valid.
- * Planned upgrade: `RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>` with:
- *   - Ed25519 signature over `<tier>.<expiresAt>` verified against a vendor
- *     public key baked into the daemon binary.
- *   - `expiresAt` unix timestamp; keys reject after that point.
- *   - Vendor-side key-generation CLI; signing private key stored in revvault.
- * Blocks casual forgery; determined attackers can still patch the binary,
- * but that is a separate threat model from tier-gate enforcement.
+ * License format:
+ *   v2 (Ed25519): RVUI.v2.<tier>.<expiresAt>.<ed25519-sig-base64url>
+ *   v1 (legacy):  RVUI-<tier>-<32 hex chars> — DEPRECATED, rejected
+ *
+ * v1 keys are no longer accepted. If you have a v1 key, contact
+ * support@revealui.com for a v2 replacement.
  */
+// Import verifyLicenseV2 statically — same ESM module, no circular risk.
+import { verifyLicenseV2 } from './license-crypto.js';
+
 export function checkLicense(): { tier: LicenseTier; valid: boolean } {
   const key = process.env.REVEALUI_LICENSE_KEY;
 
@@ -44,14 +44,28 @@ export function checkLicense(): { tier: LicenseTier; valid: boolean } {
     return { tier: 'free', valid: false };
   }
 
-  // License key format: RVUI-<tier>-<hash>
-  const match = key.match(/^RVUI-(pro|max|enterprise)-[a-f0-9]{32}$/i);
-  if (!match) {
+  // v2 format: RVUI.v2.<tier>.<expiresAt>.<signature>
+  if (key.startsWith('RVUI.v2.')) {
+    const result = verifyLicenseV2(key);
+    if (result.valid) {
+      return { tier: result.tier, valid: true };
+    }
+    if ('reason' in result) {
+      process.stderr.write(`[revdev] License validation failed: ${result.reason}\n`);
+    }
     return { tier: 'free', valid: false };
   }
 
-  const tier = match[1]?.toLowerCase() as LicenseTier;
-  return { tier, valid: true };
+  // v1 format: RVUI-<tier>-<hash> — REJECTED (not cryptographically bound)
+  if (key.match(/^RVUI-/i)) {
+    process.stderr.write(
+      '[revdev] v1 license keys (RVUI-<tier>-<hash>) are no longer accepted. ' +
+        'Contact support@revealui.com for a v2 Ed25519-signed key.\n',
+    );
+    return { tier: 'free', valid: false };
+  }
+
+  return { tier: 'free', valid: false };
 }
 
 /** Returns true if the given RPC method is exempt from license checks. */

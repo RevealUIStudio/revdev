@@ -17,6 +17,12 @@ export interface DaemonConfig {
   pidFile: string;
   /** Maximum memory for PGlite (in MB) */
   maxMemoryMb: number;
+  /** Sessions older than this with no `ended_at` are auto-ended on each prune pass. */
+  staleSessionDays: number;
+  /** Sessions ended longer than this are hard-deleted on each prune pass. */
+  hardDeleteDays: number;
+  /** How often to run the periodic prune (ms). Set to 0 to disable. */
+  pruneIntervalMs: number;
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
@@ -29,4 +35,7 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   httpStaticDir: null,
   pidFile: `${homeDir}/.local/share/revealui/harness.pid`,
   maxMemoryMb: 512,
+  staleSessionDays: 7,
+  hardDeleteDays: 30,
+  pruneIntervalMs: 60 * 60 * 1000, // 1 hour
 };

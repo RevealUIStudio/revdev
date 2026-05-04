@@ -23,6 +23,12 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https:; connect-src 'self' ipc: http://ipc.localhost https://api.revealui.com http://localhost:3004 ws://localhost:3004 wss://api.revealui.com"
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://releases.revealui.com/studio/{{target}}/{{arch}}/latest.json"],
+      "pubkey": ""
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

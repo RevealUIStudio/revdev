@@ -1,0 +1,52 @@
+[Unit]
+Description=RevDev coordination daemon
+Documentation=https://github.com/RevealUIStudio/revdev
+After=network-online.target
+
+[Service]
+# Adjust the path if @revdev/daemon is installed somewhere other than the
+# repo checkout. The setup script writes a unit with the correct path on
+# install; this template uses %h (user home) as a sensible default for
+# the contributor case.
+ExecStart=/usr/bin/env node %h/suite/revdev/packages/daemon/dist/cli.js
+Restart=on-failure
+RestartSec=2
+# WSL note: `loginctl enable-linger $(whoami)` is required for the service
+# to keep running across logouts. Without lingering, systemd-user units
+# stop when the user's last session exits.
+Environment=NODE_ENV=production
+# Hardening: mount tmpfs for any /tmp use we have. Don't lock down the
+# filesystem with ProtectSystem=strict — the daemon shells out to git
+# (`git worktree add/remove` in vcs.ts, etc.) and those touch project
+# `.git` directories outside ~/.local/share/revealui. ProtectSystem=full
+# protects /usr, /boot, /efi but leaves $HOME writable, which the git
+# RPCs need.
+PrivateTmp=true
+ProtectSystem=full
+# Memory limits — defense-in-depth against runaway-leak scenarios.
+# Sized off a single reference observation on a WSL/Ubuntu host:
+# steady state ~280 MiB, startup peak ~780 MiB (PGlite schema init
+# + license validation + V8 warm-up). MemoryHigh is ~20 MiB above
+# the observed peak; MemoryMax is ~31% above peak. Combined with
+# the `Restart=on-failure` line above, a runaway leak that exceeds
+# 1G self-heals in <2s (kernel OOM-kills, systemd respawns).
+#
+# These defaults work for the reference install, but the cushion
+# above normal peak is intentionally narrow. Consumers running
+# heavier workloads (many concurrent agents, larger PGlite stores,
+# larger license payloads) may see higher peaks and want to bump
+# these values. Tune via a drop-in instead of editing this template:
+#
+#   ~/.config/systemd/user/revdev-daemon.service.d/override.conf
+#
+# Watch for soft-throttle events with:
+#
+#   journalctl --user -u revdev-daemon | grep -iE 'memory|cgroup'
+#
+# Bump MemoryHigh first; bump MemoryMax only if real leaks reach
+# the hard cap.
+MemoryHigh=800M
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

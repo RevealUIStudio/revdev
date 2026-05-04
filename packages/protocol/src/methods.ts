@@ -17,6 +17,7 @@ export const RPC_METHODS = {
   'harness.syncConfig': 'harness.syncConfig',
   'harness.diffConfig': 'harness.diffConfig',
   'harness.health': 'harness.health',
+  'harness.prune': 'harness.prune',
 
   // Agent sessions
   'session.register': 'session.register',
