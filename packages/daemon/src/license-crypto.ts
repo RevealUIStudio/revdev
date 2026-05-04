@@ -80,15 +80,12 @@ export function verifyLicenseJWT(
     // Decode + parse header
     let header: Record<string, unknown>;
     try {
-      header = JSON.parse(decodeBase64url(headerB64).toString('utf-8')) as Record<
-        string,
-        unknown
-      >;
+      header = JSON.parse(decodeBase64url(headerB64).toString('utf-8')) as Record<string, unknown>;
     } catch {
       return { tier: 'free', valid: false, reason: 'invalid format' };
     }
 
-    if (header['alg'] !== 'EdDSA') {
+    if (header.alg !== 'EdDSA') {
       return { tier: 'free', valid: false, reason: 'unsupported algorithm' };
     }
 
@@ -104,13 +101,13 @@ export function verifyLicenseJWT(
     }
 
     // Validate tier
-    const tier = payload['tier'];
+    const tier = payload.tier;
     if (typeof tier !== 'string' || !VALID_TIERS.has(tier)) {
       return { tier: 'free', valid: false, reason: `invalid tier: ${String(tier)}` };
     }
 
     // Validate exp (absent = perpetual; present = must be a number)
-    const exp = payload['exp'];
+    const exp = payload.exp;
     if (exp !== undefined && typeof exp !== 'number') {
       return { tier: 'free', valid: false, reason: 'invalid exp claim' };
     }

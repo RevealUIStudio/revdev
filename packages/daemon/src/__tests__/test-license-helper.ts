@@ -41,11 +41,11 @@ export function generateTestLicense(
   };
 
   if (opts.customerId) {
-    payload['customerId'] = opts.customerId;
+    payload.customerId = opts.customerId;
   }
 
   if (!perpetual) {
-    payload['exp'] = now + (opts.daysUntilExpiry ?? 1) * 86400;
+    payload.exp = now + (opts.daysUntilExpiry ?? 1) * 86400;
   }
 
   const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
