@@ -344,7 +344,9 @@ server.tool(
   {
     memoryType: z
       .string()
-      .describe('Memory category (e.g. "fact", "preference", "decision", or any agent-defined type)'),
+      .describe(
+        'Memory category (e.g. "fact", "preference", "decision", or any agent-defined type)',
+      ),
     content: z.string().describe('Memory content body'),
     tags: z.array(z.string()).optional().describe('Tags filed under metadata.tags for filtering'),
     metadata: z

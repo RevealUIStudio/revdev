@@ -40,9 +40,9 @@ describe('session.end validation', () => {
   });
 
   it('accepts sessionId override (admin cleanup)', () => {
-    expect(
-      validateParams('session.end', { sessionId: 'agent-1', exitSummary: 'done' }).valid,
-    ).toBe(true);
+    expect(validateParams('session.end', { sessionId: 'agent-1', exitSummary: 'done' }).valid).toBe(
+      true,
+    );
   });
 
   it('accepts agentId override alias', () => {
@@ -106,15 +106,15 @@ describe('session.register validation', () => {
 
 describe('mail.send validation', () => {
   it('accepts canonical to', () => {
-    expect(
-      validateParams('mail.send', { to: 'agent-2', subject: 's', body: 'b' }).valid,
-    ).toBe(true);
+    expect(validateParams('mail.send', { to: 'agent-2', subject: 's', body: 'b' }).valid).toBe(
+      true,
+    );
   });
 
   it('accepts toAgent alias (compat)', () => {
-    expect(
-      validateParams('mail.send', { toAgent: 'agent-2', subject: 's', body: 'b' }).valid,
-    ).toBe(true);
+    expect(validateParams('mail.send', { toAgent: 'agent-2', subject: 's', body: 'b' }).valid).toBe(
+      true,
+    );
   });
 
   it('rejects payload missing both to and toAgent', () => {
@@ -227,16 +227,12 @@ describe('tasks.create validation', () => {
 
   it('accepts all 4 priority values', () => {
     for (const p of ['low', 'medium', 'high', 'critical']) {
-      expect(
-        validateParams('tasks.create', { title: 't', priority: p }).valid,
-      ).toBe(true);
+      expect(validateParams('tasks.create', { title: 't', priority: p }).valid).toBe(true);
     }
   });
 
   it('rejects invalid priority value', () => {
-    expect(
-      validateParams('tasks.create', { title: 't', priority: 'urgent' }).valid,
-    ).toBe(false);
+    expect(validateParams('tasks.create', { title: 't', priority: 'urgent' }).valid).toBe(false);
   });
 
   it('accepts payload without priority (optional)', () => {
@@ -246,9 +242,7 @@ describe('tasks.create validation', () => {
 
 describe('tasks.complete validation', () => {
   it('accepts taskId + summary', () => {
-    expect(
-      validateParams('tasks.complete', { taskId: 't1', summary: 'done' }).valid,
-    ).toBe(true);
+    expect(validateParams('tasks.complete', { taskId: 't1', summary: 'done' }).valid).toBe(true);
   });
 
   it('rejects payload missing taskId', () => {
@@ -258,9 +252,9 @@ describe('tasks.complete validation', () => {
 
 describe('events.log validation', () => {
   it('accepts canonical eventType', () => {
-    expect(
-      validateParams('events.log', { eventType: 'agent.start', payload: {} }).valid,
-    ).toBe(true);
+    expect(validateParams('events.log', { eventType: 'agent.start', payload: {} }).valid).toBe(
+      true,
+    );
   });
 
   it('accepts agentId override (handler reads it)', () => {
@@ -317,9 +311,9 @@ describe('merge.request validation', () => {
   });
 
   it('accepts branch alias (compat — handler reads either)', () => {
-    expect(
-      validateParams('merge.request', { branch: 'feat/x', targetBranch: 'main' }).valid,
-    ).toBe(true);
+    expect(validateParams('merge.request', { branch: 'feat/x', targetBranch: 'main' }).valid).toBe(
+      true,
+    );
   });
 
   it('rejects payload missing both sourceBranch and branch', () => {
