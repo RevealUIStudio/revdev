@@ -291,7 +291,45 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  // -- Health -----------------------------------------------------------------
+  // Both handlers (`server.ts:registerHandler('harness.health', ...)` and
+  // `harness.prune`) previously bypassed `validateParams` because no
+  // schema existed in the registry. Adding them here completes the
+  // Option A direction (schemas as canonical) shipped by GAP-173 —
+  // every live handler should have a schema entry. Schemas are
+  // intentionally TYPE-ONLY (no integer / non-negative / upper-bound
+  // constraints on `staleDays` / `hardDeleteDays`): the prune handler
+  // already runs a defensive clamp via `Number.isFinite` + `Math.max(0,
+  // ...)`, AND the integration tests legitimately pass fractional days
+  // (e.g. `staleDays: 0.00001` ≈ 0.86s) to exercise the prune logic
+  // without 24h sleeps + negative days to verify the defensive clamp.
+  // Adding `int()` / `min(0)` here would break those tests and move
+  // safety enforcement away from the handler where it belongs.
+  'harness.health': z
+    .object({
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'harness.prune': z
+    .object({
+      staleDays: z.number().optional(),
+      hardDeleteDays: z.number().optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
   // -- Inference --------------------------------------------------------------
+  // `inference.status` takes no required params (handler signature is
+  // `async ()` — no params destructured). Schema added for symmetry with
+  // the rest of the inference.* methods + so the only remaining bare
+  // method in the registry is `ping` (intentional, no params).
+  'inference.status': z
+    .object({
+      actorAgentId,
+    })
+    .passthrough(),
+
   'inference.pull': z
     .object({
       model: z.string().max(256),

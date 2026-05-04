@@ -1,9 +1,11 @@
 /**
  * RPC input validation — validates params before handler dispatch.
  *
- * Methods without a schema pass through unchecked (ping, harness.health,
- * inference.status). Methods with a schema are validated and rejected with
- * JSON-RPC -32602 (Invalid params) on failure.
+ * The only registered method without a schema is `ping` (intentional —
+ * no params). Methods with a schema are validated and rejected with
+ * JSON-RPC -32602 (Invalid params) on failure. Unknown methods also
+ * pass through here (the registry only validates known methods; the
+ * dispatcher surfaces -32601 Method not found later).
  */
 
 import { schemas } from './schemas.js';

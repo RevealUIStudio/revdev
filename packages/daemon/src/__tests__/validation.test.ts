@@ -329,6 +329,58 @@ describe('merge.list validation', () => {
   });
 });
 
+describe('harness.health validation', () => {
+  it('accepts empty payload', () => {
+    expect(validateParams('harness.health', {}).valid).toBe(true);
+  });
+
+  it('accepts actorAgentId', () => {
+    expect(validateParams('harness.health', { actorAgentId: 'agent-1' }).valid).toBe(true);
+  });
+
+  it('passes through extra fields (passthrough)', () => {
+    expect(validateParams('harness.health', { extra: 'ignored' }).valid).toBe(true);
+  });
+});
+
+describe('harness.prune validation', () => {
+  it('accepts empty payload (handler defaults apply)', () => {
+    expect(validateParams('harness.prune', {}).valid).toBe(true);
+  });
+
+  it('accepts integer staleDays + hardDeleteDays', () => {
+    expect(validateParams('harness.prune', { staleDays: 7, hardDeleteDays: 30 }).valid).toBe(true);
+  });
+
+  it('accepts fractional days (test helpers use these to avoid long sleeps)', () => {
+    expect(validateParams('harness.prune', { staleDays: 0.00001 }).valid).toBe(true);
+  });
+
+  it('accepts negative days (handler defensive clamp is the safety net)', () => {
+    expect(validateParams('harness.prune', { staleDays: -1, hardDeleteDays: -7 }).valid).toBe(true);
+  });
+
+  it('rejects non-numeric staleDays', () => {
+    const result = validateParams('harness.prune', { staleDays: 'forever' });
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects non-numeric hardDeleteDays', () => {
+    const result = validateParams('harness.prune', { hardDeleteDays: { days: 30 } });
+    expect(result.valid).toBe(false);
+  });
+});
+
+describe('inference.status validation', () => {
+  it('accepts empty payload', () => {
+    expect(validateParams('inference.status', {}).valid).toBe(true);
+  });
+
+  it('accepts actorAgentId', () => {
+    expect(validateParams('inference.status', { actorAgentId: 'agent-1' }).valid).toBe(true);
+  });
+});
+
 describe('No-schema methods (pass-through)', () => {
   it('ping passes through with empty payload', () => {
     expect(validateParams('ping', {}).valid).toBe(true);
