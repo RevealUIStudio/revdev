@@ -116,7 +116,10 @@ pub async fn daemon_start() -> Result<u32, String> {
 
         let pid = child.id();
 
-        // Wait for socket to become reachable (up to 5s)
+        // Wait for socket to become reachable (up to 5s).
+        // If the daemon never becomes reachable, return an error rather than
+        // a false-success Ok(pid) — the child may have exited (bind/startup
+        // failure, missing dependencies, etc.) and reporting Ok hides that.
         for _ in 0..50 {
             sleep(Duration::from_millis(100)).await;
             if crate::harness::rpc_call("ping", serde_json::json!({}))
@@ -127,7 +130,9 @@ pub async fn daemon_start() -> Result<u32, String> {
             }
         }
 
-        Ok(pid)
+        Err(format!(
+            "Daemon spawned (PID {pid}) but did not become reachable within 5s — likely exited or failed to bind socket"
+        ))
     }
 
     #[cfg(not(unix))]

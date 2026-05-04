@@ -296,19 +296,22 @@ registerHandler('session.register', async (params, db, ctx) => {
 });
 
 registerHandler('session.attach', async (params, db, ctx) => {
-  const agentId = strOrNull(params.agentId);
-  if (!agentId) throw new Error('session.attach: missing agentId');
+  // Accept canonical sessionId, fall back to agentId alias (in this codebase
+  // the session row's `id` column IS the agentId — they're the same value
+  // bound at session.register time).
+  const sessionId = strOrNull(params.sessionId) ?? strOrNull(params.agentId);
+  if (!sessionId) throw new Error('session.attach: missing sessionId or agentId');
   const r = await db.query<{ id: string; env: string }>(
     `SELECT id, env FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,
-    [agentId],
+    [sessionId],
   );
   if (r.rows.length === 0) {
-    throw new Error(`session.attach: unknown or ended session ${agentId}`);
+    throw new Error(`session.attach: unknown or ended session ${sessionId}`);
   }
-  ctx.agentId = agentId;
+  ctx.agentId = sessionId;
   ctx.agentName = r.rows[0]?.env.split(':')[1] ?? null;
   ctx.boundVia = 'attach';
-  return { attached: true, agentId };
+  return { attached: true, sessionId, agentId: sessionId };
 });
 
 registerHandler('session.list', async (params, db) => {
@@ -334,20 +337,22 @@ registerHandler('session.end', async (params, db, ctx) => {
   // Prefer caller's own session, but allow explicit override (e.g. admin cleanup).
   const target = strOrNull(params.sessionId) ?? strOrNull(params.agentId) ?? ctx.agentId;
   if (!target) throw new Error('No session to end');
-  const summary = strOrNull(params.summary);
+  // Canonical: exitSummary (matches DB column `exit_summary`).
+  // Compat alias: summary (for callers using shorter name).
+  const exitSummary = strOrNull(params.exitSummary) ?? strOrNull(params.summary);
   await db.query(
     `UPDATE agent_sessions
         SET ended_at = NOW(),
             exit_summary = COALESCE($2, exit_summary)
       WHERE id = $1`,
-    [target, summary],
+    [target, exitSummary],
   );
   if (ctx.agentId === target) {
     ctx.agentId = null;
     ctx.agentName = null;
   }
   // Best-effort dual-write — see GAP-154 §E.
-  await syncSessionEnd({ sessionId: target, summary });
+  await syncSessionEnd({ sessionId: target, summary: exitSummary });
   return { ended: target };
 });
 
@@ -763,32 +768,50 @@ registerHandler('harness.prune', async (params, db) => {
 
 registerHandler('memory.store', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
-  const key = str(params.key);
-  const value = str(params.value);
-  const tags = asStringArray(params.tags);
+  const memoryType = str(params.memoryType);
+  const content = str(params.content);
+  const metadataInput =
+    params.metadata && typeof params.metadata === 'object' && !Array.isArray(params.metadata)
+      ? (params.metadata as Record<string, unknown>)
+      : {};
   await db.query(
     `INSERT INTO agent_memory (agent_id, memory_type, content, metadata)
      VALUES ($1, $2, $3, $4::jsonb)`,
-    [agentId, key, value, JSON.stringify({ tags })],
+    [agentId, memoryType, content, JSON.stringify(metadataInput)],
   );
-  return { stored: key };
+  return { stored: memoryType };
 });
 
 registerHandler('memory.query', async (params, db, ctx) => {
   const agentId = requireAgent(ctx, params);
+  const memoryType = strOrNull(params.memoryType);
   const query = strOrNull(params.query);
+  const tags = asStringArray(params.tags);
   const limit = Math.min(num(params.limit, 10), 200);
-  const sql = query
-    ? `SELECT * FROM agent_memory
-       WHERE agent_id = $1 AND content ILIKE $2
-       ORDER BY created_at DESC LIMIT $3`
-    : `SELECT * FROM agent_memory
-       WHERE agent_id = $1
-       ORDER BY created_at DESC LIMIT $2`;
-  const result = await db.query<Record<string, unknown>>(
-    sql,
-    query ? [agentId, `%${query}%`, limit] : [agentId, limit],
-  );
+
+  // Build WHERE clause dynamically based on which filters are present.
+  const where: string[] = ['agent_id = $1'];
+  const args: unknown[] = [agentId];
+  let p = 2;
+  if (memoryType) {
+    where.push(`memory_type = $${p++}`);
+    args.push(memoryType);
+  }
+  if (query) {
+    where.push(`content ILIKE $${p++}`);
+    args.push(`%${query}%`);
+  }
+  if (tags && tags.length > 0) {
+    // PG ?| operator: any tag in the array matches a tag in metadata->'tags'.
+    where.push(`metadata->'tags' ?| $${p++}::text[]`);
+    args.push(tags);
+  }
+  args.push(limit);
+  const sql = `SELECT * FROM agent_memory
+     WHERE ${where.join(' AND ')}
+     ORDER BY created_at DESC LIMIT $${p}`;
+
+  const result = await db.query<Record<string, unknown>>(sql, args);
   return { memories: result.rows };
 });
 

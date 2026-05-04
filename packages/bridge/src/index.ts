@@ -155,10 +155,10 @@ server.tool(
   'session_attach',
   'Re-bind an existing session ID to this connection (used by UIs that reconnect per call)',
   {
-    agentId: z.string().describe('Previously-registered session/agent ID'),
+    sessionId: z.string().describe('Previously-registered session ID (a.k.a. agentId)'),
   },
-  async ({ agentId }) => {
-    const result = await daemon.call(RPC_METHODS['session.attach'], { agentId });
+  async ({ sessionId }) => {
+    const result = await daemon.call(RPC_METHODS['session.attach'], { sessionId });
     return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
   },
 );
@@ -340,14 +340,26 @@ server.tool(
 
 server.tool(
   'memory_store',
-  'Store a memory for cross-session agent knowledge',
+  'Store a typed memory record for cross-session agent knowledge',
   {
-    key: z.string().describe('Memory key'),
-    value: z.string().describe('Memory content'),
-    tags: z.array(z.string()).optional().describe('Tags for filtering'),
+    memoryType: z
+      .string()
+      .describe('Memory category (e.g. "fact", "preference", "decision", or any agent-defined type)'),
+    content: z.string().describe('Memory content body'),
+    tags: z.array(z.string()).optional().describe('Tags filed under metadata.tags for filtering'),
+    metadata: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Free-form metadata; tags are merged in if both are provided'),
   },
-  async ({ key, value, tags }) => {
-    const result = await daemon.call(RPC_METHODS['memory.store'], { key, value, tags });
+  async ({ memoryType, content, tags, metadata }) => {
+    // Merge tags into metadata so the daemon stores a single JSONB blob.
+    const mergedMetadata = tags && tags.length > 0 ? { ...(metadata ?? {}), tags } : metadata;
+    const result = await daemon.call(RPC_METHODS['memory.store'], {
+      memoryType,
+      content,
+      metadata: mergedMetadata,
+    });
     return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
   },
 );
@@ -356,12 +368,14 @@ server.tool(
   'memory_query',
   'Query stored agent memories',
   {
-    query: z.string().optional().describe('Search query'),
-    tags: z.array(z.string()).optional().describe('Filter by tags'),
+    memoryType: z.string().optional().describe('Filter by memory category (exact match)'),
+    query: z.string().optional().describe('Full-text search filter on content'),
+    tags: z.array(z.string()).optional().describe('Filter by metadata tags (any-of match)'),
     limit: z.number().optional().describe('Max results (default: 10)'),
   },
-  async ({ query, tags, limit }) => {
+  async ({ memoryType, query, tags, limit }) => {
     const result = await daemon.call(RPC_METHODS['memory.query'], {
+      memoryType,
       query,
       tags,
       limit: limit ?? 10,
@@ -376,14 +390,14 @@ server.tool(
   'merge_request',
   'Request a merge review from the daemon merge pipeline',
   {
-    branch: z.string().describe('Branch to merge'),
-    targetBranch: z.string().optional().describe('Target branch (default: main)'),
+    sourceBranch: z.string().describe('Branch to merge (head)'),
+    baseBranch: z.string().optional().describe('Branch to merge into (default: main)'),
     description: z.string().optional().describe('Merge description'),
   },
-  async ({ branch, targetBranch, description }) => {
+  async ({ sourceBranch, baseBranch, description }) => {
     const result = await daemon.call(RPC_METHODS['merge.request'], {
-      branch,
-      targetBranch: targetBranch ?? 'main',
+      sourceBranch,
+      baseBranch: baseBranch ?? 'main',
       description,
     });
     return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
