@@ -15,6 +15,7 @@
  *   REVDEV_DAEMON_PID        # Override PID file path
  *   REVDEV_DAEMON_LOG        # Where stdout/stderr go in --detach mode (default: /tmp/revdev-daemon.log)
  *   REVDEV_DAEMON_MAX_LINE_BYTES  # Max bytes per JSON-RPC frame (default: 1_048_576 = 1 MiB)
+ *   REVDEV_DAEMON_GIT_TIMEOUT_MS  # Max wall-clock per git spawn (default: 60_000 = 60 s)
  */
 
 import { spawn } from 'node:child_process';
@@ -60,6 +61,7 @@ Environment:
   REVDEV_DAEMON_PID           PID file path (default: ${DAEMON_DEFAULTS.pidFile})
   REVDEV_DAEMON_LOG           Log file for --detach mode (default: ~/.local/share/revealui/daemon.log)
   REVDEV_DAEMON_MAX_LINE_BYTES  Max bytes per JSON-RPC frame (default: ${DAEMON_DEFAULTS.maxLineBytes}, ~1 MiB)
+  REVDEV_DAEMON_GIT_TIMEOUT_MS  Max wall-clock per git spawn (default: ${DAEMON_DEFAULTS.gitTimeoutMs} ms = ${DAEMON_DEFAULTS.gitTimeoutMs / 1000} s)
 
 License tiers:
   free         Session management only
@@ -103,6 +105,7 @@ const config = {
   socketPath: process.env.REVDEV_DAEMON_SOCKET ?? DAEMON_DEFAULTS.socketPath,
   dataDir: process.env.REVDEV_DAEMON_DATA ?? DAEMON_DEFAULTS.dataDir,
   maxLineBytes: parsePositiveInt('REVDEV_DAEMON_MAX_LINE_BYTES', DAEMON_DEFAULTS.maxLineBytes),
+  gitTimeoutMs: parsePositiveInt('REVDEV_DAEMON_GIT_TIMEOUT_MS', DAEMON_DEFAULTS.gitTimeoutMs),
 };
 
 const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;

@@ -185,6 +185,27 @@ export function registerHandler(method: string, handler: RpcHandler): void {
 }
 
 // ---------------------------------------------------------------------------
+// Shutdown signal — module-level AbortController whose `.signal` aborts when
+// the daemon is closing. Long-running helpers (e.g. git child-process spawn
+// in vcs.ts) listen to this so they get SIGTERM'd before the daemon exits,
+// rather than orphaning. Reset to a fresh controller on every startDaemon()
+// so multiple sequential lifecycles in the same process (e.g. test setup +
+// teardown loops) get independent shutdown windows.
+// ---------------------------------------------------------------------------
+
+let _shutdownController: AbortController | null = null;
+
+/**
+ * Returns the daemon's current shutdown AbortSignal, or `undefined` if the
+ * daemon has not started (or has fully shut down). Helpers that spawn
+ * child processes or hold long-running async work should pass this signal
+ * to their abort-aware APIs.
+ */
+export function getShutdownSignal(): AbortSignal | undefined {
+  return _shutdownController?.signal;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -824,6 +845,9 @@ export async function startDaemon(
 ): Promise<{ close: () => Promise<void> }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
 
+  // Reset shutdown signal for this daemon lifecycle. Aborted in close().
+  _shutdownController = new AbortController();
+
   // Initialize license guard (logs banner)
   initLicenseGuard();
 
@@ -1073,6 +1097,13 @@ export async function startDaemon(
 
       resolve({
         close: async () => {
+          // Abort first so in-flight child processes (git spawn in vcs.ts)
+          // get SIGTERM before db.close() — otherwise they orphan and the
+          // socket can race with active queries. Then clear the prune
+          // timer, stop accepting new connections, close PGlite, and
+          // unlink the Unix socket.
+          _shutdownController?.abort();
+          _shutdownController = null;
           if (pruneTimer) clearInterval(pruneTimer);
           server.close();
           await db.close();
