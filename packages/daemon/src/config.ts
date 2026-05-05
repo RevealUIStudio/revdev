@@ -24,12 +24,26 @@ export interface DaemonConfig {
   /** How often to run the periodic prune (ms). Set to 0 to disable. */
   pruneIntervalMs: number;
   /**
-   * Maximum bytes of a single newline-delimited JSON-RPC frame on a client
-   * socket. A client that sends bytes without a newline grows its
-   * server-side buffer linearly; without a bound, a malicious or stuck
-   * client can consume daemon memory unboundedly. On overflow, the daemon
-   * emits a JSON-RPC -32700 parse-error with id null and destroys the
-   * socket. 1 MiB is generous for any plausible RPC (largest legitimate
+   * Maximum size in UTF-8 bytes of a single newline-delimited JSON-RPC
+   * frame on a client socket. Two failure modes are guarded:
+   *
+   *   1. Unbounded-growth attack — a client streams bytes without a
+   *      newline; the per-socket reassembly buffer would grow linearly.
+   *      On overflow, the daemon emits a JSON-RPC -32700 parse-error
+   *      with id null AND destroys the socket. The client must
+   *      reconnect.
+   *
+   *   2. Oversized complete frame — a single chunk arrives containing
+   *      a newline-terminated frame larger than the cap. The frame is
+   *      rejected with -32700 but the socket stays open; the client
+   *      framed the boundary correctly, they just sent too much data.
+   *
+   * Comparisons use `Buffer.byteLength(s, 'utf8')` so the cap is
+   * enforced in real UTF-8 bytes (matching the documented "bytes"
+   * semantics) rather than UTF-16 code units — otherwise multibyte
+   * payloads (emoji, non-Latin text) bypass the intended protection.
+   *
+   * 1 MiB default is generous for any plausible RPC (largest legitimate
    * payloads are inference.chat / inference.generate prompts; even a
    * 250k-token prompt fits) and tight enough to defeat unbounded growth.
    */
