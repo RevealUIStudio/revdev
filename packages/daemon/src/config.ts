@@ -48,6 +48,25 @@ export interface DaemonConfig {
    * 250k-token prompt fits) and tight enough to defeat unbounded growth.
    */
   maxLineBytes: number;
+  /**
+   * Maximum wall-clock time (in ms) for a single git child-process spawn
+   * inside the daemon (worktree.create / worktree.remove). Without this,
+   * a runaway git command (credential prompt on a private base branch,
+   * a corrupt object DB requiring fsck, a giant repo, a hung remote)
+   * holds the daemon socket forever — SIGTERM to the daemon does not
+   * propagate to the orphaned git child.
+   *
+   * On timeout, the daemon SIGTERMs the child via the per-call
+   * AbortSignal passed to spawn(), waits briefly for clean exit, and
+   * returns a structured error response. On daemon shutdown, all
+   * in-flight git children get SIGTERM via a shared AbortController
+   * aborted from server.close().
+   *
+   * 60 s default covers any healthy worktree create/remove against a
+   * reasonable repo. Override via REVDEV_DAEMON_GIT_TIMEOUT_MS for
+   * deployers with very large repos or slow filesystems.
+   */
+  gitTimeoutMs: number;
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
@@ -64,4 +83,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   hardDeleteDays: 30,
   pruneIntervalMs: 60 * 60 * 1000, // 1 hour
   maxLineBytes: 1_048_576, // 1 MiB
+  gitTimeoutMs: 60_000, // 60 s
 };
