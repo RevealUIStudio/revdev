@@ -7,6 +7,16 @@ import { SettingsContext } from '../../hooks/use-settings';
 import type { StatusContextValue } from '../../hooks/use-status';
 import { StatusContext } from '../../hooks/use-status';
 
+// Mock health API to prevent fetch calls from useHealth.
+// Without this mock the initial poll() fires a real fetch that hangs on
+// AbortSignal.timeout(5_000) in CI runners; when the abort resolves after
+// the synchronous tests complete and jsdom has been torn down, the
+// setReachable() call hits a missing `window` and Vitest reports it as an
+// unhandled error. See revdev CI run 25296294717 attempt 1 (2026-05-04).
+vi.mock('../../lib/health-api', () => ({
+  fetchHealth: vi.fn().mockResolvedValue(null),
+}));
+
 // Mock billing API to prevent fetch calls from useSubscription
 vi.mock('../../lib/billing-api', () => ({
   fetchSubscription: vi.fn().mockResolvedValue({
