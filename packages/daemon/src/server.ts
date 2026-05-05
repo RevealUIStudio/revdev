@@ -951,8 +951,17 @@ export async function startDaemon(
   const { unlink, chmod } = await import('node:fs/promises');
   await unlink(cfg.socketPath).catch(() => {});
 
+  // Track open sockets so close() can force-destroy them before
+  // resetting state. server.close() only stops new accepts; existing
+  // sockets stay alive until the client disconnects, which means their
+  // `data` handlers can fire AFTER close() returns and dispatch against
+  // a closed PGlite or against a fresh startDaemon()'s state in the
+  // same process. Destroying sockets in close() prevents that.
+  const openSockets = new Set<Socket>();
+
   // Start Unix socket server
   const server = createServer((socket: Socket) => {
+    openSockets.add(socket);
     onConnect();
     const ctx: SocketContext = { agentId: null, agentName: null, boundVia: null };
     let buffer = '';
@@ -1121,6 +1130,7 @@ export async function startDaemon(
     });
 
     socket.on('close', async () => {
+      openSockets.delete(socket);
       onDisconnect();
       // Auto-release transient reservations when a long-lived agent
       // disconnects. Fresh-per-call clients (boundVia = 'param') don't
@@ -1135,7 +1145,12 @@ export async function startDaemon(
       // refinement (keepalive flag in session.register, or socket-
       // lifetime threshold) could re-introduce socket-close auto-end
       // for genuinely-long-lived agents — see GAP-153 notes.
-      if (ctx.agentId && (ctx.boundVia === 'register' || ctx.boundVia === 'attach')) {
+      // Skip cleanup when shutdown has begun — db may already be closed.
+      // close() destroys all sockets, which fires this handler; we don't
+      // want it to race with db.close(). The .catch(() => {}) below
+      // would swallow the resulting error anyway, but bailing here is
+      // explicit + avoids the dangling Promise.
+      if (!_closing && ctx.agentId && (ctx.boundVia === 'register' || ctx.boundVia === 'attach')) {
         await db
           .query(`DELETE FROM file_reservations WHERE agent_id = $1`, [ctx.agentId])
           .catch(() => {});
@@ -1180,22 +1195,30 @@ export async function startDaemon(
           // Sequence:
           //   1. Set _closing FIRST so any RPC arriving on an existing
           //      socket from this point onward bails out with -32099
-          //      before the counter increment. server.close() alone
-          //      doesn't stop requests on already-connected sockets.
+          //      before the counter increment.
           //   2. Abort the shutdown signal — SIGTERMs git children
           //      (vcs.ts) and aborts inference.* fetches; honoring
           //      handlers complete fast.
-          //   3. Stop accepting new connections.
-          //   4. Drain any still-running handlers within the grace
-          //      period; these are handlers that started BEFORE step 1
-          //      so they are bounded by the prior count and decrement
-          //      cleanly via their finally blocks.
-          //   5. db.close() + unlink Unix socket.
+          //   3. server.close() — stop accepting NEW connections.
+          //   4. Force-destroy ALL existing sockets — server.close()
+          //      doesn't close them; without this, a persistent client
+          //      could fire another `data` event with an old socket
+          //      after close() returns and dispatch against a closed
+          //      PGlite (Codex P2 catch on revdev#47 round 2).
+          //   5. Drain still-running handlers (started BEFORE step 1)
+          //      within the grace period.
+          //   6. db.close() + unlink Unix socket.
+          //   7. Reset _closing — safe now because no live socket
+          //      references this state.
           _closing = true;
           _shutdownController?.abort();
           _shutdownController = null;
           if (pruneTimer) clearInterval(pruneTimer);
           server.close();
+          for (const s of openSockets) {
+            s.destroy();
+          }
+          openSockets.clear();
           const drainResult = await drainActiveHandlers(cfg.shutdownGracePeriodMs);
           if (!drainResult.drained) {
             log.warn('shutdown grace period exceeded with handlers still running', {
@@ -1205,8 +1228,9 @@ export async function startDaemon(
           }
           await db.close();
           await unlink(cfg.socketPath).catch(() => {});
-          // Reset _closing so a fresh startDaemon() in the same process
-          // (test setup/teardown loops) starts with a clean gate.
+          // Now safe to reset — no live socket has a reference to module
+          // state, and a fresh startDaemon() in the same process (test
+          // setup/teardown loops) starts with a clean gate.
           _closing = false;
           log.info('shut down');
         },

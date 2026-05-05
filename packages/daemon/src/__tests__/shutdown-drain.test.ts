@@ -241,4 +241,25 @@ describe('shutdown gate (regression — Codex P2 catch on revdev#47)', () => {
     expect(resp.result?.pong).toBe(true);
     await d2.close();
   });
+
+  it('destroys persistent sockets on close — pre-existing connections cannot dispatch RPCs against a closed daemon (Codex round-2 catch)', async () => {
+    const d = await startDaemon({ socketPath, dataDir });
+
+    // Open a long-lived socket BEFORE close() — like a Studio app would.
+    const sock: Socket = connect(socketPath);
+    await new Promise<void>((resolve, reject) => {
+      sock.once('connect', () => resolve());
+      sock.once('error', reject);
+    });
+    expect(sock.destroyed).toBe(false);
+
+    // Trigger close(). Per the new sequence, all open sockets get
+    // destroyed before the drain.
+    await d.close();
+
+    // The pre-existing socket should now be destroyed. If it weren't,
+    // a `data` event could still fire and dispatch against the closed
+    // PGlite — the very race Codex flagged.
+    expect(sock.destroyed).toBe(true);
+  });
 });
