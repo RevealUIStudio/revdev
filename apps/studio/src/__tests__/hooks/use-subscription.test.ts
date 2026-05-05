@@ -111,8 +111,16 @@ describe('useSubscription', () => {
       await vi.advanceTimersByTimeAsync(10);
     });
 
-    expect(fetchSubscription).toHaveBeenCalledWith('http://localhost:3004', 'test-token');
-    expect(fetchUsage).toHaveBeenCalledWith('http://localhost:3004', 'test-token');
+    expect(fetchSubscription).toHaveBeenCalledWith(
+      'http://localhost:3004',
+      'test-token',
+      expect.anything(),
+    );
+    expect(fetchUsage).toHaveBeenCalledWith(
+      'http://localhost:3004',
+      'test-token',
+      expect.anything(),
+    );
     expect(result.current.subscription).toEqual(MOCK_SUBSCRIPTION);
     expect(result.current.usage).toEqual(MOCK_USAGE);
     expect(result.current.loading).toBe(false);

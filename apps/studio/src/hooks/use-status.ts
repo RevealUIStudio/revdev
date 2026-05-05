@@ -1,18 +1,21 @@
-import { createContext, use, useCallback, useEffect, useState } from 'react';
-
-const STATUS_POLL_INTERVAL_MS = 30_000;
+import { createContext, use, useCallback, useMemo } from 'react';
 
 import { getMountStatus, getSystemStatus } from '../lib/invoke';
 import type { MountStatus, SystemStatus } from '../types';
+import { usePollingFetch } from './use-polling-fetch';
 
-interface StatusState {
+const STATUS_POLL_INTERVAL_MS = 30_000;
+
+interface StatusPayload {
+  system: SystemStatus;
+  mount: MountStatus;
+}
+
+export interface StatusContextValue {
   system: SystemStatus | null;
   mount: MountStatus | null;
   loading: boolean;
   error: string | null;
-}
-
-export interface StatusContextValue extends StatusState {
   refresh: () => Promise<void>;
 }
 
@@ -24,33 +27,29 @@ export function useStatusContext(): StatusContextValue {
   return ctx;
 }
 
-export function useStatus() {
-  const [state, setState] = useState<StatusState>({
-    system: null,
-    mount: null,
-    loading: true,
-    error: null,
-  });
-
-  const refresh = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      const [system, mount] = await Promise.all([getSystemStatus(), getMountStatus()]);
-      setState({ system, mount, loading: false, error: null });
-    } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: err instanceof Error ? err.message : String(err),
-      }));
-    }
+export function useStatus(): StatusContextValue {
+  // Fetcher is a stable identity — no caller-supplied dependencies — so
+  // the polling loop only restarts on intervalMs change (which never
+  // happens here; the constant is module-level).
+  const fetchFn = useCallback(async (_signal: AbortSignal): Promise<StatusPayload> => {
+    const [system, mount] = await Promise.all([getSystemStatus(), getMountStatus()]);
+    return { system, mount };
   }, []);
 
-  useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, STATUS_POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [refresh]);
+  const { data, error, loading, refresh } = usePollingFetch(fetchFn, STATUS_POLL_INTERVAL_MS);
 
-  return { ...state, refresh };
+  // Preserve the legacy public surface — separate `system`/`mount`
+  // slots and a string `error`. Wrapped in useMemo so consumers that
+  // depend on object identity (Dashboard via context) don't re-render
+  // every poll tick if the underlying data didn't change shape.
+  return useMemo(
+    () => ({
+      system: data?.system ?? null,
+      mount: data?.mount ?? null,
+      loading,
+      error: error?.message ?? null,
+      refresh,
+    }),
+    [data, error, loading, refresh],
+  );
 }

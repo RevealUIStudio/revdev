@@ -27,13 +27,19 @@ export interface UsageResponse {
 
 // ── Client ──────────────────────────────────────────────────────────────────
 
-async function authedGet<T>(apiUrl: string, path: string, token: string): Promise<T> {
+async function authedGet<T>(
+  apiUrl: string,
+  path: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<T> {
   const res = await fetch(`${apiUrl}/api/billing${path}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
+    signal,
   });
 
   if (!res.ok) {
@@ -44,18 +50,26 @@ async function authedGet<T>(apiUrl: string, path: string, token: string): Promis
 }
 
 /**
- * Fetch the current user's subscription/license status.
+ * Fetch the current user's subscription/license status. Accepts an
+ * optional AbortSignal so callers (usePollingFetch) can cancel the
+ * fetch on unmount or when a new poll begins.
  */
 export async function fetchSubscription(
   apiUrl: string,
   token: string,
+  signal?: AbortSignal,
 ): Promise<SubscriptionResponse> {
-  return authedGet<SubscriptionResponse>(apiUrl, '/subscription', token);
+  return authedGet<SubscriptionResponse>(apiUrl, '/subscription', token, signal);
 }
 
 /**
- * Fetch the current billing cycle's agent task usage.
+ * Fetch the current billing cycle's agent task usage. Accepts an
+ * optional AbortSignal — see fetchSubscription.
  */
-export async function fetchUsage(apiUrl: string, token: string): Promise<UsageResponse> {
-  return authedGet<UsageResponse>(apiUrl, '/usage', token);
+export async function fetchUsage(
+  apiUrl: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<UsageResponse> {
+  return authedGet<UsageResponse>(apiUrl, '/usage', token, signal);
 }
