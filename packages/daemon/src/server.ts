@@ -206,13 +206,24 @@ export function getShutdownSignal(): AbortSignal | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// In-flight handler counter — drained by close() before db.close() so a
-// long-running RPC handler (e.g. worktree.create shelling out to git) does
-// not race with PGlite teardown. Incremented before each `await handler()`,
-// decremented in finally regardless of success or thrown error.
+// In-flight handler counter + shutdown gate.
+//
+// `_activeHandlerCount` is incremented before each `await handler()` and
+// decremented in finally; close() drains it before tearing down PGlite so
+// a long-running handler (e.g. worktree.create shelling out to git) does
+// not race with `db.close()`.
+//
+// `_closing` is set at the START of close() to gate any future dispatches
+// on already-connected sockets — `server.close()` only stops new accepts,
+// not new requests on existing sockets, so without this gate a persistent
+// client could send a request that increments the counter AFTER the drain
+// has observed zero and runs against a closing/closed PGlite. When set,
+// dispatch responds with JSON-RPC -32099 ("Server is shutting down") and
+// bails before the counter increment.
 // ---------------------------------------------------------------------------
 
 let _activeHandlerCount = 0;
+let _closing = false;
 
 /** Wait until `_activeHandlerCount === 0` or `deadlineMs` elapses. Polls
  *  every `tickMs` (default 10 ms). Returns `{drained, remaining}` so the
@@ -243,6 +254,12 @@ export function _drainActiveHandlersForTest(
   tickMs?: number,
 ): Promise<{ drained: boolean; remaining: number }> {
   return drainActiveHandlers(deadlineMs, tickMs);
+}
+
+/** @internal — test-only seam. Set/clear the shutdown gate directly to
+ *  verify dispatch rejection without spinning a full close() cycle. */
+export function _setClosingForTest(closing: boolean): void {
+  _closing = closing;
 }
 
 // ---------------------------------------------------------------------------
@@ -885,8 +902,11 @@ export async function startDaemon(
 ): Promise<{ close: () => Promise<void> }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
 
-  // Reset shutdown signal for this daemon lifecycle. Aborted in close().
+  // Reset shutdown signal + closing gate for this daemon lifecycle.
+  // _shutdownController is aborted in close(); _closing is set to true
+  // at the start of close() and reset to false at the end.
   _shutdownController = new AbortController();
+  _closing = false;
 
   // Initialize license guard (logs banner)
   initLicenseGuard();
@@ -1059,6 +1079,23 @@ export async function startDaemon(
           continue;
         }
 
+        // Shutdown gate. close() sets _closing BEFORE the drain so a
+        // request arriving on an already-connected socket after shutdown
+        // started cannot increment the counter past the drain observation
+        // window and run against a closing/closed PGlite. We respond with
+        // JSON-RPC -32099 ("Server is shutting down") and bail before the
+        // counter increment.
+        if (_closing) {
+          socket.write(
+            `${JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              error: { code: -32099, message: 'Server is shutting down' },
+            })}\n`,
+          );
+          continue;
+        }
+
         const startMs = Date.now();
         _activeHandlerCount++;
         try {
@@ -1140,14 +1177,21 @@ export async function startDaemon(
 
       resolve({
         close: async () => {
-          // Abort first so in-flight child processes (git spawn in vcs.ts)
-          // get SIGTERM and abort-aware fetches (inference.* in
-          // inference.ts) bail out — both paths complete fast once
-          // signaled. Then stop accepting new connections, drain any
-          // still-running handlers within the grace period, then close
-          // PGlite and unlink the socket. The drain prevents db.close()
-          // from racing with active `await db.query(...)` calls inside
-          // a handler that hasn't yet observed the abort.
+          // Sequence:
+          //   1. Set _closing FIRST so any RPC arriving on an existing
+          //      socket from this point onward bails out with -32099
+          //      before the counter increment. server.close() alone
+          //      doesn't stop requests on already-connected sockets.
+          //   2. Abort the shutdown signal — SIGTERMs git children
+          //      (vcs.ts) and aborts inference.* fetches; honoring
+          //      handlers complete fast.
+          //   3. Stop accepting new connections.
+          //   4. Drain any still-running handlers within the grace
+          //      period; these are handlers that started BEFORE step 1
+          //      so they are bounded by the prior count and decrement
+          //      cleanly via their finally blocks.
+          //   5. db.close() + unlink Unix socket.
+          _closing = true;
           _shutdownController?.abort();
           _shutdownController = null;
           if (pruneTimer) clearInterval(pruneTimer);
@@ -1161,6 +1205,9 @@ export async function startDaemon(
           }
           await db.close();
           await unlink(cfg.socketPath).catch(() => {});
+          // Reset _closing so a fresh startDaemon() in the same process
+          // (test setup/teardown loops) starts with a clean gate.
+          _closing = false;
           log.info('shut down');
         },
       });
