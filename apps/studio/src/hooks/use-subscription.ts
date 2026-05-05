@@ -3,12 +3,16 @@
  *
  * Polls on an interval (from settings.pollingIntervalMs) so the Dashboard
  * always reflects the current billing state without manual refresh.
+ * Polling is gated on `step === 'authenticated'` AND `getToken()` returning
+ * a token. When either gate is closed the fetcher returns null and the
+ * underlying API calls are skipped.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { SubscriptionResponse, UsageResponse } from '../lib/billing-api';
 import { fetchSubscription, fetchUsage } from '../lib/billing-api';
 import { useAuthContext } from './use-auth';
+import { usePollingFetch } from './use-polling-fetch';
 import { useSettingsContext } from './use-settings';
 
 export interface SubscriptionState {
@@ -16,59 +20,63 @@ export interface SubscriptionState {
   usage: UsageResponse | null;
   loading: boolean;
   error: string | null;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 }
+
+interface BillingPayload {
+  subscription: SubscriptionResponse;
+  usage: UsageResponse;
+}
+
+const FALLBACK_ERROR = 'Failed to fetch billing data';
 
 export function useSubscription(): SubscriptionState {
   const { getToken, step } = useAuthContext();
   const { settings } = useSettingsContext();
+  const { apiUrl, pollingIntervalMs } = settings;
 
-  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
-  const [usage, setUsage] = useState<UsageResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const refreshRef = useRef(0);
+  const fetchFn = useCallback(
+    async (signal: AbortSignal): Promise<BillingPayload | null> => {
+      // Gate: skip the network entirely when not authenticated or no
+      // token. Returning null leaves data unchanged (still null after
+      // first call) and the helper's loading transitions to false.
+      if (step !== 'authenticated') return null;
+      const token = getToken();
+      if (!token) return null;
 
-  function refresh() {
-    refreshRef.current += 1;
-    // Trigger re-fetch by updating a counter dependency
-    setLoading(true);
-    fetchAll();
-  }
+      try {
+        const [sub, usg] = await Promise.all([
+          fetchSubscription(apiUrl, token, signal),
+          fetchUsage(apiUrl, token, signal),
+        ]);
+        return { subscription: sub, usage: usg };
+      } catch (err) {
+        // Re-throw Error instances unchanged so the consumer surfaces
+        // the real message; replace non-Error rejections with the
+        // legacy fallback string for caller compatibility.
+        if (err instanceof Error) throw err;
+        throw new Error(FALLBACK_ERROR);
+      }
+    },
+    [apiUrl, getToken, step],
+  );
 
-  async function fetchAll() {
-    const token = getToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  // Disable interval polling until the user is authenticated. The
+  // initial fetch still fires once per fetchFn-identity change, but
+  // when step !== 'authenticated' the gate above short-circuits the
+  // network call, so no fetchSubscription/fetchUsage requests go out.
+  const effectiveInterval = step === 'authenticated' ? pollingIntervalMs : null;
 
-    try {
-      const [sub, usg] = await Promise.all([
-        fetchSubscription(settings.apiUrl, token),
-        fetchUsage(settings.apiUrl, token),
-      ]);
-      setSubscription(sub);
-      setUsage(usg);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch billing data');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { data, error, loading, refresh } = usePollingFetch(fetchFn, effectiveInterval);
 
-  // Fetch on mount and on interval
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-fetch when auth step or apiUrl changes
-  useEffect(() => {
-    if (step !== 'authenticated') return;
-
-    setLoading(true);
-    fetchAll();
-
-    const interval = setInterval(fetchAll, settings.pollingIntervalMs);
-    return () => clearInterval(interval);
-  }, [step, settings.apiUrl, settings.pollingIntervalMs]);
-
-  return { subscription, usage, loading, error, refresh };
+  return useMemo<SubscriptionState>(
+    () => ({
+      subscription: data?.subscription ?? null,
+      usage: data?.usage ?? null,
+      loading,
+      error: error?.message ?? null,
+      refresh,
+    }),
+    [data, error, loading, refresh],
+  );
 }

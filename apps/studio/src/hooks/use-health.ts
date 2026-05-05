@@ -2,51 +2,48 @@
  * useHealth — Polls the production API's readiness probe.
  *
  * Returns the health status (healthy/degraded/unhealthy/unreachable)
- * along with individual check results. Polls on the settings interval.
+ * along with individual check results. Polls on the settings interval
+ * via `usePollingFetch`, which gives this hook full abort + isMounted
+ * hygiene without per-hook plumbing.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { HealthResponse } from '../lib/health-api';
 import { fetchHealth } from '../lib/health-api';
+import { usePollingFetch } from './use-polling-fetch';
 import { useSettingsContext } from './use-settings';
 
 export interface HealthState {
   health: HealthResponse | null;
   reachable: boolean;
   loading: boolean;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 }
 
 export function useHealth(): HealthState {
   const { settings } = useSettingsContext();
+  const { apiUrl, pollingIntervalMs } = settings;
 
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [reachable, setReachable] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const fetchFn = useCallback(
+    (signal: AbortSignal): Promise<HealthResponse | null> => fetchHealth(apiUrl, signal),
+    [apiUrl],
+  );
 
-  async function poll() {
-    const result = await fetchHealth(settings.apiUrl);
-    if (result) {
-      setHealth(result);
-      setReachable(true);
-    } else {
-      setReachable(false);
-    }
-    setLoading(false);
-  }
+  const { data, loading, refresh } = usePollingFetch(fetchFn, pollingIntervalMs);
 
-  function refresh() {
-    setLoading(true);
-    poll();
-  }
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-poll when apiUrl or interval changes
-  useEffect(() => {
-    poll();
-
-    const interval = setInterval(poll, settings.pollingIntervalMs);
-    return () => clearInterval(interval);
-  }, [settings.apiUrl, settings.pollingIntervalMs]);
-
-  return { health, reachable, loading, refresh };
+  // `data === null` after a fetchHealth round-trip means the API was
+  // unreachable (network error / timeout). The legacy hook surfaced
+  // that as `reachable: false` rather than as an error, so we preserve
+  // that mapping. Initial render (data === null, loading === true) is
+  // the "no probe yet" state — keep `reachable` optimistic until we
+  // see at least one resolved-to-null result.
+  return useMemo<HealthState>(
+    () => ({
+      health: data ?? null,
+      reachable: loading ? true : data !== null,
+      loading,
+      refresh,
+    }),
+    [data, loading, refresh],
+  );
 }
