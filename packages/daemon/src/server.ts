@@ -875,6 +875,33 @@ export async function startDaemon(
 
     socket.on('data', async (data) => {
       buffer += data.toString();
+
+      // Bound the per-socket reassembly buffer. A client that streams bytes
+      // without a newline grows `buffer` linearly; without this check, a
+      // malicious or stuck client could exhaust daemon memory via a single
+      // open socket. On overflow, emit a JSON-RPC -32700 parse-error
+      // (id null because we never reached a JSON boundary) and destroy the
+      // socket. The client must reconnect.
+      if (buffer.length > cfg.maxLineBytes) {
+        log.warn('socket buffer exceeded max line bytes; dropping connection', {
+          bytes: buffer.length,
+          max: cfg.maxLineBytes,
+        });
+        socket.write(
+          `${JSON.stringify({
+            jsonrpc: '2.0',
+            id: null,
+            error: {
+              code: -32700,
+              message: `Parse error: frame exceeded ${cfg.maxLineBytes} bytes without a newline`,
+            },
+          })}\n`,
+        );
+        buffer = '';
+        socket.destroy();
+        return;
+      }
+
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
 
