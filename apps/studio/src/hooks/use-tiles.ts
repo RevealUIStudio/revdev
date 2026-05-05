@@ -1,6 +1,7 @@
 import { Command } from '@tauri-apps/plugin-shell';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { focusWindow } from '../lib/invoke';
+import { usePollingFetch } from './use-polling-fetch';
 import {
   type BrowserProfile,
   CATEGORIES,
@@ -107,8 +108,20 @@ export function useTiles(): UseTilesReturn {
   const [prefs, setPrefs] = useState<TilePreferences>(loadTilePreferences);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(false);
-  const [runningTileIds, setRunningTileIds] = useState<Set<string>>(new Set());
   const [detectedProfiles, setDetectedProfiles] = useState<TileDefinition[]>([]);
+
+  // Poll running processes every 10 s via the shared helper. The fetcher
+  // ignores the AbortSignal because detectRunningProcesses shells out
+  // through Tauri's Command API which is one-shot, but the helper still
+  // gates state updates on isMounted so post-unmount setState is dropped.
+  const fetchRunning = useCallback(
+    async (_signal: AbortSignal): Promise<Set<string>> => detectRunningProcesses(),
+    [],
+  );
+  const { data: runningData } = usePollingFetch(fetchRunning, 10_000);
+  // Helper's `data` starts null; expose an empty Set so consumers can
+  // treat the value as a Set unconditionally.
+  const runningTileIds: Set<string> = runningData ?? new Set();
 
   // Detect browser profiles once on mount
   useEffect(() => {
@@ -128,25 +141,6 @@ export function useTiles(): UseTilesReturn {
     });
     return () => {
       cancelled = true;
-    };
-  }, []);
-
-  // Poll for running processes every 10 seconds
-  useEffect(() => {
-    let cancelled = false;
-
-    const poll = async () => {
-      const running = await detectRunningProcesses();
-      if (!cancelled) {
-        setRunningTileIds(running);
-      }
-    };
-
-    poll();
-    const interval = setInterval(poll, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
     };
   }, []);
 
