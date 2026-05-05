@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { usePollingFetch } from './use-polling-fetch';
 import {
   harnessCheckFile,
   harnessClaimTask,
@@ -23,6 +22,7 @@ import type {
   HarnessSession,
   HarnessTask,
 } from '../types';
+import { usePollingFetch } from './use-polling-fetch';
 
 /** Fallback poll interval for browser dev mode (no Tauri events available) */
 const BROWSER_POLL_MS = 5_000;

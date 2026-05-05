@@ -1,7 +1,6 @@
 import { Command } from '@tauri-apps/plugin-shell';
 import { useCallback, useEffect, useState } from 'react';
 import { focusWindow } from '../lib/invoke';
-import { usePollingFetch } from './use-polling-fetch';
 import {
   type BrowserProfile,
   CATEGORIES,
@@ -17,6 +16,7 @@ import {
   type TileDefinition,
   type TilePreferences,
 } from '../lib/tiles';
+import { usePollingFetch } from './use-polling-fetch';
 
 interface UseTilesReturn {
   /** All tiles grouped by category (respects hidden/collapsed state) */
