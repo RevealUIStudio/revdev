@@ -67,6 +67,29 @@ export interface DaemonConfig {
    * deployers with very large repos or slow filesystems.
    */
   gitTimeoutMs: number;
+  /**
+   * Maximum wall-clock time (in ms) the daemon's `close()` waits for
+   * in-flight RPC handlers to complete before tearing down PGlite and
+   * the Unix socket. Pre-this-flag, `db.close()` raced with active
+   * `await db.query(...)` calls — a long handler (e.g. worktree.create
+   * shelling out to git on a private base branch) could throw mid-query
+   * if the database closed under it.
+   *
+   * Sequence inside close():
+   *   1. Abort the daemon shutdown signal — this SIGTERMs every
+   *      in-flight git child, etc., letting them error out fast.
+   *   2. Stop accepting new connections.
+   *   3. Drain — poll the active-handler counter for up to
+   *      `shutdownGracePeriodMs`; resolve as soon as it hits zero.
+   *   4. db.close() + unlink socket.
+   *
+   * If the deadline passes with handlers still running (rare — almost
+   * everything either completes within milliseconds or honors the abort
+   * signal), the daemon logs a warning naming the leftover count and
+   * proceeds to db.close(). Default 5 s covers any realistic handler;
+   * tune via REVDEV_DAEMON_SHUTDOWN_GRACE_MS for slower environments.
+   */
+  shutdownGracePeriodMs: number;
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
@@ -84,4 +107,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   pruneIntervalMs: 60 * 60 * 1000, // 1 hour
   maxLineBytes: 1_048_576, // 1 MiB
   gitTimeoutMs: 60_000, // 60 s
+  shutdownGracePeriodMs: 5_000, // 5 s
 };

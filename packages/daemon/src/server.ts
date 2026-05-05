@@ -206,6 +206,46 @@ export function getShutdownSignal(): AbortSignal | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// In-flight handler counter — drained by close() before db.close() so a
+// long-running RPC handler (e.g. worktree.create shelling out to git) does
+// not race with PGlite teardown. Incremented before each `await handler()`,
+// decremented in finally regardless of success or thrown error.
+// ---------------------------------------------------------------------------
+
+let _activeHandlerCount = 0;
+
+/** Wait until `_activeHandlerCount === 0` or `deadlineMs` elapses. Polls
+ *  every `tickMs` (default 10 ms). Returns `{drained, remaining}` so the
+ *  caller can log a warning when the deadline passes with handlers still
+ *  running. */
+async function drainActiveHandlers(
+  deadlineMs: number,
+  tickMs = 10,
+): Promise<{ drained: boolean; remaining: number }> {
+  const start = Date.now();
+  while (_activeHandlerCount > 0 && Date.now() - start < deadlineMs) {
+    await new Promise((r) => setTimeout(r, tickMs));
+  }
+  return { drained: _activeHandlerCount === 0, remaining: _activeHandlerCount };
+}
+
+/** @internal — test-only seam. Lets the unit test set the counter directly
+ *  to exercise the drain logic without spinning up a real daemon. */
+export function _setActiveHandlerCountForTest(n: number): void {
+  _activeHandlerCount = n;
+}
+
+/** @internal — test-only seam. Direct access to the drain helper so the
+ *  unit test can verify deadline / immediate-resolve / progressive-drain
+ *  behavior without going through close(). */
+export function _drainActiveHandlersForTest(
+  deadlineMs: number,
+  tickMs?: number,
+): Promise<{ drained: boolean; remaining: number }> {
+  return drainActiveHandlers(deadlineMs, tickMs);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -1020,6 +1060,7 @@ export async function startDaemon(
         }
 
         const startMs = Date.now();
+        _activeHandlerCount++;
         try {
           const result = await handler(req.params ?? {}, db, ctx);
           trackRpcCall(req.method, 'ok', Date.now() - startMs);
@@ -1036,6 +1077,8 @@ export async function startDaemon(
               },
             })}\n`,
           );
+        } finally {
+          _activeHandlerCount--;
         }
       }
     });
@@ -1098,14 +1141,24 @@ export async function startDaemon(
       resolve({
         close: async () => {
           // Abort first so in-flight child processes (git spawn in vcs.ts)
-          // get SIGTERM before db.close() — otherwise they orphan and the
-          // socket can race with active queries. Then clear the prune
-          // timer, stop accepting new connections, close PGlite, and
-          // unlink the Unix socket.
+          // get SIGTERM and abort-aware fetches (inference.* in
+          // inference.ts) bail out — both paths complete fast once
+          // signaled. Then stop accepting new connections, drain any
+          // still-running handlers within the grace period, then close
+          // PGlite and unlink the socket. The drain prevents db.close()
+          // from racing with active `await db.query(...)` calls inside
+          // a handler that hasn't yet observed the abort.
           _shutdownController?.abort();
           _shutdownController = null;
           if (pruneTimer) clearInterval(pruneTimer);
           server.close();
+          const drainResult = await drainActiveHandlers(cfg.shutdownGracePeriodMs);
+          if (!drainResult.drained) {
+            log.warn('shutdown grace period exceeded with handlers still running', {
+              remaining: drainResult.remaining,
+              gracePeriodMs: cfg.shutdownGracePeriodMs,
+            });
+          }
           await db.close();
           await unlink(cfg.socketPath).catch(() => {});
           log.info('shut down');
