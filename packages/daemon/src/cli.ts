@@ -14,6 +14,7 @@
  *   REVDEV_DAEMON_DATA       # Override data directory
  *   REVDEV_DAEMON_PID        # Override PID file path
  *   REVDEV_DAEMON_LOG        # Where stdout/stderr go in --detach mode (default: /tmp/revdev-daemon.log)
+ *   REVDEV_DAEMON_MAX_LINE_BYTES  # Max bytes per JSON-RPC frame (default: 1_048_576 = 1 MiB)
  */
 
 import { spawn } from 'node:child_process';
@@ -58,6 +59,7 @@ Environment:
   REVDEV_DAEMON_DATA          Data directory (default: ${DAEMON_DEFAULTS.dataDir})
   REVDEV_DAEMON_PID           PID file path (default: ${DAEMON_DEFAULTS.pidFile})
   REVDEV_DAEMON_LOG           Log file for --detach mode (default: ~/.local/share/revealui/daemon.log)
+  REVDEV_DAEMON_MAX_LINE_BYTES  Max bytes per JSON-RPC frame (default: ${DAEMON_DEFAULTS.maxLineBytes}, ~1 MiB)
 
 License tiers:
   free         Session management only
@@ -90,9 +92,17 @@ if (args.includes('--detach')) {
   process.exit(0);
 }
 
+function parsePositiveInt(envName: string, defaultValue: number): number {
+  const raw = process.env[envName];
+  if (!raw) return defaultValue;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+}
+
 const config = {
   socketPath: process.env.REVDEV_DAEMON_SOCKET ?? DAEMON_DEFAULTS.socketPath,
   dataDir: process.env.REVDEV_DAEMON_DATA ?? DAEMON_DEFAULTS.dataDir,
+  maxLineBytes: parsePositiveInt('REVDEV_DAEMON_MAX_LINE_BYTES', DAEMON_DEFAULTS.maxLineBytes),
 };
 
 const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;

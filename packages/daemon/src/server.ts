@@ -875,11 +875,64 @@ export async function startDaemon(
 
     socket.on('data', async (data) => {
       buffer += data.toString();
+
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
 
+      // Bound the per-socket reassembly buffer's _partial_ remainder. A
+      // client that streams bytes without a newline grows `buffer`
+      // linearly; without this check, a malicious or stuck client could
+      // exhaust daemon memory via a single open socket. On overflow,
+      // emit a JSON-RPC -32700 parse-error (id null — we never reached
+      // a JSON boundary) and destroy the socket. The client must
+      // reconnect. Use Buffer.byteLength so the cap is enforced in
+      // UTF-8 bytes (matching the documented "bytes" semantics) rather
+      // than UTF-16 code units, otherwise multibyte payloads bypass the
+      // intended protection.
+      if (Buffer.byteLength(buffer, 'utf8') > cfg.maxLineBytes) {
+        log.warn('socket partial frame exceeded max line bytes; dropping connection', {
+          bytes: Buffer.byteLength(buffer, 'utf8'),
+          max: cfg.maxLineBytes,
+        });
+        socket.write(
+          `${JSON.stringify({
+            jsonrpc: '2.0',
+            id: null,
+            error: {
+              code: -32700,
+              message: `Parse error: frame exceeded ${cfg.maxLineBytes} bytes without a newline`,
+            },
+          })}\n`,
+        );
+        buffer = '';
+        socket.destroy();
+        return;
+      }
+
       for (const line of lines) {
         if (!line.trim()) continue;
+
+        // A complete (newline-terminated) frame can still exceed the cap
+        // when an oversize chunk lands all in one event. Reject such a
+        // frame with -32700 but keep the socket open — the client framed
+        // the boundary correctly, they just sent too much data.
+        if (Buffer.byteLength(line, 'utf8') > cfg.maxLineBytes) {
+          log.warn('socket received oversized frame; rejecting', {
+            bytes: Buffer.byteLength(line, 'utf8'),
+            max: cfg.maxLineBytes,
+          });
+          socket.write(
+            `${JSON.stringify({
+              jsonrpc: '2.0',
+              id: null,
+              error: {
+                code: -32700,
+                message: `Parse error: frame exceeded ${cfg.maxLineBytes} bytes`,
+              },
+            })}\n`,
+          );
+          continue;
+        }
 
         let req: RpcRequest;
         try {
