@@ -20,3 +20,38 @@
 .cm-mergeView-gutter {
   flex-shrink: 0;
 }
+
+/* ── Visible scrollbars on Linux WebKit (WSLg + webkit2gtk) ──────────────── */
+/* webkit2gtk's default overlay scrollbars are nearly invisible on Linux,    */
+/* especially under WSLg. Force a visible custom scrollbar across all        */
+/* WebKit/Blink. Tailwind `overflow-y-auto` provides the scroll behavior;    */
+/* this just makes the indicator visible.                                     */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(23 23 23 / 0.5); /* neutral-900/50 */
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(64 64 64); /* neutral-700 */
+  border-radius: 5px;
+  border: 2px solid rgb(23 23 23); /* neutral-900 — creates inset look */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(82 82 82); /* neutral-600 */
+}
+
+::-webkit-scrollbar-corner {
+  background: rgb(23 23 23); /* neutral-900 */
+}
+
+/* Firefox fallback (if Studio ever ships in non-WebKit context) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(64 64 64) rgb(23 23 23 / 0.5);
+}
