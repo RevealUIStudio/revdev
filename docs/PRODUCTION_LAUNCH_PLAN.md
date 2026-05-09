@@ -3,7 +3,7 @@
 Complete spec for remaining work to ship RevDev as a commercial product.
 Covers both agent-executable (code) and human-required (secrets, accounts, infrastructure) tasks.
 
-Last updated: 2026-04-20
+Last updated: 2026-05-08
 
 ---
 
@@ -212,7 +212,7 @@ Tasks that require the founder's credentials, physical access, or business decis
 **Who**: Founder
 
 ```bash
-cd ~/suite/revdev/apps/studio/src-tauri
+cd ~/revfleet/revdev/apps/studio/src-tauri
 pnpm tauri signer generate -w ~/.tauri/revdev-studio.key
 ```
 
@@ -313,7 +313,7 @@ Add these secrets to `RevealUIStudio/revdev` → Settings → Secrets:
 **Who**: Founder
 
 ```bash
-cd ~/suite/revdev
+cd ~/revfleet/revdev
 
 # Build daemon
 pnpm --filter @revdev/daemon build
@@ -328,6 +328,8 @@ bash packages/daemon/service/install.sh
 # Verify
 systemctl --user status revdev-daemon
 ```
+
+✅ **DONE** — closed via [revdev#27](https://github.com/RevealUIStudio/revdev/pull/27) 2026-04-28 (GAP-152) + [revdev#23](https://github.com/RevealUIStudio/revdev/pull/23) 2026-04-28 (GAP-153)
 
 ---
 
