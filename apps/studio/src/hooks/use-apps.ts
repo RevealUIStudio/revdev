@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { listApps, startApp, stopApp } from '../lib/invoke';
 import type { AppStatus } from '../types';
+import { usePollingFetch } from './use-polling-fetch';
 
 /** Poll listApps until the named app matches the expected running state, or timeout. */
 async function pollUntil(
@@ -21,55 +22,71 @@ async function pollUntil(
 }
 
 export function useApps() {
-  const [apps, setApps] = useState<AppStatus[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const lastResultRef = useRef<AppStatus[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [operating, setOperating] = useState<Record<string, boolean>>({});
 
-  const refresh = useCallback(async () => {
-    try {
-      const result = await listApps();
-      setApps(result);
-      setLoading(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setLoading(false);
-    }
+  const fetchFn = useCallback(async (_signal: AbortSignal) => {
+    if (document.hidden) return lastResultRef.current;
+    const result = await listApps();
+    lastResultRef.current = result;
+    return result;
   }, []);
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(() => {
-      if (!document.hidden) refresh();
-    }, 5_000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  const { data, error: pollError, loading, refresh } = usePollingFetch(fetchFn, 5_000);
 
-  const start = useCallback(async (name: string) => {
-    setOperating((p) => ({ ...p, [name]: true }));
-    setError(null);
-    try {
-      await startApp(name);
-      await pollUntil(name, true, setApps, 1000, 10_000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setOperating((p) => ({ ...p, [name]: false }));
-    }
-  }, []);
+  const apps = data ?? lastResultRef.current;
+  const error = actionError ?? pollError?.message ?? null;
 
-  const stop = useCallback(async (name: string) => {
-    setOperating((p) => ({ ...p, [name]: true }));
-    setError(null);
-    try {
-      await stopApp(name);
-      await pollUntil(name, false, setApps, 500, 5_000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setOperating((p) => ({ ...p, [name]: false }));
-    }
-  }, []);
+  const start = useCallback(
+    async (name: string) => {
+      setOperating((p) => ({ ...p, [name]: true }));
+      setActionError(null);
+      try {
+        await startApp(name);
+        await pollUntil(
+          name,
+          true,
+          (updated) => {
+            lastResultRef.current = updated;
+          },
+          1000,
+          10_000,
+        );
+        await refresh();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setOperating((p) => ({ ...p, [name]: false }));
+      }
+    },
+    [refresh],
+  );
+
+  const stop = useCallback(
+    async (name: string) => {
+      setOperating((p) => ({ ...p, [name]: true }));
+      setActionError(null);
+      try {
+        await stopApp(name);
+        await pollUntil(
+          name,
+          false,
+          (updated) => {
+            lastResultRef.current = updated;
+          },
+          500,
+          5_000,
+        );
+        await refresh();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setOperating((p) => ({ ...p, [name]: false }));
+      }
+    },
+    [refresh],
+  );
 
   return { apps, loading, error, operating, refresh, start, stop };
 }

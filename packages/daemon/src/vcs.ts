@@ -5,30 +5,123 @@
  * agent's working directory. Merge requests are tracked in the
  * `merge_requests` table; actual PR creation is left to the client
  * (agents call `gh pr create` themselves and then update status here).
+ *
+ * Reliability: every git spawn is bounded by `DAEMON_DEFAULTS.gitTimeoutMs`
+ * (default 60 s, env-overridable via REVDEV_DAEMON_GIT_TIMEOUT_MS) AND
+ * aborted on daemon shutdown via the shared shutdown signal from
+ * server.ts. Without this, a runaway git command (credential prompt on
+ * a private base branch, corrupt object DB, hung remote) would hold
+ * the daemon socket forever — SIGTERM to the daemon does not propagate
+ * to orphaned children. On timeout or shutdown abort, the child receives
+ * SIGTERM via spawn's native AbortSignal handling and the handler
+ * returns a structured error response.
  */
 
 import { spawn } from 'node:child_process';
-import { registerHandler } from './server.js';
+import { DAEMON_DEFAULTS } from './config.js';
+import { getShutdownSignal, registerHandler } from './server.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface ShellResult {
+export interface ShellResult {
   ok: boolean;
   stdout: string;
   stderr: string;
   code: number;
+  /** True if the child was aborted before clean exit (timeout or shutdown). */
+  aborted?: boolean;
+  /** Disambiguates timeout vs caller/shutdown abort. Only set when aborted. */
+  abortReason?: 'timeout' | 'shutdown';
 }
 
-function runGit(args: string[], cwd: string): Promise<ShellResult> {
+export interface RunChildOptions {
+  cwd: string;
+  /** Per-call timeout. Defaults to DAEMON_DEFAULTS.gitTimeoutMs (60 s). */
+  timeoutMs?: number;
+  /**
+   * Optional external signal — combined with the daemon shutdown signal
+   * and the timeout via `AbortSignal.any` so the spawned child gets
+   * SIGTERM if any source aborts.
+   */
+  externalSignal?: AbortSignal;
+}
+
+/**
+ * Spawn a child process with timeout + shutdown awareness. Returns a
+ * structured ShellResult; never throws. On abort, the spawned child is
+ * SIGTERM'd via Node's native AbortSignal handling on the spawn options.
+ *
+ * Exported for testing — production code uses `runGit` below.
+ */
+export function runChild(
+  command: string,
+  args: string[],
+  opts: RunChildOptions,
+): Promise<ShellResult> {
   return new Promise((resolve) => {
-    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const timeoutMs = opts.timeoutMs ?? DAEMON_DEFAULTS.gitTimeoutMs;
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const shutdownSignal = getShutdownSignal();
+
+    const sources: AbortSignal[] = [timeoutSignal];
+    if (shutdownSignal) sources.push(shutdownSignal);
+    if (opts.externalSignal) sources.push(opts.externalSignal);
+    // sources always contains at least timeoutSignal, so AbortSignal.any
+    // is well-defined; the single-source branch avoids one allocation.
+    const signal = sources.length > 1 ? AbortSignal.any(sources) : timeoutSignal;
+
+    let aborted = false;
+    let abortReason: 'timeout' | 'shutdown' | undefined;
+    const onAbort = () => {
+      if (aborted) return;
+      aborted = true;
+      // Timeout takes precedence in disambiguation. External signals are
+      // reported as "shutdown" — caller-driven cancellation semantically
+      // matches shutdown for our purposes (the child gets SIGTERM either
+      // way; the disambiguation is only for the human-readable message).
+      abortReason = timeoutSignal.aborted ? 'timeout' : 'shutdown';
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+
+    const child = spawn(command, args, {
+      cwd: opts.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      signal,
+    });
+
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (d) => (stdout += d.toString()));
-    child.stderr.on('data', (d) => (stderr += d.toString()));
+    child.stdout.on('data', (d) => {
+      stdout += d.toString();
+    });
+    child.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
+
+    const buildAbortedResult = (code: number): ShellResult => {
+      const reason = abortReason ?? 'shutdown';
+      const message =
+        reason === 'timeout'
+          ? `${command} timed out after ${timeoutMs}ms`
+          : `${command} aborted by daemon shutdown`;
+      return {
+        ok: false,
+        stdout: stdout.trim(),
+        stderr: stderr.trim() || message,
+        code,
+        aborted: true,
+        abortReason: reason,
+      };
+    };
+
     child.on('close', (code) => {
+      if (aborted) {
+        resolve(buildAbortedResult(code ?? -1));
+        return;
+      }
       resolve({
         ok: code === 0,
         stdout: stdout.trim(),
@@ -36,10 +129,27 @@ function runGit(args: string[], cwd: string): Promise<ShellResult> {
         code: code ?? -1,
       });
     });
+
     child.on('error', (err) => {
+      // spawn() emits AbortError on signal abort; the close handler may or
+      // may not also fire depending on whether the child started. Resolve
+      // here for the abort-before-spawn case; close handler is no-op'd
+      // because Promises only resolve once.
+      if (aborted || (err as NodeJS.ErrnoException).name === 'AbortError') {
+        resolve(buildAbortedResult(-1));
+        return;
+      }
       resolve({ ok: false, stdout: '', stderr: err.message, code: -1 });
     });
   });
+}
+
+function runGit(
+  args: string[],
+  cwd: string,
+  opts?: Partial<RunChildOptions>,
+): Promise<ShellResult> {
+  return runChild('git', args, { cwd, ...opts });
 }
 
 function str(v: unknown, fallback = ''): string {

@@ -26,13 +26,27 @@ export interface HealthResponse {
 
 /**
  * Fetch the readiness probe from the API. Public endpoint — no auth needed.
- * Returns null if the API is unreachable (network error).
+ * Returns null if the API is unreachable (network error or timeout).
+ *
+ * Accepts an optional caller-supplied AbortSignal that's combined with
+ * an internal 5 s timeout via `AbortSignal.any` — either source aborting
+ * cancels the fetch. Callers using `usePollingFetch` should pass their
+ * call's signal so the fetch is canceled on unmount or when a new poll
+ * begins, instead of leaking a pending promise past component teardown
+ * (the bug closed by revdev#43 on Dashboard.test.tsx).
  */
-export async function fetchHealth(apiUrl: string): Promise<HealthResponse | null> {
+export async function fetchHealth(
+  apiUrl: string,
+  signal?: AbortSignal,
+): Promise<HealthResponse | null> {
+  const sources: AbortSignal[] = [AbortSignal.timeout(5_000)];
+  if (signal) sources.push(signal);
+  const combined = sources.length > 1 ? AbortSignal.any(sources) : sources[0];
+
   try {
     const res = await fetch(`${apiUrl}/health/ready`, {
       method: 'GET',
-      signal: AbortSignal.timeout(5_000),
+      signal: combined,
     });
     return (await res.json()) as HealthResponse;
   } catch {

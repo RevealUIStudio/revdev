@@ -1,79 +1,60 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { getTailscaleStatus, tailscaleDown, tailscaleUp } from '../lib/invoke';
 import type { TailscaleStatus } from '../types';
-
-interface TunnelState {
-  status: TailscaleStatus | null;
-  loading: boolean;
-  error: string | null;
-  toggling: boolean;
-}
+import { usePollingFetch } from './use-polling-fetch';
 
 const POLL_INTERVAL_MS = 10_000;
 
 export function useTunnel() {
-  const [state, setState] = useState<TunnelState>({
-    status: null,
-    loading: true,
-    error: null,
-    toggling: false,
-  });
+  const [toggling, setToggling] = useState(false);
+  // up/down operations produce errors not tied to the polling fetcher.
+  // Tracked locally so they stay visible until cleared by a fresh action.
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fetchFn = useCallback(
+    async (_signal: AbortSignal): Promise<TailscaleStatus> => getTailscaleStatus(),
+    [],
+  );
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const status = await getTailscaleStatus();
-      setState((prev) => ({ ...prev, status, loading: false, error: null }));
-    } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        status: null,
-        error: err instanceof Error ? err.message : String(err),
-      }));
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStatus();
-    intervalRef.current = setInterval(fetchStatus, POLL_INTERVAL_MS);
-    return () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [fetchStatus]);
+  const { data, error, loading, refresh } = usePollingFetch(fetchFn, POLL_INTERVAL_MS);
 
   const up = useCallback(async () => {
-    setState((prev) => ({ ...prev, toggling: true, error: null }));
+    setToggling(true);
+    setActionError(null);
     try {
       await tailscaleUp();
-      await fetchStatus();
+      await refresh();
     } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        error: err instanceof Error ? err.message : String(err),
-      }));
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
-      setState((prev) => ({ ...prev, toggling: false }));
+      setToggling(false);
     }
-  }, [fetchStatus]);
+  }, [refresh]);
 
   const down = useCallback(async () => {
-    setState((prev) => ({ ...prev, toggling: true, error: null }));
+    setToggling(true);
+    setActionError(null);
     try {
       await tailscaleDown();
-      await fetchStatus();
+      await refresh();
     } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        error: err instanceof Error ? err.message : String(err),
-      }));
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
-      setState((prev) => ({ ...prev, toggling: false }));
+      setToggling(false);
     }
-  }, [fetchStatus]);
+  }, [refresh]);
 
-  return { ...state, up, down, refresh: fetchStatus };
+  return useMemo(
+    () => ({
+      // Legacy shape: status is null on error (poll failed).
+      status: error ? null : (data ?? null),
+      loading,
+      error: actionError ?? error?.message ?? null,
+      toggling,
+      up,
+      down,
+      refresh,
+    }),
+    [data, error, loading, actionError, toggling, up, down, refresh],
+  );
 }
