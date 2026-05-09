@@ -87,7 +87,7 @@ describe('useHealth', () => {
       await vi.advanceTimersByTimeAsync(10);
     });
 
-    expect(fetchHealth).toHaveBeenCalledWith('http://localhost:3004');
+    expect(fetchHealth).toHaveBeenCalledWith('http://localhost:3004', expect.anything());
     expect(result.current.health).toEqual(MOCK_HEALTH);
     expect(result.current.reachable).toBe(true);
     expect(result.current.loading).toBe(false);
@@ -248,6 +248,6 @@ describe('useHealth', () => {
       await vi.advanceTimersByTimeAsync(10);
     });
 
-    expect(fetchHealth).toHaveBeenCalledWith('https://api.revealui.com');
+    expect(fetchHealth).toHaveBeenCalledWith('https://api.revealui.com', expect.anything());
   });
 });

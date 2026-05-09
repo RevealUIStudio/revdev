@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   harnessCheckFile,
   harnessClaimTask,
@@ -22,6 +22,7 @@ import type {
   HarnessSession,
   HarnessTask,
 } from '../types';
+import { usePollingFetch } from './use-polling-fetch';
 
 /** Fallback poll interval for browser dev mode (no Tauri events available) */
 const BROWSER_POLL_MS = 5_000;
@@ -188,14 +189,17 @@ export function useHarness(agentId?: string): UseHarnessReturn {
     };
   }, []);
 
-  // Browser mode: fall back to polling (no Tauri event system available)
-  useEffect(() => {
-    if (isTauri()) return;
-
-    void loadAllRef.current();
-    const id = setInterval(() => void loadAllRef.current(), BROWSER_POLL_MS);
-    return () => clearInterval(id);
+  // Browser mode: fall back to polling via usePollingFetch (no Tauri
+  // event system available). Tauri mode subscribes to push events
+  // (above) and disables the helper by passing intervalMs=null. The
+  // helper returns void from this fetcher — actual state lives in the
+  // outer setState calls that loadAll() makes; we're using the helper
+  // here purely for its abort + isMounted hygiene wrapping the polled
+  // call.
+  const browserPollFn = useCallback(async (_signal: AbortSignal): Promise<void> => {
+    await loadAllRef.current();
   }, []);
+  usePollingFetch(browserPollFn, isTauri() ? null : BROWSER_POLL_MS);
 
   async function refresh(): Promise<void> {
     setLoading(true);
