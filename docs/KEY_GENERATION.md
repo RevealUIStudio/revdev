@@ -11,7 +11,7 @@ Signs Studio desktop binaries for auto-update verification.
 
 ```bash
 # Generate keypair (prompts for a password)
-cd ~/suite/revdev/apps/studio/src-tauri
+cd ~/revfleet/revdev/apps/studio/src-tauri
 npx @tauri-apps/cli signer generate -w ~/.tauri/revdev-studio.key
 
 # Store in revvault
@@ -35,7 +35,7 @@ Signs customer license keys (RVUI.v2 format) so the daemon can verify them.
 # Mint Ed25519 keypair; auto-stores both halves in revvault at
 # revdev/license-signing-{private,public}-key and prints the public PEM.
 # No plaintext key files ever land on disk.
-cd ~/suite/revdev
+cd ~/revfleet/revdev
 npx tsx scripts/issue-license.ts --generate-keypair
 
 # Wire the public key into the local daemon's environment.
@@ -50,7 +50,7 @@ export REVDEV_LICENSE_PUBLIC_KEY="$(revvault get --full revdev/license-signing-p
 Verify the key works by issuing yourself an enterprise license:
 
 ```bash
-cd ~/suite/revdev
+cd ~/revfleet/revdev
 npx tsx scripts/issue-license.ts --tier enterprise --perpetual
 ```
 
