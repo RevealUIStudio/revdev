@@ -53,7 +53,7 @@ mkdir -p "$UNIT_DIR"
 # real risk is `&` and the quote char itself).
 ESCAPED_NODE=$(printf '%s\n' "$NODE_PATH" | sed 's/[&"]/\\&/g')
 ESCAPED_PATH=$(printf '%s\n' "$DAEMON_PATH" | sed 's/[&"]/\\&/g')
-sed "s|/usr/bin/env node %h/suite/revdev/packages/daemon/dist/cli.js|\"$ESCAPED_NODE\" \"$ESCAPED_PATH\"|" \
+sed "s|/usr/bin/env node %h/revfleet/revdev/packages/daemon/dist/cli.js|\"$ESCAPED_NODE\" \"$ESCAPED_PATH\"|" \
   "$TEMPLATE" > "$UNIT_DIR/revdev-daemon.service"
 
 systemctl --user daemon-reload
