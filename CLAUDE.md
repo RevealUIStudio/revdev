@@ -56,9 +56,9 @@ pnpm --filter studio tauri:dev    # Start Studio in dev mode
 pnpm --filter studio tauri build  # Build desktop binary
 pnpm typecheck:studio             # Typecheck Studio frontend
 
-# Console
-go run ./apps/console             # Run Console
-go build -o rvui ./apps/console   # Build Console binary
+# Console (no root go.mod; module lives under apps/console/ per CI ci.yml:78-79)
+cd apps/console && go run .                    # Run Console
+cd apps/console && go build -o ../../rvui .    # Build Console binary
 
 # Workspace
 pnpm -r --filter=!studio build    # Build all packages (skip Tauri)
