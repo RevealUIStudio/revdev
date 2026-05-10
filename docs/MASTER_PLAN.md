@@ -25,7 +25,7 @@ All three components build cleanly today. None has cut a public release. Distrib
 | Component | Status | How to get it today |
 |---|---|---|
 | Studio | Buildable, unsigned | `pnpm --filter studio tauri build` — produces a local binary. Signed/notarized auto-update pipeline defined in `.github/workflows/studio-release.yml` but not yet cutting public releases. |
-| Console | Buildable | `go build -o rvui ./apps/console` — no release automation yet. |
+| Console | Buildable | `cd apps/console && go build -o ../../rvui .` — no root `go.mod`; the console module lives under `apps/console/` (CI pattern at `.github/workflows/ci.yml:78-79`). No release automation yet. |
 | Harness Daemon | Buildable, not published | Not on npm. Build from source: `pnpm --filter @revdev/daemon build`; run CLI at `packages/daemon/dist/cli.js`. |
 
 ---
