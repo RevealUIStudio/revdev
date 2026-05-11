@@ -202,7 +202,7 @@ Test count: 522/522 passing per [revdev#43](https://github.com/RevealUIStudio/re
 
 ## Versioning
 
-Pre-1.0 per [`versioning.md`](https://github.com/RevealUIStudio/revealui-jv/blob/main/.claude/rules/versioning.md). Per-package SemVer (`@revdev/daemon`, `@revdev/protocol`, `@revdev/bridge`, `@revdev/theme` independent). Studio + Console app versions tracked separately per Tauri / Go release conventions.
+Pre-1.0 per the fleet versioning convention (RevealUI Studio internal). Per-package SemVer (`@revdev/daemon`, `@revdev/protocol`, `@revdev/bridge`, `@revdev/theme` independent). Studio + Console app versions tracked separately per Tauri / Go release conventions.
 
 ---
 
@@ -229,4 +229,4 @@ Pre-1.0 per [`versioning.md`](https://github.com/RevealUIStudio/revealui-jv/blob
 - [`CLAUDE.md`](../CLAUDE.md) — agent context
 - [`README.md`](../README.md) — overview + architecture
 - [`revealui:.claude/rules/hooks-architecture.md`](https://github.com/RevealUIStudio/revealui/blob/main/.claude/rules/hooks-architecture.md) — fleet hook contract; the daemon's role in fleet coordination
-- [`revealui-jv:docs/MASTER_INDEX.md`](https://github.com/RevealUIStudio/revealui-jv/blob/main/docs/MASTER_INDEX.md) — fleet-level navigation
+- Fleet master index (`MASTER_INDEX.md` in the RevealUI Studio internal coordination hub) — fleet-level navigation
