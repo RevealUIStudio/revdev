@@ -4,9 +4,9 @@
 **Status:** Pre-1.0 — Studio + Console + harness daemon all buildable; no public releases yet
 **Owner:** RevealUI Studio (`founder@revealui.com`)
 **Repo:** [RevealUIStudio/revdev](https://github.com/RevealUIStudio/revdev)
-**Fleet master index:** [`revealui-jv:docs/MASTER_INDEX.md`](https://github.com/RevealUIStudio/revealui-jv/blob/main/docs/MASTER_INDEX.md)
+**Fleet master index:** RevealUI Studio internal coordination hub (`MASTER_INDEX.md`, private).
 
-> Fleet-level cross-cutting plans live in [`revealui-jv:docs/MASTER_PLAN.md`](https://github.com/RevealUIStudio/revealui-jv/blob/main/docs/MASTER_PLAN.md). This file is RevDev-scoped only.
+> Fleet-level cross-cutting plans live in the internal coordination hub's `MASTER_PLAN.md`. This file is RevDev-scoped only.
 >
 > Detailed launch checklist (agent-executable + human-required tasks): [`docs/PRODUCTION_LAUNCH_PLAN.md`](./PRODUCTION_LAUNCH_PLAN.md). This MASTER_PLAN is the higher-level pointer; PRODUCTION_LAUNCH_PLAN is the per-task breakdown.
 
@@ -89,7 +89,7 @@ Active on the daemon JWT validation surface — adding `iss` + `aud` + `customer
 
 Detailed task-level breakdown in [`PRODUCTION_LAUNCH_PLAN.md`](./PRODUCTION_LAUNCH_PLAN.md). Higher-level phases below.
 
-Pre-1.0 per [`versioning.md`](https://github.com/RevealUIStudio/revealui-jv/blob/main/.claude/rules/versioning.md).
+Pre-1.0 per the fleet versioning convention (RevealUI Studio internal).
 
 ### Phase 0 — Daemon production-grade (DONE)
 
@@ -156,4 +156,4 @@ Daemon → Neon `coordination_*` tables sync; allows multiple workstations / clo
 - [`README.md`](../README.md) — overview + architecture diagram
 - [`CLAUDE.md`](../CLAUDE.md) — agent context
 - [`revealui:.claude/rules/hooks-architecture.md`](https://github.com/RevealUIStudio/revealui/blob/main/.claude/rules/hooks-architecture.md) — RevDev daemon contract for fleet hooks
-- [`revealui-jv:docs/MASTER_INDEX.md`](https://github.com/RevealUIStudio/revealui-jv/blob/main/docs/MASTER_INDEX.md) — fleet-level navigation
+- Fleet master index (`MASTER_INDEX.md` in the RevealUI Studio internal coordination hub) — fleet-level navigation
