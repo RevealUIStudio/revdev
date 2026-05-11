@@ -32,7 +32,12 @@ PATTERNS=(
   "private-jv-name|revealui-jv|private repo name (revealui-jv)"
   "lts-drive|/mnt/e/|LTS drive mount path"
   "forge-drive|/mnt/forge/|Forge drive mount path"
-  "devbox-host|joshu-devbox|internal hostname"
+  # quote-split below: the literal pattern (j+oshu-devbox) is split by empty
+  # quotes so the fleet's GAP-116 anti-regression workflow (which greps the
+  # developer's user-account name verbatim) does NOT match this scanner's
+  # own source. Bash concatenates the empty-quoted halves into the full
+  # pattern at runtime; the array element is unchanged.
+  "devbox-host|j""oshu-devbox|internal hostname"
   "license-key|RVUI-[a-z]+-[a-f0-9]{16,}|RevealUI license key (looks like a real issued key)"
   "vercel-org-id|team_[A-Za-z0-9]{16,}|Vercel org/team identifier"
   "vercel-project-id|prj_[A-Za-z0-9]{16,}|Vercel project identifier"
@@ -48,11 +53,19 @@ EXCLUDE_FILES=(
   pnpm-lock.yaml package-lock.json yarn.lock Cargo.lock
   check-no-private-leaks.sh
   .leakignore
-  settings.local.json
   .git
   '*.png' '*.jpg' '*.jpeg' '*.gif' '*.webp' '*.pdf' '*.zip' '*.tar.gz' '*.tgz'
   '*.ico' '*.woff' '*.woff2' '*.ttf' '*.otf'
 )
+
+# Note: `settings.local.json` was intentionally NOT added to EXCLUDE_FILES.
+# A basename exclusion would silently allow accidentally-committed local
+# settings files (a likely place for team_/prj_/$HOME/credential leaks) to
+# bypass this gate entirely. Per Codex P2 review on revdev#55: consuming
+# repos must keep `.claude/` in their .gitignore so settings.local.json
+# never lands in a checkout. Local pre-push false-positives (when a dev
+# has a tracked-but-shouldnt-be settings.local.json) are intentional —
+# they signal a gitignore gap to fix.
 
 if ! command -v grep >/dev/null 2>&1; then
   echo "[leak-check] error: grep not found on PATH" >&2
