@@ -8,24 +8,24 @@ describe('StatusDot', () => {
     expect(container.querySelector('span')).not.toBeNull();
   });
 
-  it('applies green color for ok status', () => {
+  it('applies --rvui-success token for ok status', () => {
     const { container } = render(<StatusDot status="ok" />);
-    expect(container.querySelector('span')?.className).toContain('bg-green-500');
+    expect(container.querySelector('span')?.className).toContain('bg-[var(--rvui-success)]');
   });
 
-  it('applies yellow color for warn status', () => {
+  it('applies --rvui-warning token for warn status', () => {
     const { container } = render(<StatusDot status="warn" />);
-    expect(container.querySelector('span')?.className).toContain('bg-yellow-500');
+    expect(container.querySelector('span')?.className).toContain('bg-[var(--rvui-warning)]');
   });
 
-  it('applies red color for error status', () => {
+  it('applies --rvui-error token for error status', () => {
     const { container } = render(<StatusDot status="error" />);
-    expect(container.querySelector('span')?.className).toContain('bg-red-500');
+    expect(container.querySelector('span')?.className).toContain('bg-[var(--rvui-error)]');
   });
 
-  it('applies neutral color for off status', () => {
+  it('applies --rvui-text-2 token for off status', () => {
     const { container } = render(<StatusDot status="off" />);
-    expect(container.querySelector('span')?.className).toContain('bg-neutral-600');
+    expect(container.querySelector('span')?.className).toContain('bg-[var(--rvui-text-2)]');
   });
 
   it('defaults to sm size', () => {
