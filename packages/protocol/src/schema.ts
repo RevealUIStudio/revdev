@@ -112,3 +112,30 @@ export interface AgentMemoryEntry {
   metadata: Record<string, unknown>;
   created_at: string;
 }
+
+/** Agent identity row shape. */
+export interface AgentIdentity {
+  agent_id: string;
+  did: string;
+  fingerprint: string;
+  public_key_pem: string;
+  bootstrap_allowed: boolean;
+  created_at: Date;
+  last_seen_at: Date;
+}
+
+/** Agent identity key row shape. */
+export interface AgentIdentityKey {
+  fingerprint: string;
+  agent_id: string;
+  public_key_pem: string;
+  created_at: Date;
+  superseded_at: Date | null;
+}
+
+/** Agent identity nonce row shape. */
+export interface AgentIdentityNonce {
+  nonce: string;
+  agent_id: string;
+  seen_at: Date;
+}

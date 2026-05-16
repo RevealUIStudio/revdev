@@ -19,7 +19,15 @@ import { mkdir } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import { formatDid, parseDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
+import {
+  computeFingerprint,
+  generateAgentKeypair,
+  hashParams,
+  parseEnvelope,
+  verifyEnvelope,
+} from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
 import {
@@ -41,6 +49,7 @@ import {
   syncTaskRelease,
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
+import { revvaultSet } from './revvault-client.js';
 import { SCHEMA_SQL } from './storage/schema.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
 
@@ -55,6 +64,7 @@ interface RpcRequest {
   id: number | string | null;
   method: string;
   params?: Record<string, unknown>;
+  'x-revdev-signature'?: string;
 }
 
 /** Per-connection state. Populated on session.register or session.attach. */
@@ -67,9 +77,19 @@ export interface SocketContext {
    * How `agentId` was bound to this socket:
    *   - 'register'/'attach': long-lived identity (trigger cleanup on disconnect)
    *   - 'param': transient actorAgentId from a fresh-per-call client (never cleanup)
+   *   - 'signature': bound via a verified Ed25519 envelope (never cleanup)
    *   - null: unbound
    */
-  boundVia: 'register' | 'attach' | 'param' | null;
+  boundVia: 'register' | 'attach' | 'param' | 'signature' | null;
+  /** Set when a request was authenticated via a verified Ed25519 envelope. */
+  verifiedSignature: { kid: string; nonce: string } | null;
+  // Pre-signature snapshot — captured before signature overrides identity,
+  // restored on the next request that arrives unsigned (or with a different
+  // signature). Prevents a signed-then-unsigned reuse from inheriting the
+  // signed identity on the same socket. See Codex P1 finding on PR #61.
+  preSignatureAgentId: string | null;
+  preSignatureAgentName: string | null;
+  preSignatureBoundVia: 'register' | 'attach' | 'param' | null;
 }
 
 type RpcHandler = (
@@ -297,6 +317,108 @@ function asStringArray(v: unknown): string[] {
   return v.filter((x): x is string => typeof x === 'string');
 }
 
+const SIG_TS_WINDOW_SECS = 60;
+const NONCE_SWEEP_WINDOW_MINUTES = 10;
+
+async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Promise<void> {
+  // Reset any prior signature binding on this socket before processing the
+  // current request. Connection-level bindings (register/attach/param) are
+  // restored from the pre-signature snapshot. Without this, a signed call
+  // would leave ctx.agentId = SIGNED_ID forever on the socket, and any
+  // later unsigned call would pass the identity gate as that agent.
+  if (ctx.boundVia === 'signature') {
+    ctx.agentId = ctx.preSignatureAgentId;
+    ctx.agentName = ctx.preSignatureAgentName;
+    ctx.boundVia = ctx.preSignatureBoundVia;
+    ctx.verifiedSignature = null;
+    ctx.preSignatureAgentId = null;
+    ctx.preSignatureAgentName = null;
+    ctx.preSignatureBoundVia = null;
+  }
+
+  const envelopeStr = req['x-revdev-signature'];
+  if (!envelopeStr) {
+    log.debug('no signature', { method: req.method });
+    return;
+  }
+
+  const parsed = parseEnvelope(envelopeStr);
+  if (!parsed) {
+    log.warn('signature parse failed', { method: req.method });
+    return;
+  }
+
+  const didParsed = parseDid(parsed.payload.did);
+  if (!didParsed) {
+    log.warn('signature did unparseable', { did: parsed.payload.did });
+    return;
+  }
+
+  if (parsed.payload.kid !== didParsed.fingerprint) {
+    log.warn('kid does not match did fingerprint', {
+      kid: parsed.payload.kid,
+      fingerprint: didParsed.fingerprint,
+    });
+    return;
+  }
+
+  const keyRow = await db.query<{ public_key_pem: string }>(
+    `SELECT public_key_pem FROM agent_identity_keys
+     WHERE fingerprint = $1 AND agent_id = $2 AND superseded_at IS NULL`,
+    [parsed.payload.kid, didParsed.agentId],
+  );
+  if (keyRow.rows.length === 0) {
+    log.warn('signature unknown key', { kid: parsed.payload.kid, agentId: didParsed.agentId });
+    return;
+  }
+
+  const publicKeyPem = keyRow.rows[0]?.public_key_pem;
+  if (!publicKeyPem || !verifyEnvelope(parsed, publicKeyPem)) {
+    log.warn('signature invalid', { kid: parsed.payload.kid });
+    return;
+  }
+
+  if (Math.abs(Date.now() / 1000 - parsed.payload.ts) > SIG_TS_WINDOW_SECS) {
+    log.warn('signature ts outside window', { ts: parsed.payload.ts });
+    return;
+  }
+
+  if (parsed.payload.method !== req.method) {
+    log.warn('signature method mismatch', {
+      payloadMethod: parsed.payload.method,
+      reqMethod: req.method,
+    });
+    return;
+  }
+
+  if (hashParams(req.method, req.params) !== parsed.payload.paramsHash) {
+    log.warn('signature paramsHash mismatch', { method: req.method });
+    return;
+  }
+
+  try {
+    await db.query(`INSERT INTO agent_identity_nonces (nonce, agent_id) VALUES ($1, $2)`, [
+      parsed.payload.nonce,
+      didParsed.agentId,
+    ]);
+  } catch {
+    log.warn('signature nonce replay', { nonce: parsed.payload.nonce, agentId: didParsed.agentId });
+    return;
+  }
+
+  // Snapshot the pre-signature connection identity so the NEXT request can
+  // restore it if it arrives unsigned (or with an invalid signature). Only
+  // register/attach/param survive across requests; the signature override is
+  // ephemeral. (Any prior 'signature' binding was already cleared at the top
+  // of this function, so boundVia here is one of register/attach/param/null.)
+  ctx.preSignatureAgentId = ctx.agentId;
+  ctx.preSignatureAgentName = ctx.agentName;
+  ctx.preSignatureBoundVia = ctx.boundVia;
+  ctx.agentId = didParsed.agentId;
+  ctx.boundVia = 'signature';
+  ctx.verifiedSignature = { kid: parsed.payload.kid, nonce: parsed.payload.nonce };
+}
+
 /** Accept either `paths: string[]` or `filePath: string` — normalize to array. */
 function normalizePaths(params: Record<string, unknown>): string[] {
   const paths = asStringArray(params.paths);
@@ -328,6 +450,7 @@ registerHandler('session.register', async (params, db, ctx) => {
   const backend = str(params.backend, str(params.env, 'unknown'));
   const env = `${backend}:${agentName}`;
   const pid = num(params.pid, 0) || null;
+  const forceRotate = params.forceRotate === true;
 
   if (supplied) {
     // UPSERT: insert or re-open existing row.
@@ -362,6 +485,11 @@ registerHandler('session.register', async (params, db, ctx) => {
   // Phase 1 decision #5 ("dual-write failure: best-effort, don't fail RPC").
   await syncSessionRegister({ agentId: id, agentName, env, task: workDir, pid });
 
+  // Agent identity bootstrap: generate or reuse an Ed25519 keypair and
+  // persist it to the agent_identity + agent_identity_keys tables.
+  // Returns the DID and public key PEM to include in the response.
+  const { did, publicKeyPem } = await bootstrapAgentIdentity(db, id, forceRotate);
+
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
   return {
@@ -369,9 +497,94 @@ registerHandler('session.register', async (params, db, ctx) => {
     agentId: id,
     agentName,
     backend,
+    did,
+    publicKeyPem,
     session: { id, env, task: workDir },
   };
 });
+
+interface IdentityResult {
+  did: string;
+  publicKeyPem: string;
+}
+
+async function bootstrapAgentIdentity(
+  db: PGlite,
+  agentId: string,
+  forceRotate: boolean,
+): Promise<IdentityResult> {
+  const existing = await db.query<{ did: string; fingerprint: string; public_key_pem: string }>(
+    `SELECT did, fingerprint, public_key_pem FROM agent_identity WHERE agent_id = $1`,
+    [agentId],
+  );
+
+  if (existing.rows.length > 0 && !forceRotate) {
+    const row = existing.rows[0] as { did: string; fingerprint: string; public_key_pem: string };
+    return { did: row.did, publicKeyPem: row.public_key_pem };
+  }
+
+  const kp = generateAgentKeypair();
+  const fingerprint = computeFingerprint(kp.publicKeyRaw);
+  const did = formatDid(agentId, fingerprint);
+
+  if (existing.rows.length === 0) {
+    await db.query(
+      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
+       VALUES ($1, $2, $3, $4)`,
+      [agentId, did, fingerprint, kp.publicKeyPem],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, kp.publicKeyPem],
+    );
+  } else {
+    await db.query(
+      `UPDATE agent_identity_keys
+       SET superseded_at = NOW()
+       WHERE agent_id = $1 AND superseded_at IS NULL`,
+      [agentId],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, kp.publicKeyPem],
+    );
+    await db.query(
+      `UPDATE agent_identity
+       SET did = $1, fingerprint = $2, public_key_pem = $3, last_seen_at = NOW()
+       WHERE agent_id = $4`,
+      [did, fingerprint, kp.publicKeyPem, agentId],
+    );
+  }
+
+  void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
+
+  return { did, publicKeyPem: kp.publicKeyPem };
+}
+
+function persistIdentityToRevvault(
+  agentId: string,
+  privateKeyPem: string,
+  publicKeyPem: string,
+): Promise<void> {
+  return (async () => {
+    const setPriv = await revvaultSet(
+      `revdev/agents/${agentId}/identity/ed25519-private`,
+      privateKeyPem,
+    );
+    if (!setPriv.ok) {
+      log.warn('revvault private key write failed', { agentId, reason: setPriv.reason });
+    }
+    const setPub = await revvaultSet(
+      `revdev/agents/${agentId}/identity/ed25519-public`,
+      publicKeyPem,
+    );
+    if (!setPub.ok) {
+      log.warn('revvault public key write failed', { agentId, reason: setPub.reason });
+    }
+  })();
+}
 
 registerHandler('session.attach', async (params, db, ctx) => {
   // Accept canonical sessionId, fall back to agentId alias (in this codebase
@@ -824,6 +1037,7 @@ registerHandler('harness.health', async (_params, db) => {
     // can use this to decide whether `session.list({scope:'fleet'})`
     // returning empty means "no peers" or "no fleet visibility".
     neonSyncActive: isNeonSyncActive(),
+    identitySignatureMode: 'accept-if-present' as const,
   };
 });
 
@@ -899,7 +1113,7 @@ registerHandler('memory.query', async (params, db, ctx) => {
 
 export async function startDaemon(
   config: Partial<DaemonConfig> = {},
-): Promise<{ close: () => Promise<void> }> {
+): Promise<{ close: () => Promise<void>; _db: PGlite }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
 
   // Reset shutdown signal + closing gate for this daemon lifecycle.
@@ -947,6 +1161,22 @@ export async function startDaemon(
     }, 5000).unref();
   }
 
+  // Nonce sweep: remove nonces older than NONCE_SWEEP_WINDOW_MINUTES (2x the
+  // SIG_TS_WINDOW_SECS validity window) so replay protection does not
+  // accumulate nonces forever. Runs every 5 minutes, independent of the
+  // session prune interval.
+  const nonceSweepTimer = setInterval(
+    () => {
+      db.query(
+        `DELETE FROM agent_identity_nonces
+       WHERE seen_at < NOW() - INTERVAL '1 minute' * $1`,
+        [NONCE_SWEEP_WINDOW_MINUTES],
+      ).catch((err) => log.warn('nonce sweep failed', { error: String(err) }));
+    },
+    5 * 60 * 1000,
+  );
+  nonceSweepTimer.unref();
+
   // Remove stale socket
   const { unlink, chmod } = await import('node:fs/promises');
   await unlink(cfg.socketPath).catch(() => {});
@@ -963,7 +1193,15 @@ export async function startDaemon(
   const server = createServer((socket: Socket) => {
     openSockets.add(socket);
     onConnect();
-    const ctx: SocketContext = { agentId: null, agentName: null, boundVia: null };
+    const ctx: SocketContext = {
+      agentId: null,
+      agentName: null,
+      boundVia: null,
+      verifiedSignature: null,
+      preSignatureAgentId: null,
+      preSignatureAgentName: null,
+      preSignatureBoundVia: null,
+    };
     let buffer = '';
 
     socket.on('data', async (data) => {
@@ -1003,6 +1241,15 @@ export async function startDaemon(
       }
 
       for (const line of lines) {
+        // The empty-line skip is a parsing aid (TCP can deliver partial
+        // frames; an empty token between two newlines is not a request).
+        // It is not a security check: an attacker sending an empty frame
+        // gets nothing dispatched, which is the same protection an empty
+        // frame produces in any other JSON-RPC line-delimited server.
+        // The real authorization gates run downstream (license, validation,
+        // signature, identity) and are tested in
+        // packages/daemon/src/__tests__/coordination.test.ts.
+        // codeql[js/user-controlled-bypass]
         if (!line.trim()) continue;
 
         // A complete (newline-terminated) frame can still exceed the cap
@@ -1067,6 +1314,11 @@ export async function startDaemon(
           );
           continue;
         }
+
+        // Signature gate (accept-if-present, P1). Attempts to bind ctx.agentId
+        // from a verified Ed25519 envelope. Never rejects the request — invalid
+        // or missing signatures fall through to the identity gate below.
+        await verifyOrWarn(req, db, ctx);
 
         // Identity gate: most coordination calls need a registered agent.
         // Fallback: accept `actorAgentId` in params (requireAgent will validate).
@@ -1191,6 +1443,7 @@ export async function startDaemon(
       log.info('ready for connections');
 
       resolve({
+        _db: db,
         close: async () => {
           // Sequence:
           //   1. Set _closing FIRST so any RPC arriving on an existing
@@ -1214,6 +1467,7 @@ export async function startDaemon(
           _shutdownController?.abort();
           _shutdownController = null;
           if (pruneTimer) clearInterval(pruneTimer);
+          clearInterval(nonceSweepTimer);
           server.close();
           for (const s of openSockets) {
             s.destroy();

@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     cli: 'src/cli.ts',
+    'agent-identity-crypto': 'src/agent-identity-crypto.ts',
     'storage/index': 'src/storage/index.ts',
   },
   format: ['esm'],

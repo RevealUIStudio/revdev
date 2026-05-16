@@ -19,6 +19,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./crypto": {
+      "types": "./dist/agent-identity-crypto.d.ts",
+      "import": "./dist/agent-identity-crypto.js"
+    },
     "./storage": {
       "types": "./dist/storage/index.d.ts",
       "import": "./dist/storage/index.js"
@@ -30,7 +34,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc --emitDeclarationOnly --declaration --declarationDir dist --noEmit false",
     "clean": "rm -rf dist",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
