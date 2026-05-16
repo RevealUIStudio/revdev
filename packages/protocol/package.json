@@ -19,6 +19,18 @@
     "./schema": {
       "types": "./dist/schema.d.ts",
       "import": "./dist/schema.js"
+    },
+    "./base58": {
+      "types": "./dist/base58.d.ts",
+      "import": "./dist/base58.js"
+    },
+    "./did": {
+      "types": "./dist/did.d.ts",
+      "import": "./dist/did.js"
+    },
+    "./signature": {
+      "types": "./dist/signature.d.ts",
+      "import": "./dist/signature.js"
     }
   },
   "files": [
