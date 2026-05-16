@@ -1,8 +1,27 @@
+/**
+ * Studio status indicator — a small decorative colored dot.
+ *
+ * Phase 2 PR-1 (2026-05-16): status colors migrated from hardcoded
+ * Tailwind palette classes (`bg-green-500`, `bg-yellow-500`, `bg-red-500`,
+ * `bg-neutral-600`) to `--rvui-success/warning/error/text-2` design tokens
+ * defined in `@revealui/presentation/tokens.css`. Consumer API
+ * (default export, `status`, `size`, `pulse`, `className`) unchanged.
+ *
+ * StatusDot itself has no `@revealui/presentation` equivalent yet
+ * (presentation has `Badge` for text content, but no pure decorative dot
+ * primitive). It is named as a future promotion candidate. For Phase 2
+ * PR-1, the dot is token-backed but still lives in Studio.
+ *
+ * Sequencing tracked in the internal Studio dogfood lane plan;
+ * design rule codified in the internal fleet RevealUI-native
+ * compliance ADR.
+ */
+
 const colorMap = {
-  ok: 'bg-green-500',
-  warn: 'bg-yellow-500',
-  error: 'bg-red-500',
-  off: 'bg-neutral-600',
+  ok: 'bg-[var(--rvui-success)]',
+  warn: 'bg-[var(--rvui-warning)]',
+  error: 'bg-[var(--rvui-error)]',
+  off: 'bg-[var(--rvui-text-2)]',
 } as const;
 
 const sizeMap = {
