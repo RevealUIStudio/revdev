@@ -83,6 +83,13 @@ export interface SocketContext {
   boundVia: 'register' | 'attach' | 'param' | 'signature' | null;
   /** Set when a request was authenticated via a verified Ed25519 envelope. */
   verifiedSignature: { kid: string; nonce: string } | null;
+  // Pre-signature snapshot — captured before signature overrides identity,
+  // restored on the next request that arrives unsigned (or with a different
+  // signature). Prevents a signed-then-unsigned reuse from inheriting the
+  // signed identity on the same socket. See Codex P1 finding on PR #61.
+  preSignatureAgentId: string | null;
+  preSignatureAgentName: string | null;
+  preSignatureBoundVia: 'register' | 'attach' | 'param' | null;
 }
 
 type RpcHandler = (
@@ -314,6 +321,21 @@ const SIG_TS_WINDOW_SECS = 60;
 const NONCE_SWEEP_WINDOW_MINUTES = 10;
 
 async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Promise<void> {
+  // Reset any prior signature binding on this socket before processing the
+  // current request. Connection-level bindings (register/attach/param) are
+  // restored from the pre-signature snapshot. Without this, a signed call
+  // would leave ctx.agentId = SIGNED_ID forever on the socket, and any
+  // later unsigned call would pass the identity gate as that agent.
+  if (ctx.boundVia === 'signature') {
+    ctx.agentId = ctx.preSignatureAgentId;
+    ctx.agentName = ctx.preSignatureAgentName;
+    ctx.boundVia = ctx.preSignatureBoundVia;
+    ctx.verifiedSignature = null;
+    ctx.preSignatureAgentId = null;
+    ctx.preSignatureAgentName = null;
+    ctx.preSignatureBoundVia = null;
+  }
+
   const envelopeStr = req['x-revdev-signature'];
   if (!envelopeStr) {
     log.debug('no signature', { method: req.method });
@@ -384,6 +406,14 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
     return;
   }
 
+  // Snapshot the pre-signature connection identity so the NEXT request can
+  // restore it if it arrives unsigned (or with an invalid signature). Only
+  // register/attach/param survive across requests; the signature override is
+  // ephemeral. (Any prior 'signature' binding was already cleared at the top
+  // of this function, so boundVia here is one of register/attach/param/null.)
+  ctx.preSignatureAgentId = ctx.agentId;
+  ctx.preSignatureAgentName = ctx.agentName;
+  ctx.preSignatureBoundVia = ctx.boundVia;
   ctx.agentId = didParsed.agentId;
   ctx.boundVia = 'signature';
   ctx.verifiedSignature = { kid: parsed.payload.kid, nonce: parsed.payload.nonce };
@@ -1168,6 +1198,9 @@ export async function startDaemon(
       agentName: null,
       boundVia: null,
       verifiedSignature: null,
+      preSignatureAgentId: null,
+      preSignatureAgentName: null,
+      preSignatureBoundVia: null,
     };
     let buffer = '';
 

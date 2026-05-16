@@ -832,4 +832,87 @@ describe('signature acceptance', () => {
       }),
     ).rejects.toThrow('-32002');
   });
+
+  // Per Codex P1 finding: a signed request on a reused socket must NOT leave
+  // ctx.agentId set for subsequent unsigned requests. verifyOrWarn resets the
+  // signature binding on every call; the next unsigned call sees the connection
+  // back at its pre-signature state (here: unbound) and is rejected with -32002.
+  it('signed-then-unsigned on same socket: unsigned does NOT inherit signature identity', async () => {
+    const agentId = 'sig-test-leak-cleanup';
+    const { did, fingerprint, privateKeyPem } = await seedIdentity(agentId);
+
+    const payload = {
+      did,
+      kid: fingerprint,
+      nonce: generateNonce(),
+      ts: Math.floor(Date.now() / 1000),
+      method: 'mail.inbox',
+      paramsHash: hashParams('mail.inbox', { unreadOnly: false }),
+    };
+    const envelope = signEnvelope(payload, privateKeyPem);
+    const sig = serializeEnvelope(envelope);
+
+    const responses = await new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+      const sock: Socket = connect(socketPath);
+      const out: Array<Record<string, unknown>> = [];
+      let buf = '';
+
+      const signedFrame = `${JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'mail.inbox',
+        params: { unreadOnly: false },
+        'x-revdev-signature': sig,
+      })}\n`;
+      const unsignedFrame = `${JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'mail.inbox',
+        params: { unreadOnly: false },
+      })}\n`;
+
+      sock.on('connect', () => {
+        sock.write(signedFrame);
+        sock.write(unsignedFrame);
+      });
+      sock.on('data', (d) => {
+        buf += d.toString();
+        let nl = buf.indexOf('\n');
+        while (nl !== -1) {
+          const line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          if (line.length > 0) {
+            try {
+              out.push(JSON.parse(line) as Record<string, unknown>);
+            } catch (e) {
+              reject(e instanceof Error ? e : new Error(String(e)));
+              return;
+            }
+          }
+          if (out.length === 2) {
+            sock.end();
+            resolve(out);
+            return;
+          }
+          nl = buf.indexOf('\n');
+        }
+      });
+      sock.on('error', reject);
+      sock.setTimeout(5000, () => {
+        sock.destroy();
+        reject(new Error('socket reuse test timeout'));
+      });
+    });
+
+    // First (signed) call succeeded as the signed agent.
+    expect(responses[0]?.id).toBe(1);
+    expect(responses[0]?.error).toBeUndefined();
+
+    // Second (unsigned) call on the SAME socket was rejected with -32002.
+    // If the signature identity had leaked, the unsigned call would have
+    // succeeded as the signed agent — proving the cleanup logic correct.
+    expect(responses[1]?.id).toBe(2);
+    const err = responses[1]?.error as { code: number; message: string } | undefined;
+    expect(err?.code).toBe(-32002);
+  });
 });
