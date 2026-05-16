@@ -16,6 +16,7 @@
  * in GAP-173 and reconciled in `fix/validation-schema-reconcile`.
  */
 
+import { isValidAgentId } from '@revdev/protocol/did';
 import { z } from 'zod';
 import {
   MAX_BODY_LENGTH,
@@ -43,7 +44,17 @@ const safePath = z
     message: 'System paths not allowed',
   });
 
-const agentId = z.string().max(MAX_NAME_LENGTH).optional();
+// agentId must conform to the DID grammar (alphanumeric, _, -; 1-128 chars)
+// so it can be embedded in `did:revfleet:<agentId>:<fingerprint>`.
+// Pre-existing IDs that contained spaces, slashes, or colons are rejected
+// here cleanly rather than failing mid-handler after a row was upserted.
+const agentId = z
+  .string()
+  .max(MAX_NAME_LENGTH)
+  .refine(isValidAgentId, {
+    message: 'agentId must match [0-9a-zA-Z_-] (DID grammar)',
+  })
+  .optional();
 const actorAgentId = z.string().max(MAX_NAME_LENGTH).optional();
 
 /**

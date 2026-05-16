@@ -80,7 +80,11 @@ export async function revvaultSet(
   const binary = options?.binary ?? 'revvault';
   const timeout = options?.timeout ?? 5000;
   try {
-    const child = execFileCb(binary, ['--json', 'set', path], { timeout });
+    // --force: revvault set without --force fails on existing paths. Identity
+    // rotation re-writes the same paths, so without --force the vault retains
+    // the OLD private key while the DB has the NEW DID — signing would fail
+    // verification. Same pattern as scripts/issue-license.ts.
+    const child = execFileCb(binary, ['--json', 'set', '--force', path], { timeout });
     child.stdin?.end(value);
     await once(child, 'exit');
     const code = child.exitCode;

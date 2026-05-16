@@ -508,4 +508,19 @@ describe('agent identity bootstrap', () => {
       }
     }
   });
+
+  // Per Codex P2 finding: agentIds with chars outside the DID grammar
+  // (spaces, slashes, colons) used to break formatDid AFTER the
+  // agent_sessions row was upserted. Schema-level refine rejects them
+  // cleanly before any DB write — daemon returns -32000 with the Zod
+  // refine message.
+  it('rejects agentId with characters outside DID grammar (pre-upsert)', async () => {
+    await expect(
+      rpc(socketPath, 'session.register', {
+        agentId: 'invalid/agent:name with space',
+        agentName: 'identity-tester',
+        backend: 'test',
+      }),
+    ).rejects.toThrow('invalid agentId');
+  });
 });

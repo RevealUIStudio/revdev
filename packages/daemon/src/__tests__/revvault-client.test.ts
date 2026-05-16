@@ -215,6 +215,24 @@ describe('revvaultSet', () => {
     await revvaultSet('some/path', 'value');
     expect(capturedArgs).toContain('--json');
   });
+
+  // Per Codex P2 finding: revvault set without --force fails on existing
+  // paths. Identity rotation re-writes the same paths, so without --force
+  // the vault keeps the old key while the DB returns the new DID.
+  it('always passes --force flag (overwrites on rotation)', async () => {
+    const execFileMock = childProcess.execFile as unknown as Mock;
+    execFileMock.mockImplementation((bin: string, args: string[]) => {
+      capturedArgs = [bin, ...args];
+      const EventEmitter = require('node:events').EventEmitter;
+      const child = new EventEmitter();
+      child.stdin = { end: vi.fn() };
+      child.exitCode = 0;
+      Promise.resolve().then(() => child.emit('exit', 0));
+      return child;
+    });
+    await revvaultSet('some/path', 'value');
+    expect(capturedArgs).toContain('--force');
+  });
 });
 
 describe('isRevvaultAvailable', () => {
