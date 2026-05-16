@@ -19,7 +19,7 @@
     "dev:studio": "pnpm --filter @revdev/studio dev",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "pnpm -r test",
+    "test": "pnpm --filter @revdev/protocol build && pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
     "typecheck": "pnpm --filter @revdev/protocol build && pnpm -r --filter=!studio typecheck",
     "typecheck:studio": "pnpm --filter studio typecheck"
