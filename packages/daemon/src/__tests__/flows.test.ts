@@ -188,10 +188,16 @@ describe('verifyLicenseJWT — negative cases', () => {
 
     const now = Math.floor(Date.now() / 1000);
     const header = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT' })).toString('base64url');
-    // No exp claim
-    const payloadB64 = Buffer.from(JSON.stringify({ tier: 'enterprise', iat: now })).toString(
-      'base64url',
-    );
+    // No exp claim (perpetual). Include required iss/aud/jti to match issuer output.
+    const payloadB64 = Buffer.from(
+      JSON.stringify({
+        tier: 'enterprise',
+        iat: now,
+        iss: 'https://revealui.com',
+        aud: 'revealui-license',
+        jti: 'test-perpetual-fixture',
+      }),
+    ).toString('base64url');
     const message = `${header}.${payloadB64}`;
     const sig = sign(null, Buffer.from(message), privateKey).toString('base64url');
 
