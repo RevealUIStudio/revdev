@@ -15,8 +15,9 @@ interface PanelHeaderProps {
  * element is still `<h1>` — existing tests asserting role=heading level=1
  * continue to pass.
  *
- * See `~/revfleet/.jv/docs/lanes/studio-dogfood/plan.md` and ADR
- * `2026-05-16-fleet-revealui-native-compliance.md`.
+ * Sequencing tracked in the internal Studio dogfood lane plan;
+ * design rule codified in the internal fleet RevealUI-native
+ * compliance ADR.
  */
 export default function PanelHeader({ title, action }: PanelHeaderProps) {
   return (

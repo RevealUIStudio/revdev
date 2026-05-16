@@ -9,12 +9,12 @@
  *
  * StatusDot itself has no `@revealui/presentation` equivalent yet
  * (presentation has `Badge` for text content, but no pure decorative dot
- * primitive). It is named as a promotion candidate in Phase 5 of the
- * studio-dogfood lane plan. For Phase 2 PR-1, the dot is token-backed but
- * still lives in Studio.
+ * primitive). It is named as a future promotion candidate. For Phase 2
+ * PR-1, the dot is token-backed but still lives in Studio.
  *
- * See `~/revfleet/.jv/docs/lanes/studio-dogfood/plan.md` and ADR
- * `2026-05-16-fleet-revealui-native-compliance.md`.
+ * Sequencing tracked in the internal Studio dogfood lane plan;
+ * design rule codified in the internal fleet RevealUI-native
+ * compliance ADR.
  */
 
 const colorMap = {
