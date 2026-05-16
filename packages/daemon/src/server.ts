@@ -19,7 +19,9 @@ import { mkdir } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import { formatDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
+import { computeFingerprint, generateAgentKeypair } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
 import {
@@ -41,6 +43,7 @@ import {
   syncTaskRelease,
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
+import { revvaultSet } from './revvault-client.js';
 import { SCHEMA_SQL } from './storage/schema.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
 
@@ -328,6 +331,7 @@ registerHandler('session.register', async (params, db, ctx) => {
   const backend = str(params.backend, str(params.env, 'unknown'));
   const env = `${backend}:${agentName}`;
   const pid = num(params.pid, 0) || null;
+  const forceRotate = params.forceRotate === true;
 
   if (supplied) {
     // UPSERT: insert or re-open existing row.
@@ -362,6 +366,11 @@ registerHandler('session.register', async (params, db, ctx) => {
   // Phase 1 decision #5 ("dual-write failure: best-effort, don't fail RPC").
   await syncSessionRegister({ agentId: id, agentName, env, task: workDir, pid });
 
+  // Agent identity bootstrap: generate or reuse an Ed25519 keypair and
+  // persist it to the agent_identity + agent_identity_keys tables.
+  // Returns the DID and public key PEM to include in the response.
+  const { did, publicKeyPem } = await bootstrapAgentIdentity(db, id, forceRotate);
+
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
   return {
@@ -369,9 +378,94 @@ registerHandler('session.register', async (params, db, ctx) => {
     agentId: id,
     agentName,
     backend,
+    did,
+    publicKeyPem,
     session: { id, env, task: workDir },
   };
 });
+
+interface IdentityResult {
+  did: string;
+  publicKeyPem: string;
+}
+
+async function bootstrapAgentIdentity(
+  db: PGlite,
+  agentId: string,
+  forceRotate: boolean,
+): Promise<IdentityResult> {
+  const existing = await db.query<{ did: string; fingerprint: string; public_key_pem: string }>(
+    `SELECT did, fingerprint, public_key_pem FROM agent_identity WHERE agent_id = $1`,
+    [agentId],
+  );
+
+  if (existing.rows.length > 0 && !forceRotate) {
+    const row = existing.rows[0] as { did: string; fingerprint: string; public_key_pem: string };
+    return { did: row.did, publicKeyPem: row.public_key_pem };
+  }
+
+  const kp = generateAgentKeypair();
+  const fingerprint = computeFingerprint(kp.publicKeyRaw);
+  const did = formatDid(agentId, fingerprint);
+
+  if (existing.rows.length === 0) {
+    await db.query(
+      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
+       VALUES ($1, $2, $3, $4)`,
+      [agentId, did, fingerprint, kp.publicKeyPem],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, kp.publicKeyPem],
+    );
+  } else {
+    await db.query(
+      `UPDATE agent_identity_keys
+       SET superseded_at = NOW()
+       WHERE agent_id = $1 AND superseded_at IS NULL`,
+      [agentId],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, kp.publicKeyPem],
+    );
+    await db.query(
+      `UPDATE agent_identity
+       SET did = $1, fingerprint = $2, public_key_pem = $3, last_seen_at = NOW()
+       WHERE agent_id = $4`,
+      [did, fingerprint, kp.publicKeyPem, agentId],
+    );
+  }
+
+  void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
+
+  return { did, publicKeyPem: kp.publicKeyPem };
+}
+
+function persistIdentityToRevvault(
+  agentId: string,
+  privateKeyPem: string,
+  publicKeyPem: string,
+): Promise<void> {
+  return (async () => {
+    const setPriv = await revvaultSet(
+      `revdev/agents/${agentId}/identity/ed25519-private`,
+      privateKeyPem,
+    );
+    if (!setPriv.ok) {
+      log.warn('revvault private key write failed', { agentId, reason: setPriv.reason });
+    }
+    const setPub = await revvaultSet(
+      `revdev/agents/${agentId}/identity/ed25519-public`,
+      publicKeyPem,
+    );
+    if (!setPub.ok) {
+      log.warn('revvault public key write failed', { agentId, reason: setPub.reason });
+    }
+  })();
+}
 
 registerHandler('session.attach', async (params, db, ctx) => {
   // Accept canonical sessionId, fall back to agentId alias (in this codebase

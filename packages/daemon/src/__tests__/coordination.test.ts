@@ -426,3 +426,101 @@ describe('GAP-153: stale-session prune', () => {
     expect(result.aged).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Adoption 2 Phase 1.2 — agent identity bootstrap via session.register.
+//
+// Proves: keygen on first register, idempotent reuse, forceRotate rotation,
+// and that revvault CLI absence does not fail register (CI scenario).
+// ---------------------------------------------------------------------------
+
+describe('agent identity bootstrap', () => {
+  it('first register issues DID + keypair', async () => {
+    const result = (await rpc(socketPath, 'session.register', {
+      agentId: 'identity-test-first',
+      agentName: 'identity-tester',
+      backend: 'test',
+    })) as { sessionId: string; did: string; publicKeyPem: string };
+
+    expect(result.sessionId).toBe('identity-test-first');
+    expect(result.did).toBe(
+      result.did.startsWith('did:revfleet:identity-test-first:')
+        ? result.did
+        : 'did:revfleet:identity-test-first:<fingerprint>',
+    );
+    expect(result.did.startsWith('did:revfleet:identity-test-first:')).toBe(true);
+    expect(result.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+  });
+
+  it('idempotent re-register reuses the same keypair', async () => {
+    const r1 = (await rpc(socketPath, 'session.register', {
+      agentId: 'identity-test-idempotent',
+      agentName: 'identity-tester',
+      backend: 'test',
+    })) as { did: string; publicKeyPem: string };
+
+    const r2 = (await rpc(socketPath, 'session.register', {
+      agentId: 'identity-test-idempotent',
+      agentName: 'identity-tester',
+      backend: 'test',
+    })) as { did: string; publicKeyPem: string };
+
+    expect(r2.did).toBe(r1.did);
+    expect(r2.publicKeyPem).toBe(r1.publicKeyPem);
+  });
+
+  it('forceRotate:true supersedes old key and issues a new one', async () => {
+    const r1 = (await rpc(socketPath, 'session.register', {
+      agentId: 'identity-test-rotate',
+      agentName: 'identity-tester',
+      backend: 'test',
+    })) as { did: string; publicKeyPem: string };
+
+    const r2 = (await rpc(socketPath, 'session.register', {
+      agentId: 'identity-test-rotate',
+      agentName: 'identity-tester',
+      backend: 'test',
+      forceRotate: true,
+    })) as { did: string; publicKeyPem: string };
+
+    expect(r2.did).not.toBe(r1.did);
+    expect(r2.publicKeyPem).not.toBe(r1.publicKeyPem);
+    expect(r2.did.startsWith('did:revfleet:identity-test-rotate:')).toBe(true);
+    expect(r2.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+  });
+
+  it('register succeeds when revvault CLI is absent', async () => {
+    const origPath = process.env.PATH;
+    process.env.PATH = '';
+    try {
+      const result = (await rpc(socketPath, 'session.register', {
+        agentId: 'identity-test-no-revvault',
+        agentName: 'identity-tester',
+        backend: 'test',
+      })) as { sessionId: string; did: string; publicKeyPem: string };
+
+      expect(result.sessionId).toBe('identity-test-no-revvault');
+      expect(result.did.startsWith('did:revfleet:identity-test-no-revvault:')).toBe(true);
+      expect(result.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+    } finally {
+      if (origPath !== undefined) {
+        process.env.PATH = origPath;
+      }
+    }
+  });
+
+  // Per Codex P2 finding: agentIds with chars outside the DID grammar
+  // (spaces, slashes, colons) used to break formatDid AFTER the
+  // agent_sessions row was upserted. Schema-level refine rejects them
+  // cleanly before any DB write — daemon returns -32000 with the Zod
+  // refine message.
+  it('rejects agentId with characters outside DID grammar (pre-upsert)', async () => {
+    await expect(
+      rpc(socketPath, 'session.register', {
+        agentId: 'invalid/agent:name with space',
+        agentName: 'identity-tester',
+        backend: 'test',
+      }),
+    ).rejects.toThrow('invalid agentId');
+  });
+});
