@@ -43,6 +43,14 @@ export function getVendorPublicKey(): string {
 
 const VALID_TIERS = new Set(['pro', 'max', 'enterprise']);
 
+const EXPECTED_ISS = 'https://revealui.com';
+const EXPECTED_AUD = 'revealui-license';
+
+// hook for future revocation channel
+export function isRevokedJti(_jti: string): boolean {
+  return false;
+}
+
 export interface LicenseJWTResult {
   tier: 'pro' | 'max' | 'enterprise';
   expiresAt: number; // unix seconds, 0 = perpetual
@@ -137,6 +145,36 @@ export function verifyLicenseJWT(
 
     if (!isValid) {
       return { tier: 'free', valid: false, reason: 'invalid signature' };
+    }
+
+    // Validate iss
+    if (payload.iss !== EXPECTED_ISS) {
+      return { tier: 'free', valid: false, reason: `invalid iss: ${String(payload.iss)}` };
+    }
+
+    // Validate aud (jose sets aud as an array or scalar; issuer uses scalar)
+    const aud = payload.aud;
+    const audValue = Array.isArray(aud) ? aud[0] : aud;
+    if (audValue !== EXPECTED_AUD) {
+      return { tier: 'free', valid: false, reason: `invalid aud: ${String(aud)}` };
+    }
+
+    // Validate nbf if present
+    const nbf = payload.nbf;
+    if (nbf !== undefined) {
+      if (typeof nbf !== 'number') {
+        return { tier: 'free', valid: false, reason: 'invalid nbf claim' };
+      }
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (nowSeconds < nbf) {
+        return { tier: 'free', valid: false, reason: 'token not yet valid (nbf)' };
+      }
+    }
+
+    // Check jti revocation
+    const jti = payload.jti;
+    if (typeof jti === 'string' && isRevokedJti(jti)) {
+      return { tier: 'free', valid: false, reason: 'token has been revoked' };
     }
 
     // expiresAt: 0 = perpetual (mirrors dotted-v2 semantics)
