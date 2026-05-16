@@ -23,5 +23,7 @@ export const SignatureEnvelopeSchema = z
     header: SignatureHeaderSchema,
     payload: SignaturePayloadSchema,
     signature: z.string(),
+    rawHeaderB64: z.string(),
+    rawPayloadB64: z.string(),
   })
   .strict();

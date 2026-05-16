@@ -78,21 +78,21 @@ export function base64UrlDecode(s: string): Buffer {
 
 export function signEnvelope(payload: SignaturePayload, privateKeyPem: string): SignatureEnvelope {
   const header: SignatureHeader = { alg: 'EdDSA', typ: 'jws' };
-  const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
-  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
-  const message = headerB64 + '.' + payloadB64;
+  const rawHeaderB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
+  const rawPayloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
+  const message = rawHeaderB64 + '.' + rawPayloadB64;
   const signatureBytes = sign(null, Buffer.from(message), privateKeyPem);
   return {
     header,
     payload,
     signature: base64UrlEncode(signatureBytes),
+    rawHeaderB64,
+    rawPayloadB64,
   };
 }
 
 export function serializeEnvelope(envelope: SignatureEnvelope): EnvelopeString {
-  const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(envelope.header)));
-  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(envelope.payload)));
-  return headerB64 + '.' + payloadB64 + '.' + envelope.signature;
+  return envelope.rawHeaderB64 + '.' + envelope.rawPayloadB64 + '.' + envelope.signature;
 }
 
 export function parseEnvelope(envelopeString: EnvelopeString): SignatureEnvelope | null {
@@ -125,6 +125,8 @@ export function parseEnvelope(envelopeString: EnvelopeString): SignatureEnvelope
       header: headerResult.data,
       payload: payloadResult.data,
       signature,
+      rawHeaderB64: headerB64,
+      rawPayloadB64: payloadB64,
     };
   } catch {
     return null;
@@ -133,9 +135,7 @@ export function parseEnvelope(envelopeString: EnvelopeString): SignatureEnvelope
 
 export function verifyEnvelope(envelope: SignatureEnvelope, publicKeyPem: string): boolean {
   try {
-    const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(envelope.header)));
-    const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(envelope.payload)));
-    const message = headerB64 + '.' + payloadB64;
+    const message = envelope.rawHeaderB64 + '.' + envelope.rawPayloadB64;
     const signatureBytes = base64UrlDecode(envelope.signature);
     return verify(null, Buffer.from(message), publicKeyPem, signatureBytes);
   } catch {

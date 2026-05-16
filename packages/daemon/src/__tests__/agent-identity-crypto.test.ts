@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import type { SignaturePayload } from '@revdev/protocol/signature';
 import { describe, expect, it } from 'vitest';
 import {
@@ -86,6 +86,31 @@ describe('signEnvelope + verifyEnvelope', () => {
     const payload = makePayload();
     const envelope = signEnvelope(payload, kp.privateKeyPem);
     expect(verifyEnvelope(envelope, otherKp.publicKeyPem)).toBe(false);
+  });
+
+  // Per Codex P2 finding: a foreign signer may emit header/payload JSON with
+  // members in non-canonical order. Verification must preserve the literal
+  // signed segments rather than re-serialize, or valid signatures get rejected.
+  it('accepts signatures over non-canonical JSON key order (foreign signer compatibility)', () => {
+    const kp = generateAgentKeypair();
+    const payload = makePayload();
+
+    const headerNonCanonical = '{"typ":"jws","alg":"EdDSA"}';
+    const payloadJson = JSON.stringify(payload);
+    const rawHeaderB64 = Buffer.from(headerNonCanonical).toString('base64url');
+    const rawPayloadB64 = Buffer.from(payloadJson).toString('base64url');
+    const message = rawHeaderB64 + '.' + rawPayloadB64;
+    const sigBytes = sign(null, Buffer.from(message), kp.privateKeyPem);
+    const sigB64 = Buffer.from(sigBytes).toString('base64url');
+
+    const envelopeString = rawHeaderB64 + '.' + rawPayloadB64 + '.' + sigB64;
+    const parsed = parseEnvelope(envelopeString);
+    expect(parsed).not.toBeNull();
+    if (parsed !== null) {
+      expect(parsed.rawHeaderB64).toBe(rawHeaderB64);
+      expect(parsed.rawPayloadB64).toBe(rawPayloadB64);
+      expect(verifyEnvelope(parsed, kp.publicKeyPem)).toBe(true);
+    }
   });
 });
 
