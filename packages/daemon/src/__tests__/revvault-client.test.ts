@@ -168,7 +168,7 @@ describe('revvaultSet', () => {
       capturedArgs = [bin, ...args];
       const EventEmitter = require('node:events').EventEmitter;
       const child = new EventEmitter();
-      child.stdin = { end: vi.fn() };
+      child.stdin = { end: vi.fn(), on: vi.fn() };
       child.exitCode = 0;
       Promise.resolve().then(() => child.emit('exit', 0));
       return child;
@@ -177,7 +177,30 @@ describe('revvaultSet', () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it('returns ok:false reason:cli-not-installed on ENOENT', async () => {
+  it('returns ok:false reason:cli-not-installed on async ENOENT error event (does not crash daemon)', async () => {
+    // Real-world execFileCb does NOT throw synchronously on ENOENT — it
+    // returns a child that emits an async 'error' event. Mocking that
+    // real behavior. Previous mock (synchronous throw only) hid Codex P1
+    // finding: an unhandled 'error' from a missing CLI would crash the
+    // daemon in production.
+    const execFileMock = childProcess.execFile as unknown as Mock;
+    execFileMock.mockImplementation(() => {
+      const EventEmitter = require('node:events').EventEmitter;
+      const child = new EventEmitter();
+      child.stdin = { end: vi.fn(), on: vi.fn() };
+      Promise.resolve().then(() => {
+        const err = Object.assign(new Error('spawn revvault ENOENT'), { code: 'ENOENT' });
+        child.emit('error', err);
+      });
+      return child;
+    });
+    const result = await revvaultSet('some/path', 'value');
+    expect(result).toEqual({ ok: false, reason: 'cli-not-installed' });
+  });
+
+  it('returns ok:false reason:cli-not-installed on synchronous ENOENT throw (rare edge case)', async () => {
+    // Some platforms / Node versions may throw synchronously on bad spawn
+    // arguments. Coverage preserved for the synchronous path.
     const execFileMock = childProcess.execFile as unknown as Mock;
     execFileMock.mockImplementation(() => {
       const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
@@ -187,12 +210,48 @@ describe('revvaultSet', () => {
     expect(result).toEqual({ ok: false, reason: 'cli-not-installed' });
   });
 
+  it('does not leak unhandled error events from child or stdin', async () => {
+    // Regression for Codex P1: missing revvault used to surface an
+    // unhandled 'error' event that crashed the daemon. With explicit
+    // child.on('error') + child.stdin.on('error') listeners, the daemon
+    // gets a clean RevvaultSetFailResult and process.on('uncaughtException')
+    // is never reached.
+    const uncaught: Error[] = [];
+    const handler = (err: Error) => uncaught.push(err);
+    process.on('uncaughtException', handler);
+
+    const execFileMock = childProcess.execFile as unknown as Mock;
+    execFileMock.mockImplementation(() => {
+      const EventEmitter = require('node:events').EventEmitter;
+      const child = new EventEmitter();
+      const stdin = new EventEmitter();
+      (stdin as unknown as { end: () => void }).end = () => {
+        // Broken pipe: stdin emits its own error after end()
+        Promise.resolve().then(() => stdin.emit('error', new Error('EPIPE')));
+      };
+      child.stdin = stdin;
+      Promise.resolve().then(() => {
+        const err = Object.assign(new Error('spawn revvault ENOENT'), { code: 'ENOENT' });
+        child.emit('error', err);
+      });
+      return child;
+    });
+
+    const result = await revvaultSet('some/path', 'value');
+    // Drain deferred microtasks before asserting no leaks.
+    await new Promise((r) => setImmediate(r));
+    process.off('uncaughtException', handler);
+
+    expect(result).toEqual({ ok: false, reason: 'cli-not-installed' });
+    expect(uncaught).toEqual([]);
+  });
+
   it('returns ok:false reason:cli-failure on non-zero exit', async () => {
     const execFileMock = childProcess.execFile as unknown as Mock;
     execFileMock.mockImplementation(() => {
       const EventEmitter = require('node:events').EventEmitter;
       const child = new EventEmitter();
-      child.stdin = { end: vi.fn() };
+      child.stdin = { end: vi.fn(), on: vi.fn() };
       child.exitCode = 1;
       Promise.resolve().then(() => child.emit('exit', 1));
       return child;
@@ -207,7 +266,7 @@ describe('revvaultSet', () => {
       capturedArgs = [bin, ...args];
       const EventEmitter = require('node:events').EventEmitter;
       const child = new EventEmitter();
-      child.stdin = { end: vi.fn() };
+      child.stdin = { end: vi.fn(), on: vi.fn() };
       child.exitCode = 0;
       Promise.resolve().then(() => child.emit('exit', 0));
       return child;
@@ -225,7 +284,7 @@ describe('revvaultSet', () => {
       capturedArgs = [bin, ...args];
       const EventEmitter = require('node:events').EventEmitter;
       const child = new EventEmitter();
-      child.stdin = { end: vi.fn() };
+      child.stdin = { end: vi.fn(), on: vi.fn() };
       child.exitCode = 0;
       Promise.resolve().then(() => child.emit('exit', 0));
       return child;
