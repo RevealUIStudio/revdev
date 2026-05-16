@@ -6,7 +6,7 @@ import type {
   SignatureHeader,
   SignaturePayload,
 } from '@revdev/protocol/signature';
-import { SignatureHeaderSchema, SignaturePayloadSchema } from './signature-schemas.js';
+import { SignatureHeaderSchema, SignaturePayloadSchema } from '@revdev/protocol/signature';
 
 export interface AgentKeyPair {
   privateKeyPem: string;
