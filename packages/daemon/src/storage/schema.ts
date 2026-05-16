@@ -115,4 +115,31 @@ export const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_merge_requests_pr
     ON merge_requests (pr_number) WHERE pr_number IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS agent_identity (
+    agent_id          TEXT PRIMARY KEY,
+    did               TEXT NOT NULL UNIQUE,
+    fingerprint       TEXT NOT NULL,
+    public_key_pem    TEXT NOT NULL,
+    bootstrap_allowed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_seen_at      TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_identity_keys (
+    fingerprint     TEXT PRIMARY KEY,
+    agent_id        TEXT NOT NULL,
+    public_key_pem  TEXT NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    superseded_at   TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_identity_keys_agent ON agent_identity_keys(agent_id);
+
+  CREATE TABLE IF NOT EXISTS agent_identity_nonces (
+    nonce       TEXT NOT NULL,
+    agent_id    TEXT NOT NULL,
+    seen_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (nonce, agent_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_identity_nonces_seen ON agent_identity_nonces(seen_at);
 `;
