@@ -11,92 +11,11 @@
  * @packageDocumentation
  */
 
-import { connect } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { RPC_METHODS } from '@revdev/protocol';
 import { z } from 'zod';
-
-// ---------------------------------------------------------------------------
-// Daemon RPC client
-// ---------------------------------------------------------------------------
-
-interface RpcRequest {
-  jsonrpc: '2.0';
-  id: number;
-  method: string;
-  params?: Record<string, unknown>;
-}
-
-interface RpcResponse {
-  jsonrpc: '2.0';
-  id: number;
-  result?: unknown;
-  error?: { code: number; message: string };
-}
-
-class DaemonClient {
-  private socketPath: string;
-  private nextId = 1;
-
-  constructor(socketPath?: string) {
-    const home = process.env.HOME ?? '/tmp';
-    this.socketPath = socketPath ?? `${home}/.local/share/revealui/harness.sock`;
-  }
-
-  async call(method: string, params?: Record<string, unknown>): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const id = this.nextId++;
-      const req: RpcRequest = { jsonrpc: '2.0', id, method, params };
-
-      const socket = connect(this.socketPath);
-      let buffer = '';
-
-      socket.on('connect', () => {
-        socket.write(`${JSON.stringify(req)}\n`);
-      });
-
-      socket.on('data', (data) => {
-        buffer += data.toString();
-        const lines = buffer.split('\n');
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const resp: RpcResponse = JSON.parse(line);
-            if (resp.id === id) {
-              socket.end();
-              if (resp.error) {
-                reject(new Error(`Daemon error ${resp.error.code}: ${resp.error.message}`));
-              } else {
-                resolve(resp.result);
-              }
-            }
-          } catch {
-            // incomplete JSON, wait for more data
-          }
-        }
-      });
-
-      socket.on('error', (err) => {
-        reject(new Error(`Daemon connection failed: ${err.message}. Is revdev-daemon running?`));
-      });
-
-      socket.setTimeout(10_000, () => {
-        socket.destroy();
-        reject(new Error('Daemon request timed out'));
-      });
-    });
-  }
-
-  async ping(): Promise<boolean> {
-    try {
-      await this.call(RPC_METHODS.ping);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
+import { DaemonClient } from './client.js';
 
 // ---------------------------------------------------------------------------
 // MCP Server

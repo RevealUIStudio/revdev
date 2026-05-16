@@ -123,6 +123,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.1
         version: 1.29.0(zod@4.3.6)
+      '@revdev/daemon':
+        specifier: workspace:*
+        version: link:../daemon
       '@revdev/protocol':
         specifier: workspace:*
         version: link:../protocol
