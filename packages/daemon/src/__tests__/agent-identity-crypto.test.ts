@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from 'node:crypto';
+import type { SignaturePayload } from '@revdev/protocol/signature';
 import { describe, expect, it } from 'vitest';
 import {
   base64UrlDecode,
@@ -12,7 +13,6 @@ import {
   signEnvelope,
   verifyEnvelope,
 } from '../agent-identity-crypto.js';
-import type { SignaturePayload } from '@revdev/protocol/signature';
 
 function makePayload(overrides: Partial<SignaturePayload> = {}): SignaturePayload {
   return {

@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import { base58Decode, base58Encode } from '@revdev/protocol/base58';
 import {
   DID_PREFIX,
@@ -8,6 +7,7 @@ import {
   isValidFingerprint,
   parseDid,
 } from '@revdev/protocol/did';
+import { describe, expect, it } from 'vitest';
 
 describe('formatDid', () => {
   it('formats a valid DID', () => {
