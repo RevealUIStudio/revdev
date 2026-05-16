@@ -19,7 +19,16 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  computeFingerprint,
+  generateAgentKeypair,
+  generateNonce,
+  hashParams,
+  serializeEnvelope,
+  signEnvelope,
+} from '../agent-identity-crypto.js';
 import { startDaemon } from '../server.js';
 
 // ---------------------------------------------------------------------------
@@ -65,6 +74,7 @@ function rpc(
 let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
+let db: PGlite;
 let originalLicenseKey: string | undefined;
 
 beforeAll(async () => {
@@ -77,6 +87,7 @@ beforeAll(async () => {
   socketPath = join(dataDir, 'harness.sock');
   const d = await startDaemon({ socketPath, dataDir });
   close = d.close;
+  db = d._db;
 });
 
 afterAll(async () => {
@@ -522,5 +533,303 @@ describe('agent identity bootstrap', () => {
         backend: 'test',
       }),
     ).rejects.toThrow('invalid agentId');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adoption 2 Phase 1.3 — accept-if-present signature gate.
+//
+// Tests use pre-seeded DB rows (known keypairs inserted directly into
+// agent_identity + agent_identity_keys via the _db handle) so the test
+// holds both the public and private key — bypassing revvault, which is not
+// available in CI.
+// ---------------------------------------------------------------------------
+
+function signedRpc(
+  socketPath: string,
+  method: string,
+  params: Record<string, unknown>,
+  opts: { did: string; fingerprint: string; privateKeyPem: string },
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const sock: Socket = connect(socketPath);
+    let buf = '';
+    const payload = {
+      did: opts.did,
+      kid: opts.fingerprint,
+      nonce: generateNonce(),
+      ts: Math.floor(Date.now() / 1000),
+      method,
+      paramsHash: hashParams(method, params),
+    };
+    const envelope = signEnvelope(payload, opts.privateKeyPem);
+    const sig = serializeEnvelope(envelope);
+    const frame = `${JSON.stringify({ jsonrpc: '2.0', id: 1, method, params, 'x-revdev-signature': sig })}\n`;
+    sock.on('connect', () => sock.write(frame));
+    sock.on('data', (d) => {
+      buf += d.toString();
+      const nl = buf.indexOf('\n');
+      if (nl === -1) return;
+      const line = buf.slice(0, nl);
+      sock.end();
+      try {
+        const resp = JSON.parse(line);
+        if (resp.error) reject(new Error(`${resp.error.code}: ${resp.error.message}`));
+        else resolve(resp.result);
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+    sock.on('error', reject);
+    sock.setTimeout(5000, () => {
+      sock.destroy();
+      reject(new Error(`signedRpc timeout: ${method}`));
+    });
+  });
+}
+
+async function seedIdentity(agentId: string): Promise<{
+  did: string;
+  fingerprint: string;
+  privateKeyPem: string;
+  publicKeyPem: string;
+}> {
+  const kp = generateAgentKeypair();
+  const fingerprint = computeFingerprint(kp.publicKeyRaw);
+  const { formatDid } = await import('@revdev/protocol/did');
+  const did = formatDid(agentId, fingerprint);
+  await db.query(
+    `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (agent_id) DO UPDATE
+       SET did = EXCLUDED.did,
+           fingerprint = EXCLUDED.fingerprint,
+           public_key_pem = EXCLUDED.public_key_pem`,
+    [agentId, did, fingerprint, kp.publicKeyPem],
+  );
+  await db.query(
+    `UPDATE agent_identity_keys SET superseded_at = NOW() WHERE agent_id = $1 AND superseded_at IS NULL`,
+    [agentId],
+  );
+  await db.query(
+    `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+     VALUES ($1, $2, $3)`,
+    [fingerprint, agentId, kp.publicKeyPem],
+  );
+  await db.query(
+    `INSERT INTO agent_sessions (id, env, task) VALUES ($1, $2, $3)
+     ON CONFLICT (id) DO UPDATE SET ended_at = NULL, exit_summary = NULL`,
+    [agentId, `test:${agentId}`, ''],
+  );
+  return { did, fingerprint, privateKeyPem: kp.privateKeyPem, publicKeyPem: kp.publicKeyPem };
+}
+
+describe('signature acceptance', () => {
+  it('harness.health returns identitySignatureMode: accept-if-present', async () => {
+    const health = (await rpc(socketPath, 'harness.health')) as {
+      identitySignatureMode: string;
+    };
+    expect(health.identitySignatureMode).toBe('accept-if-present');
+  });
+
+  it('valid signature binds identity (signed mail.inbox without actorAgentId)', async () => {
+    const agentId = 'sig-test-valid';
+    const { did, fingerprint, privateKeyPem } = await seedIdentity(agentId);
+
+    const result = (await signedRpc(
+      socketPath,
+      'mail.inbox',
+      { unreadOnly: false },
+      { did, fingerprint, privateKeyPem },
+    )) as { messages: unknown[] };
+
+    expect(Array.isArray(result.messages)).toBe(true);
+  });
+
+  it('missing signature falls through to actorAgentId (existing behavior unchanged)', async () => {
+    const agentId = 'sig-test-missing';
+    await seedIdentity(agentId);
+
+    const result = (await rpc(socketPath, 'mail.inbox', {
+      actorAgentId: agentId,
+      unreadOnly: false,
+    })) as { messages: unknown[] };
+    expect(Array.isArray(result.messages)).toBe(true);
+  });
+
+  it('invalid signature falls through: returns -32002 without actorAgentId', async () => {
+    const agentId = 'sig-test-invalid';
+    const { did, fingerprint } = await seedIdentity(agentId);
+    const other = generateAgentKeypair();
+
+    await expect(
+      signedRpc(
+        socketPath,
+        'mail.inbox',
+        { unreadOnly: false },
+        { did, fingerprint, privateKeyPem: other.privateKeyPem },
+      ),
+    ).rejects.toThrow('-32002');
+  });
+
+  it('nonce replay falls through on second send: -32002 without actorAgentId', async () => {
+    const agentId = 'sig-test-nonce-replay';
+    const { did, fingerprint, privateKeyPem } = await seedIdentity(agentId);
+
+    const nonce = generateNonce();
+    const ts = Math.floor(Date.now() / 1000);
+
+    function sendWithFixedNonce(): Promise<unknown> {
+      return new Promise((resolve, reject) => {
+        const sock: Socket = connect(socketPath);
+        let buf = '';
+        const payload = {
+          did,
+          kid: fingerprint,
+          nonce,
+          ts,
+          method: 'mail.inbox',
+          paramsHash: hashParams('mail.inbox', { unreadOnly: false }),
+        };
+        const envelope = signEnvelope(payload, privateKeyPem);
+        const sig = serializeEnvelope(envelope);
+        const frame = `${JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'mail.inbox',
+          params: { unreadOnly: false },
+          'x-revdev-signature': sig,
+        })}\n`;
+        sock.on('connect', () => sock.write(frame));
+        sock.on('data', (d) => {
+          buf += d.toString();
+          const nl = buf.indexOf('\n');
+          if (nl === -1) return;
+          const line = buf.slice(0, nl);
+          sock.end();
+          try {
+            const resp = JSON.parse(line);
+            if (resp.error) reject(new Error(`${resp.error.code}: ${resp.error.message}`));
+            else resolve(resp.result);
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+          }
+        });
+        sock.on('error', reject);
+        sock.setTimeout(5000, () => {
+          sock.destroy();
+          reject(new Error('timeout'));
+        });
+      });
+    }
+
+    await sendWithFixedNonce();
+
+    await expect(sendWithFixedNonce()).rejects.toThrow('-32002');
+  });
+
+  it('ts-outside-window falls through: -32002 without actorAgentId', async () => {
+    const agentId = 'sig-test-ts-window';
+    const { did, fingerprint, privateKeyPem } = await seedIdentity(agentId);
+
+    const staleTs = Math.floor(Date.now() / 1000) - 120;
+    const payload = {
+      did,
+      kid: fingerprint,
+      nonce: generateNonce(),
+      ts: staleTs,
+      method: 'mail.inbox',
+      paramsHash: hashParams('mail.inbox', { unreadOnly: false }),
+    };
+    const envelope = signEnvelope(payload, privateKeyPem);
+    const sig = serializeEnvelope(envelope);
+
+    await expect(
+      new Promise((resolve, reject) => {
+        const sock: Socket = connect(socketPath);
+        let buf = '';
+        const frame = `${JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'mail.inbox',
+          params: { unreadOnly: false },
+          'x-revdev-signature': sig,
+        })}\n`;
+        sock.on('connect', () => sock.write(frame));
+        sock.on('data', (d) => {
+          buf += d.toString();
+          const nl = buf.indexOf('\n');
+          if (nl === -1) return;
+          const line = buf.slice(0, nl);
+          sock.end();
+          try {
+            const resp = JSON.parse(line);
+            if (resp.error) reject(new Error(`${resp.error.code}: ${resp.error.message}`));
+            else resolve(resp.result);
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+          }
+        });
+        sock.on('error', reject);
+        sock.setTimeout(5000, () => {
+          sock.destroy();
+          reject(new Error('timeout'));
+        });
+      }),
+    ).rejects.toThrow('-32002');
+  });
+
+  it('envelope tamper detected: signature verify fails, falls through to -32002', async () => {
+    const agentId = 'sig-test-tamper';
+    const { did, fingerprint, privateKeyPem } = await seedIdentity(agentId);
+
+    const payload = {
+      did,
+      kid: fingerprint,
+      nonce: generateNonce(),
+      ts: Math.floor(Date.now() / 1000),
+      method: 'mail.inbox',
+      paramsHash: hashParams('mail.inbox', { unreadOnly: false }),
+    };
+    const envelope = signEnvelope(payload, privateKeyPem);
+    const serialized = serializeEnvelope(envelope);
+    const parts = serialized.split('.');
+    const sigBytes = Buffer.from(parts[2] ?? '', 'base64url');
+    if (sigBytes.length > 0) sigBytes[0] = (sigBytes[0] ?? 0) ^ 0xff;
+    const tampered = `${parts[0]}.${parts[1]}.${sigBytes.toString('base64url')}`;
+
+    await expect(
+      new Promise((resolve, reject) => {
+        const sock: Socket = connect(socketPath);
+        let buf = '';
+        const frame = `${JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'mail.inbox',
+          params: { unreadOnly: false },
+          'x-revdev-signature': tampered,
+        })}\n`;
+        sock.on('connect', () => sock.write(frame));
+        sock.on('data', (d) => {
+          buf += d.toString();
+          const nl = buf.indexOf('\n');
+          if (nl === -1) return;
+          const line = buf.slice(0, nl);
+          sock.end();
+          try {
+            const resp = JSON.parse(line);
+            if (resp.error) reject(new Error(`${resp.error.code}: ${resp.error.message}`));
+            else resolve(resp.result);
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+          }
+        });
+        sock.on('error', reject);
+        sock.setTimeout(5000, () => {
+          sock.destroy();
+          reject(new Error('timeout'));
+        });
+      }),
+    ).rejects.toThrow('-32002');
   });
 });
