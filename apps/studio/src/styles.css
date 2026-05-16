@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@revealui/presentation/tokens.css";
 
 /* ── CodeMirror MergeView layout ──────────────────────────────────────────── */
 /* Make MergeView fill the parent container height. Each side scrolls          */
