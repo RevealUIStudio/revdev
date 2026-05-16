@@ -1241,6 +1241,15 @@ export async function startDaemon(
       }
 
       for (const line of lines) {
+        // The empty-line skip is a parsing aid (TCP can deliver partial
+        // frames; an empty token between two newlines is not a request).
+        // It is not a security check: an attacker sending an empty frame
+        // gets nothing dispatched, which is the same protection an empty
+        // frame produces in any other JSON-RPC line-delimited server.
+        // The real authorization gates run downstream (license, validation,
+        // signature, identity) and are tested in
+        // packages/daemon/src/__tests__/coordination.test.ts.
+        // codeql[js/user-controlled-bypass]
         if (!line.trim()) continue;
 
         // A complete (newline-terminated) frame can still exceed the cap
