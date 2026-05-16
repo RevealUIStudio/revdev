@@ -15,3 +15,11 @@ apps/studio/src/__tests__/hooks/use-ssh.test.ts           abs-home-path
 # Test fixture: the license-key shape matches the regex but the body is a
 # repeating hex pattern (abcdef-0123456789 doubled). Not a real key.
 packages/daemon/src/__tests__/flows.test.ts               license-key
+
+# Fleet-anchor cold-context ramp doc. The .jv/ path references in the
+# "Fleet coordination" section are an intentional cross-fleet navigation
+# aid for agents working in `~/revfleet/revdev/` with .jv access; they
+# point to the private coordination hub (master index, plan, lanes, gaps,
+# workboard, ADRs). Public readers without .jv see broken links — by
+# design; the file is for agent ramp, not customer docs.
+docs/INDEX.md                                              private-jv-repo
