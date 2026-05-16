@@ -1,5 +1,4 @@
 import { execFile as execFileCb } from 'node:child_process';
-import { once } from 'node:events';
 import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
@@ -72,32 +71,67 @@ export async function revvaultGet(
   }
 }
 
-export async function revvaultSet(
+export function revvaultSet(
   path: string,
   value: string,
   options?: RevvaultClientOptions,
 ): Promise<RevvaultSetUnion> {
   const binary = options?.binary ?? 'revvault';
   const timeout = options?.timeout ?? 5000;
-  try {
-    // --force: revvault set without --force fails on existing paths. Identity
-    // rotation re-writes the same paths, so without --force the vault retains
-    // the OLD private key while the DB has the NEW DID — signing would fail
-    // verification. Same pattern as scripts/issue-license.ts.
-    const child = execFileCb(binary, ['--json', 'set', '--force', path], { timeout });
-    child.stdin?.end(value);
-    await once(child, 'exit');
-    const code = child.exitCode;
-    if (code !== 0) {
-      return { ok: false, reason: 'cli-failure' } as const;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: RevvaultSetUnion): void => {
+      if (!settled) {
+        settled = true;
+        resolve(result);
+      }
+    };
+
+    // execFileCb may throw synchronously on bad arguments (rare); guard
+    // explicitly so the daemon never receives an uncaught throw from this
+    // helper. The common ENOENT path (missing binary on PATH) is async —
+    // see the child.on('error', ...) listener below.
+    // --force: revvault set without --force fails on existing paths.
+    // Identity rotation re-writes the same paths; without --force the vault
+    // retains the OLD private key while the DB has the NEW DID — signing
+    // would fail verification. Same pattern as scripts/issue-license.ts.
+    let child: ReturnType<typeof execFileCb>;
+    try {
+      child = execFileCb(binary, ['--json', 'set', '--force', path], { timeout });
+    } catch (err: unknown) {
+      finish({ ok: false, reason: isEnoent(err) ? 'cli-not-installed' : 'cli-failure' });
+      return;
     }
-    return { ok: true } as const;
-  } catch (err: unknown) {
-    if (isEnoent(err)) {
-      return { ok: false, reason: 'cli-not-installed' } as const;
+
+    // Async 'error' event covers the real-world ENOENT path: execFileCb
+    // returns a child synchronously, then libuv reports the spawn failure
+    // (e.g. binary not on PATH) on the next tick via 'error'. Without this
+    // listener Node's default unhandled-error behavior crashes the daemon.
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      finish({ ok: false, reason: err.code === 'ENOENT' ? 'cli-not-installed' : 'cli-failure' });
+    });
+
+    child.on('exit', (code) => {
+      if (code === 0) {
+        finish({ ok: true });
+      } else {
+        finish({ ok: false, reason: 'cli-failure' });
+      }
+    });
+
+    // stdin can emit its own 'error' when the child died before accepting
+    // input (broken pipe). Swallow it here so the daemon doesn't crash;
+    // the child's 'error' or 'exit' listener above produces the actual
+    // result.
+    child.stdin?.on('error', () => {});
+
+    try {
+      child.stdin?.end(value);
+    } catch {
+      // Synchronous throw on .end() can happen if the pipe is already
+      // closed; the result is reported via child's 'error' / 'exit'.
     }
-    return { ok: false, reason: 'cli-failure' } as const;
-  }
+  });
 }
 
 export async function isRevvaultAvailable(options?: RevvaultClientOptions): Promise<boolean> {
