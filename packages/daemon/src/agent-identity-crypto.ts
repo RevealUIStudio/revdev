@@ -1,12 +1,12 @@
 import { createHash, generateKeyPairSync, randomBytes, sign, verify } from 'node:crypto';
 import { base58Encode } from '@revdev/protocol/base58';
-import { SignatureHeaderSchema, SignaturePayloadSchema } from '@revdev/protocol/signature';
 import type {
   EnvelopeString,
   SignatureEnvelope,
   SignatureHeader,
   SignaturePayload,
 } from '@revdev/protocol/signature';
+import { SignatureHeaderSchema, SignaturePayloadSchema } from '@revdev/protocol/signature';
 
 export interface AgentKeyPair {
   privateKeyPem: string;
