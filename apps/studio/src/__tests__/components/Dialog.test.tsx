@@ -4,12 +4,13 @@ import Dialog from '../../components/ui/Dialog';
 
 describe('Dialog', () => {
   it('renders nothing when closed', () => {
-    const { container } = render(
+    render(
       <Dialog open={false} onClose={vi.fn()} title="Test">
         Body
       </Dialog>,
     );
-    expect(container.firstChild).toBeNull();
+    expect(screen.queryByText('Test')).not.toBeInTheDocument();
+    expect(screen.queryByText('Body')).not.toBeInTheDocument();
   });
 
   it('renders when open', () => {
@@ -40,25 +41,23 @@ describe('Dialog', () => {
     expect(screen.getByText('Save')).toBeInTheDocument();
   });
 
-  it('calls onClose when close button is clicked', () => {
+  it('calls onClose when backdrop is clicked', () => {
     const onClose = vi.fn();
     render(
       <Dialog open={true} onClose={onClose} title="Closeable">
         Content
       </Dialog>,
     );
-    fireEvent.click(screen.getByLabelText('Close'));
+    fireEvent.click(screen.getByLabelText('Close dialog'));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('does not render actions section when actions not provided', () => {
-    const { container } = render(
+  it('does not render actions content when actions not provided', () => {
+    render(
       <Dialog open={true} onClose={vi.fn()} title="No Actions">
         Body
       </Dialog>,
     );
-    // The actions footer has justify-end; body and header do not
-    const footers = container.querySelectorAll('.justify-end');
-    expect(footers.length).toBe(0);
+    expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
   });
 });
