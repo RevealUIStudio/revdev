@@ -1,9 +1,4 @@
-import {
-  Dialog,
-  DialogActions,
-  DialogBody,
-  DialogTitle,
-} from '@revealui/presentation';
+import { Dialog, DialogActions, DialogBody, DialogTitle } from '@revealui/presentation';
 import type { ReactNode } from 'react';
 
 const sizeMap = {

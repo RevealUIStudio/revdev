@@ -1,9 +1,9 @@
 import {
-  Dialog as PresentationDialog,
   DialogActions,
   DialogBody,
   DialogDescription,
   DialogTitle,
+  Dialog as PresentationDialog,
 } from '@revealui/presentation';
 import type { ReactNode } from 'react';
 
