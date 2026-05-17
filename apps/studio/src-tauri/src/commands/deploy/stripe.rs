@@ -16,8 +16,10 @@ pub async fn stripe_validate_keys(secret_key: String) -> Result<bool, StudioErro
 }
 
 /// Run stripe:seed script (creates products, prices, webhook, billing portal).
-/// After seed completes, reads `.revealui/stripe-env.json` which contains
+/// After seed completes, reads `node_modules/.cache/revealui-stripe-env.json`
+/// which contains
 /// `{ envVars: { STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_*_PRICE_ID, ... }, catalogEntries }`.
+/// Path MUST match revealui's scripts/setup/stripe-env-cache-path.ts.
 #[tauri::command]
 pub async fn stripe_run_seed(repo_path: String) -> Result<String, StudioError> {
     let output = Command::new("pnpm")
@@ -32,8 +34,9 @@ pub async fn stripe_run_seed(repo_path: String) -> Result<String, StudioError> {
         ));
     }
 
-    // Read .revealui/stripe-env.json which contains envVars + catalogEntries
-    let env_file = std::path::Path::new(&repo_path).join(".revealui/stripe-env.json");
+    // Read node_modules/.cache/revealui-stripe-env.json which contains envVars + catalogEntries
+    let env_file = std::path::Path::new(&repo_path)
+        .join("node_modules/.cache/revealui-stripe-env.json");
     match std::fs::read_to_string(&env_file) {
         Ok(contents) => Ok(contents),
         Err(_) => {
