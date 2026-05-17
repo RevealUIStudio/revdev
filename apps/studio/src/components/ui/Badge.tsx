@@ -1,21 +1,21 @@
 import type { ReactNode } from 'react';
 
-const variantStyles = {
-  default: 'bg-neutral-800 text-neutral-300',
-  success: 'bg-green-900/40 text-green-400',
-  warning: 'bg-yellow-900/40 text-yellow-400',
-  error: 'bg-red-900/40 text-red-400',
-  info: 'bg-blue-900/40 text-blue-400',
-  brand: 'bg-orange-900/40 text-orange-400',
+const variantClasses = {
+  default: 'bg-zinc-600/10 text-zinc-700 dark:bg-white/5 dark:text-zinc-400',
+  success: 'bg-green-500/15 text-green-700 dark:bg-green-500/10 dark:text-green-400',
+  warning: 'bg-yellow-400/20 text-yellow-700 dark:bg-yellow-400/10 dark:text-yellow-300',
+  error: 'bg-red-500/15 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+  info: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
+  brand: 'bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
 } as const;
 
-const sizeStyles = {
+const sizeClasses = {
   sm: 'px-1.5 py-0.5 text-[10px]',
   md: 'px-2 py-0.5 text-xs',
 } as const;
 
-export type BadgeVariant = keyof typeof variantStyles;
-export type BadgeSize = keyof typeof sizeStyles;
+export type BadgeVariant = keyof typeof variantClasses;
+export type BadgeSize = keyof typeof sizeClasses;
 
 interface BadgeProps {
   variant?: BadgeVariant;
@@ -32,7 +32,12 @@ export default function Badge({
 }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full font-medium ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center rounded-full font-medium ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      style={{
+        borderRadius: 'var(--rvui-radius-full, 9999px)',
+        transition:
+          'background-color var(--rvui-duration-fast, 120ms) var(--rvui-ease, cubic-bezier(0.22, 1, 0.36, 1))',
+      }}
     >
       {children}
     </span>

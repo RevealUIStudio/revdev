@@ -8,7 +8,7 @@ export default function ErrorAlert({ message, className = '' }: ErrorAlertProps)
 
   return (
     <div
-      className={`rounded-md border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-400 ${className}`}
+      className={`rounded-md border border-[var(--rvui-error)]/30 bg-[var(--rvui-error-subtle)] px-4 py-3 text-sm text-[var(--rvui-error)] ${className}`}
       role="alert"
     >
       {message}
