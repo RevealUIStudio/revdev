@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 
 const variantClasses = {
-  default: 'bg-zinc-600/10 text-zinc-700 dark:bg-white/5 dark:text-zinc-400',
-  success: 'bg-green-500/15 text-green-700 dark:bg-green-500/10 dark:text-green-400',
-  warning: 'bg-yellow-400/20 text-yellow-700 dark:bg-yellow-400/10 dark:text-yellow-300',
-  error: 'bg-red-500/15 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-  info: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
-  brand: 'bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  default: 'bg-white/5 text-zinc-400',
+  success: 'bg-green-500/10 text-green-400',
+  warning: 'bg-yellow-400/10 text-yellow-300',
+  error: 'bg-red-500/10 text-red-400',
+  info: 'bg-blue-500/15 text-blue-400',
+  brand: 'bg-emerald-500/10 text-emerald-400',
 } as const;
 
 const sizeClasses = {
