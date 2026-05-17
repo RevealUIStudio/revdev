@@ -1,10 +1,16 @@
+import {
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogTitle,
+} from '@revealui/presentation';
 import type { ReactNode } from 'react';
 
-const maxWidthMap = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-} as const;
+const sizeMap = {
+  sm: 'sm' as const,
+  md: 'lg' as const,
+  lg: '2xl' as const,
+};
 
 interface ModalProps {
   title: string;
@@ -12,7 +18,7 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  maxWidth?: keyof typeof maxWidthMap;
+  maxWidth?: keyof typeof sizeMap;
 }
 
 export default function Modal({
@@ -23,45 +29,11 @@ export default function Modal({
   footer,
   maxWidth = 'md',
 }: ModalProps) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div
-        className={`w-full ${maxWidthMap[maxWidth]} rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-neutral-800 px-6 py-4">
-          <h2 className="text-base font-semibold">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
-            aria-label="Close"
-          >
-            <svg
-              className="size-4"
-              aria-hidden="true"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
-
-        {/* Footer */}
-        {footer && (
-          <div className="flex items-center justify-end gap-3 border-t border-neutral-800 px-6 py-4">
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>
+    <Dialog open={open} onClose={onClose} size={sizeMap[maxWidth]}>
+      <DialogTitle>{title}</DialogTitle>
+      <DialogBody>{children}</DialogBody>
+      {footer && <DialogActions>{footer}</DialogActions>}
+    </Dialog>
   );
 }
