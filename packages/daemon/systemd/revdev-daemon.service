@@ -8,7 +8,7 @@ After=network-online.target
 # repo checkout. The setup script writes a unit with the correct path on
 # install; this template uses %h (user home) as a sensible default for
 # the contributor case.
-ExecStart=/usr/bin/env node %h/suite/revdev/packages/daemon/dist/cli.js
+ExecStart=/usr/bin/env node %h/revfleet/revdev/packages/daemon/dist/cli.js
 Restart=on-failure
 RestartSec=2
 # WSL note: `loginctl enable-linger $(whoami)` is required for the service
