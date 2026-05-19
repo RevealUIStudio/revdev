@@ -1,46 +1,103 @@
 # RevDev
 
-Native developer tools for [RevealUI](https://github.com/RevealUIStudio/revealui). One product, two interfaces.
+> Native developer cockpit for [RevealUI](https://github.com/RevealUIStudio/revealui). One product, three components, vendor-agnostic by design.
 
-**Studio** — Desktop AI editor and agent coordination dashboard (Tauri 2 + React 19)
-**Console** — SSH TUI ops cockpit: agent health, deploys, billing, alerts (Go + Bubble Tea)
+| Component | Stack | Purpose |
+|---|---|---|
+| **Studio** | Tauri 2 + React 19 | Desktop AI editor and agent coordination dashboard |
+| **Console** | Go + Bubble Tea | SSH TUI ops cockpit — agent health, deploys, billing, alerts |
+| **Harness Daemon** | Node.js | Coordinates AI agents, manages PTY sessions, routes tools |
+
+## Vendor-agnostic by design
+
+RevDev's runtime never imports a vendor AI SDK. AI integration goes through `@revealui/harnesses` adapters with open-model inference as the default — Gemma 4, Ubuntu Inference Snaps, and Ollama. Anthropic, OpenAI, and other vendor SDKs are personal user configuration — not baked into the product.
+
+Per the fleet [agnosticism principle](https://github.com/RevealUIStudio/revealui/blob/main/docs/decisions/2026-05-16-fleet-revealui-native-compliance.md): RevealUI is provider-agnostic; "AI Integration" is a multi-model tier; any single vendor is one variant among many.
 
 ## Architecture
 
-The harness daemon coordinates AI agents, manages PTY sessions, and routes tools. Studio and Console are different UIs for the same daemon.
-
 ```
-┌─────────┐     ┌──────────┐
+┌──────────┐     ┌──────────┐
 │  Studio  │     │ Console  │
 │ (Tauri)  │     │   (Go)   │
 └────┬─────┘     └────┬─────┘
-     │   JSON-RPC     │
-     └───────┬────────┘
-             │
-     ┌───────┴────────┐
-     │  Harness Daemon │
-     │   (Node.js)     │
-     └───────┬────────┘
-             │
-     ┌───────┴────────┐
-     │  RevealUI API   │
-     │  (Hono/Vercel)  │
-     └────────────────┘
+     │   JSON-RPC      │ HTTP/WS
+     ▼                 ▼
+┌──────────────┐  ┌─────────────────┐
+│   Harness    │  │  RevealUI API   │
+│   Daemon     │  │  (Hono/Vercel)  │
+│  (Node.js)   │  └─────────────────┘
+└──────┬───────┘
+       │ Unix socket JSON-RPC
+       ▼
+  Claude Code hooks + other agent runtimes
 ```
+
+Studio talks to the daemon; the daemon coordinates agents and tools. Console talks to the RevealUI API directly for ops work — it doesn't need the daemon hop.
+
+## Repository layout
+
+```
+revdev/
+├── apps/studio/          # Tauri 2 desktop app (Studio UI)
+├── apps/console/         # Go TUI (Console — SSH ops cockpit)
+├── packages/daemon/      # Harness daemon (agent coordination, PTY, tools)
+├── packages/protocol/    # JSON-RPC types shared across all apps
+├── packages/bridge/      # Thin adapter layer between daemon + apps
+└── packages/theme/       # Console theme tokens
+```
+
+Naming: apps are unscoped (`"studio"`, `"console"`) because they're deploy targets, not libraries; packages are scoped (`"@revdev/..."`) because they publish.
+
+## Relationship to RevealUI
+
+RevDev consumes RevealUI packages — it doesn't contain them:
+
+- `@revealui/contracts` — shared Zod schemas
+- `@revealui/security` — input sanitization (Studio terminal uses `sanitizeTerminalLine`)
+- `@revealui/harnesses` — AI harness adapters (Fair Source)
+- `@revealui/presentation` — Studio shims tokens and components through this. Dogfood Phase 1+2 shipped via [revdev#67](https://github.com/RevealUIStudio/revdev/pull/67), [#71](https://github.com/RevealUIStudio/revdev/pull/71), [#73](https://github.com/RevealUIStudio/revdev/pull/73).
+
+The harness daemon is the brain. Studio and Console are UIs for it.
 
 ## Status
 
-RevDev is pre-1.0 and the three components have different distribution maturity:
+Pre-1.0 across the board:
 
-| Component | Status | How to get it today |
-|-----------|--------|---------------------|
-| Studio | Buildable, unsigned | `pnpm --filter studio tauri build` — produces a local binary. Signed/notarized auto-update pipeline defined in `.github/workflows/studio-release.yml` but not yet cutting public releases. |
-| Console | Buildable | `go build -o rvui ./apps/console` — no release automation yet. |
-| Harness Daemon | Buildable, not published | Not on npm. Build from source with `pnpm --filter @revdev/daemon build`; run the CLI at `packages/daemon/dist/cli.js`. |
+| Component | Status | How to use it today |
+|---|---|---|
+| **Studio** | Buildable, unsigned | `pnpm --filter studio tauri build` → local binary. Signed/notarized auto-update pipeline defined in `.github/workflows/studio-release.yml`; not yet cutting public releases. Dogfooding `@revealui/presentation` Phase 1+2 done; Phase 3+4 in flight. |
+| **Console** | Buildable | `cd apps/console && go build -o ../../rvui .` — no release automation yet. |
+| **Harness Daemon** | Buildable, not published | Build with `pnpm --filter @revdev/daemon build`. `node packages/daemon/dist/cli.js --detach` returns in <1s; child runs in its own session and PGID. Boot survival via `pnpm --filter @revdev/daemon setup:systemd` (systemd-user unit; requires `loginctl enable-linger` on WSL). |
 
-Integration test coverage is thin on the Studio-to-daemon Tauri bridge (`vault.rs`, `spawner.rs`, `harness.rs` commands). Treat Studio as development-preview quality until those land.
+Integration test coverage is thin on the Studio↔daemon Tauri bridge (`vault.rs`, `spawner.rs`, `harness.rs`). Treat Studio as development-preview quality until those land.
+
+## Commands
+
+```bash
+# Studio
+pnpm --filter studio tauri:dev    # dev mode
+pnpm --filter studio tauri build  # build desktop binary
+pnpm typecheck:studio
+
+# Console
+cd apps/console && go run .
+cd apps/console && go build -o ../../rvui .
+
+# Daemon
+pnpm --filter @revdev/protocol build && pnpm --filter @revdev/daemon build
+node packages/daemon/dist/cli.js --detach
+ls -la ~/.local/share/revealui/harness.sock   # mode srw------- means bound
+
+# Workspace
+pnpm -r --filter=!studio build
+pnpm test
+```
 
 ## License
 
-Studio and Console: MIT
-Harness Daemon: FSL-1.1-MIT (Fair Source, converts to MIT after 2 years)
+| Component | License |
+|---|---|
+| Studio | MIT |
+| Console | MIT |
+| Harness Daemon | FSL-1.1-MIT (Fair Source, converts to MIT after 2 years) |
