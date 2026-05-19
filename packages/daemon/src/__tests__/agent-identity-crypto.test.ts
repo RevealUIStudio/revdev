@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { sign } from 'node:crypto';
 import type { SignaturePayload } from '@revdev/protocol/signature';
 import { describe, expect, it } from 'vitest';
 import {
@@ -99,11 +99,11 @@ describe('signEnvelope + verifyEnvelope', () => {
     const payloadJson = JSON.stringify(payload);
     const rawHeaderB64 = Buffer.from(headerNonCanonical).toString('base64url');
     const rawPayloadB64 = Buffer.from(payloadJson).toString('base64url');
-    const message = rawHeaderB64 + '.' + rawPayloadB64;
+    const message = `${rawHeaderB64}.${rawPayloadB64}`;
     const sigBytes = sign(null, Buffer.from(message), kp.privateKeyPem);
     const sigB64 = Buffer.from(sigBytes).toString('base64url');
 
-    const envelopeString = rawHeaderB64 + '.' + rawPayloadB64 + '.' + sigB64;
+    const envelopeString = `${rawHeaderB64}.${rawPayloadB64}.${sigB64}`;
     const parsed = parseEnvelope(envelopeString);
     expect(parsed).not.toBeNull();
     if (parsed !== null) {
@@ -152,7 +152,7 @@ describe('parseEnvelope null-on-malformed', () => {
   });
 
   it('returns null on schema mismatch (wrong alg)', () => {
-    const kp = generateAgentKeypair();
+    const _kp = generateAgentKeypair();
     const payload = makePayload();
     const badHeader = { alg: 'RS256', typ: 'jws' };
     const headerB64 = Buffer.from(JSON.stringify(badHeader)).toString('base64url');

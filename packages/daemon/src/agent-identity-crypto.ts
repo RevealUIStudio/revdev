@@ -52,18 +52,18 @@ export function canonicalizeJSON(value: unknown): string {
   }
   if (Array.isArray(value)) {
     const items = value.map((item) => canonicalizeJSON(item));
-    return '[' + items.join(',') + ']';
+    return `[${items.join(',')}]`;
   }
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort();
-  const pairs = keys.map((k) => JSON.stringify(k) + ':' + canonicalizeJSON(obj[k]));
-  return '{' + pairs.join(',') + '}';
+  const pairs = keys.map((k) => `${JSON.stringify(k)}:${canonicalizeJSON(obj[k])}`);
+  return `{${pairs.join(',')}}`;
 }
 
 export function hashParams(method: string, params: unknown): string {
   return base58Encode(
     createHash('sha256')
-      .update(method + ':' + canonicalizeJSON(params ?? {}))
+      .update(`${method}:${canonicalizeJSON(params ?? {})}`)
       .digest(),
   );
 }
@@ -80,7 +80,7 @@ export function signEnvelope(payload: SignaturePayload, privateKeyPem: string): 
   const header: SignatureHeader = { alg: 'EdDSA', typ: 'jws' };
   const rawHeaderB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
   const rawPayloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
-  const message = rawHeaderB64 + '.' + rawPayloadB64;
+  const message = `${rawHeaderB64}.${rawPayloadB64}`;
   const signatureBytes = sign(null, Buffer.from(message), privateKeyPem);
   return {
     header,
@@ -92,7 +92,7 @@ export function signEnvelope(payload: SignaturePayload, privateKeyPem: string): 
 }
 
 export function serializeEnvelope(envelope: SignatureEnvelope): EnvelopeString {
-  return envelope.rawHeaderB64 + '.' + envelope.rawPayloadB64 + '.' + envelope.signature;
+  return `${envelope.rawHeaderB64}.${envelope.rawPayloadB64}.${envelope.signature}`;
 }
 
 export function parseEnvelope(envelopeString: EnvelopeString): SignatureEnvelope | null {
@@ -135,7 +135,7 @@ export function parseEnvelope(envelopeString: EnvelopeString): SignatureEnvelope
 
 export function verifyEnvelope(envelope: SignatureEnvelope, publicKeyPem: string): boolean {
   try {
-    const message = envelope.rawHeaderB64 + '.' + envelope.rawPayloadB64;
+    const message = `${envelope.rawHeaderB64}.${envelope.rawPayloadB64}`;
     const signatureBytes = base64UrlDecode(envelope.signature);
     return verify(null, Buffer.from(message), publicKeyPem, signatureBytes);
   } catch {
