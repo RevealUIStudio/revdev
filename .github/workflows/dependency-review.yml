@@ -1,0 +1,36 @@
+name: Dependency Review
+
+# Blocks PRs that introduce dependencies with high-severity CVEs.
+#
+# Split out of security.yml on 2026-05-19. security.yml triggers on
+# push/pull_request/schedule, but actions/dependency-review-action
+# only works on pull_request events — so push and schedule runs
+# marked the job SKIPPED while pull_request runs marked it SUCCESS.
+# Both shared the "Dependency Review" context, and GitHub treats a
+# SKIPPED required check as not-succeeded, blocking merge.
+#
+# Branch protection on main + test requires "Dependency Review" by
+# context name only (app_id 15368), so the rename to a dedicated
+# file required no protection-rule change.
+
+on:
+  pull_request:
+    branches: [main, test]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        with:
+          fail-on-severity: high

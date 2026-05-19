@@ -3,7 +3,11 @@ name: Security
 # Ports the portable jobs from RevealUI's Security workflow:
 #   gitleaks       — full-history secret scanning
 #   codeql         — TypeScript + Go static analysis (Rust uses clippy in ci.yml)
-#   dependency-review — blocks PRs that introduce high-severity CVEs
+#
+# Dependency Review used to live here too, but was split into
+# .github/workflows/dependency-review.yml on 2026-05-19 because
+# the dual-trigger pattern (push + pull_request + schedule) caused
+# SKIPPED/SUCCESS check dupes — see that file's header for context.
 #
 # The revealui-specific `security-gate` job (which runs `pnpm gate:security`)
 # is not ported because its underlying scripts live in the revealui repo.
@@ -85,13 +89,3 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
 
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
-        with:
-          fail-on-severity: high
