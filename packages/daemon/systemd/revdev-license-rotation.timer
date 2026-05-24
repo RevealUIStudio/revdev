@@ -1,0 +1,15 @@
+[Unit]
+Description=Weekly RevDev license rotation check
+Documentation=https://github.com/RevealUIStudio/revdev
+
+[Timer]
+# Weekly, Sunday 04:00 local (after the 03:00 WSL backup window). The rotation
+# script is a no-op until the license is within its threshold window, so a
+# weekly cadence comfortably stages a replacement before the daemon's
+# fail-closed expiry fires (14-day default warning window).
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target
