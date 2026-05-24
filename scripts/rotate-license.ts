@@ -34,7 +34,7 @@
  * Reuses the exact mint path from issue-license.ts (issueLicense/revvaultSet).
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -60,6 +60,9 @@ export interface DecodedLicense {
   customerId: string | null;
   jti: string | null;
   tier: string | null;
+  /** True when the token could not be parsed (corrupt/truncated) — distinct
+   *  from a valid perpetual license (exp null, malformed false). */
+  malformed: boolean;
 }
 
 /**
@@ -70,7 +73,7 @@ export interface DecodedLicense {
 export function decodeLicense(jwt: string): DecodedLicense {
   const parts = jwt.trim().split('.');
   if (parts.length !== 3) {
-    return { exp: null, customerId: null, jti: null, tier: null };
+    return { exp: null, customerId: null, jti: null, tier: null, malformed: true };
   }
   try {
     const payload = JSON.parse(
@@ -81,9 +84,10 @@ export function decodeLicense(jwt: string): DecodedLicense {
       customerId: typeof payload.customerId === 'string' ? payload.customerId : null,
       jti: typeof payload.jti === 'string' ? payload.jti : null,
       tier: typeof payload.tier === 'string' ? payload.tier : null,
+      malformed: false,
     };
   } catch {
-    return { exp: null, customerId: null, jti: null, tier: null };
+    return { exp: null, customerId: null, jti: null, tier: null, malformed: true };
   }
 }
 
@@ -172,7 +176,7 @@ Env:
 
 function readCurrentLicense(vaultPath: string): string {
   try {
-    return execSync(`revvault get ${vaultPath}`, {
+    return execFileSync('revvault', ['get', vaultPath], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
@@ -238,6 +242,14 @@ async function main(): Promise<void> {
   }
 
   const prior = decodeLicense(current);
+  if (prior.malformed && !cfg.emergency) {
+    console.error(
+      `[rotate] current license at "${cfg.vaultPath}" is not a parseable JWT — refusing to ` +
+        'silently skip rotation. Investigate the vault entry, or force-replace it with ' +
+        '--emergency --reason "<why>".',
+    );
+    process.exit(1);
+  }
   const nowSeconds = Math.floor(Date.now() / 1000);
 
   if (!shouldRotate(prior.exp, nowSeconds, cfg.thresholdDays, cfg.emergency)) {

@@ -26,7 +26,7 @@
  * (import.meta main-guard), so importing it has no side effects.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -92,7 +92,7 @@ export function getPrivateKey(): string {
 
   // 2. Revvault
   try {
-    const key = execSync('revvault get revdev/license-signing-private-key', {
+    const key = execFileSync('revvault', ['get', 'revdev/license-signing-private-key'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
@@ -147,7 +147,7 @@ export function issueLicense(opts: Options): string {
 
 export function revvaultSet(path: string, value: string): void {
   try {
-    execSync(`revvault set --force ${path}`, {
+    execFileSync('revvault', ['set', '--force', path], {
       input: value,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
