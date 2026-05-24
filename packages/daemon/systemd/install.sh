@@ -69,3 +69,26 @@ systemctl --user status revdev-daemon --no-pager | head -10 || true
 echo
 echo "Tail logs with: journalctl --user-unit revdev-daemon -f"
 echo "If on WSL and you want survival across logouts: sudo loginctl enable-linger \$(whoami)"
+
+# --- License rotation timer (calendar, weekly) ----------------------------
+# Additive: installs the rotation oneshot + timer using the same NODE_PATH +
+# repo resolution as the daemon unit above. A second daemon-reload is harmless.
+ROTATION_SERVICE_TEMPLATE=$(dirname "$0")/revdev-license-rotation.service
+ROTATION_TIMER_TEMPLATE=$(dirname "$0")/revdev-license-rotation.timer
+ROTATION_SCRIPT=$REPO_ROOT/scripts/rotate-license.ts
+ESCAPED_SCRIPT=$(printf '%s\n' "$ROTATION_SCRIPT" | sed 's/[&"]/\\&/g')
+
+if [ -f "$ROTATION_SERVICE_TEMPLATE" ] && [ -f "$ROTATION_TIMER_TEMPLATE" ]; then
+  sed "s|/usr/bin/env node --import tsx %h/revfleet/revdev/scripts/rotate-license.ts|\"$ESCAPED_NODE\" --import tsx \"$ESCAPED_SCRIPT\"|" \
+    "$ROTATION_SERVICE_TEMPLATE" > "$UNIT_DIR/revdev-license-rotation.service"
+  cp "$ROTATION_TIMER_TEMPLATE" "$UNIT_DIR/revdev-license-rotation.timer"
+  systemctl --user daemon-reload
+  systemctl --user enable --now revdev-license-rotation.timer
+  echo
+  echo "license-rotation timer installed at $UNIT_DIR/revdev-license-rotation.timer"
+  echo "Next run:"
+  systemctl --user list-timers revdev-license-rotation.timer --no-pager | head -3 || true
+else
+  echo
+  echo "note: license-rotation unit templates not found alongside this script; skipped"
+fi

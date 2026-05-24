@@ -19,13 +19,19 @@
  * Output: Ed25519-signed JWT (RFC 7519). Header: { alg: "EdDSA", typ: "JWT" }.
  * Payload: { tier, iat, iss, aud, customerId?, exp? }.
  * Format matches the RevealUI license API issuer (revealui#735, Phase A).
+ *
+ * The signing helpers (issueLicense / getPrivateKey / revvaultSet) are
+ * exported so sibling tooling (e.g. scripts/rotate-license.ts) can reuse the
+ * exact mint path. The CLI body only runs when this file is the entrypoint
+ * (import.meta main-guard), so importing it has no side effects.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-interface Options {
+export interface Options {
   tier: 'pro' | 'max' | 'enterprise';
   customer?: string;
   days?: number;
@@ -78,7 +84,7 @@ Output format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the
   return opts;
 }
 
-function getPrivateKey(): string {
+export function getPrivateKey(): string {
   // 1. Environment variable
   if (process.env.REVDEV_LICENSE_PRIVATE_KEY) {
     return process.env.REVDEV_LICENSE_PRIVATE_KEY;
@@ -86,7 +92,7 @@ function getPrivateKey(): string {
 
   // 2. Revvault
   try {
-    const key = execSync('revvault get revdev/license-signing-private-key', {
+    const key = execFileSync('revvault', ['get', 'revdev/license-signing-private-key'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
@@ -110,7 +116,7 @@ function getPrivateKey(): string {
   process.exit(1);
 }
 
-function issueLicense(opts: Options): string {
+export function issueLicense(opts: Options): string {
   const privateKeyPem = getPrivateKey();
   const privateKey = createPrivateKey(privateKeyPem);
 
@@ -139,9 +145,9 @@ function issueLicense(opts: Options): string {
   return `${message}.${signature}`;
 }
 
-function revvaultSet(path: string, value: string): void {
+export function revvaultSet(path: string, value: string): void {
   try {
-    execSync(`revvault set --force ${path}`, {
+    execFileSync('revvault', ['set', '--force', path], {
       input: value,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -174,32 +180,47 @@ function generateKeypair(): void {
   console.log(publicKey);
 }
 
-// --- Main ---
-// Honor --help before any state-changing action: --generate-keypair writes to
-// revvault, so a `--generate-keypair --help` call must NOT rotate keys.
-if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  parseArgs(); // prints help and exits
+/** True when this file is the process entrypoint (not imported). */
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
 }
 
-if (process.argv.includes('--generate-keypair')) {
-  generateKeypair();
-  process.exit(0);
+// --- CLI ---
+// Only runs when invoked directly; importing this module is side-effect-free
+// so rotate-license.ts can reuse issueLicense()/getPrivateKey()/revvaultSet().
+if (isMainModule()) {
+  // Honor --help before any state-changing action: --generate-keypair writes to
+  // revvault, so a `--generate-keypair --help` call must NOT rotate keys.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    parseArgs(); // prints help and exits
+  }
+
+  if (process.argv.includes('--generate-keypair')) {
+    generateKeypair();
+    process.exit(0);
+  }
+
+  const opts = parseArgs();
+  const key = issueLicense(opts);
+
+  console.log('');
+  console.log('  License Key Issued');
+  console.log('  ──────────────────');
+  console.log(`  Tier:     ${opts.tier.toUpperCase()}`);
+  console.log(`  Customer: ${opts.customer ?? '(not specified)'}`);
+  console.log(`  Expires:  ${opts.perpetual ? 'Never (perpetual)' : `${opts.days ?? 365} days`}`);
+  console.log(`  Format:   Ed25519-signed JWT (RFC 7519)`);
+  console.log('');
+  console.log('  Key:');
+  console.log(`  ${key}`);
+  console.log('');
+  console.log('  Deliver this key to the customer. They set it as:');
+  console.log('  REVEALUI_LICENSE_KEY=<key>');
+  console.log('');
 }
-
-const opts = parseArgs();
-const key = issueLicense(opts);
-
-console.log('');
-console.log('  License Key Issued');
-console.log('  ──────────────────');
-console.log(`  Tier:     ${opts.tier.toUpperCase()}`);
-console.log(`  Customer: ${opts.customer ?? '(not specified)'}`);
-console.log(`  Expires:  ${opts.perpetual ? 'Never (perpetual)' : `${opts.days ?? 365} days`}`);
-console.log(`  Format:   Ed25519-signed JWT (RFC 7519)`);
-console.log('');
-console.log('  Key:');
-console.log(`  ${key}`);
-console.log('');
-console.log('  Deliver this key to the customer. They set it as:');
-console.log('  REVEALUI_LICENSE_KEY=<key>');
-console.log('');
