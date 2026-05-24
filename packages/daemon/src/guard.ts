@@ -19,9 +19,9 @@ import {
   checkLicense,
   evaluateLicense,
   isExemptMethod,
+  LICENSE_HELP_URL,
   type LicenseEvaluation,
   LicenseExpiredError,
-  LICENSE_HELP_URL,
   type LicenseTier,
 } from './license.js';
 import { recordLicenseMetrics } from './observability.js';

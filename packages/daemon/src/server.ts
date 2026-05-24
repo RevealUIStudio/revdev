@@ -1199,16 +1199,22 @@ export async function startDaemon(
       if (ev.status === 'expired' || ev.status.startsWith('expiring-')) {
         const eventType =
           ev.status === 'expired' ? 'license.expired' : 'license.expiry-approaching';
+        const payload = {
+          status: ev.status,
+          tier: ev.tier,
+          expiresAt: ev.expiresAt,
+          secondsRemaining: ev.secondsRemaining,
+        };
+        // Local insert + best-effort Neon mirror (coordination_events), matching
+        // the events.log handler's dual-write, so fleet/admin dashboards see
+        // license telemetry when POSTGRES_URL is configured.
         db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
           'revdev-daemon',
           eventType,
-          JSON.stringify({
-            status: ev.status,
-            tier: ev.tier,
-            expiresAt: ev.expiresAt,
-            secondsRemaining: ev.secondsRemaining,
-          }),
-        ]).catch((err) => log.warn('license event log failed', { error: String(err) }));
+          JSON.stringify(payload),
+        ])
+          .then(() => syncEventLog({ agentId: 'revdev-daemon', type: eventType, payload }))
+          .catch((err) => log.warn('license event log failed', { error: String(err) }));
       }
     },
     24 * 60 * 60 * 1000,
