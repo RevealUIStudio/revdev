@@ -29,7 +29,12 @@ import {
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
-import { guardRpcMethod, initLicenseGuard, licenseErrorResponse } from './guard.js';
+import {
+  guardRpcMethod,
+  initLicenseGuard,
+  licenseErrorResponse,
+  runtimeLicenseRecheck,
+} from './guard.js';
 import {
   initNeonSync,
   isNeonSyncActive,
@@ -1177,6 +1182,39 @@ export async function startDaemon(
   );
   nonceSweepTimer.unref();
 
+  // License expiry re-check (GAP-184). Daily while running: refresh metrics,
+  // log expiry warnings, and record a license.* event so Studio can surface
+  // expiry status in its dashboard. Startup is the fail-closed gate
+  // (initLicenseGuard above); this timer never tears the daemon down — it
+  // reports loudly and lets the next restart fail closed.
+  const licenseRecheckTimer = setInterval(
+    () => {
+      let ev: ReturnType<typeof runtimeLicenseRecheck>;
+      try {
+        ev = runtimeLicenseRecheck();
+      } catch (err) {
+        log.warn('license recheck failed', { error: String(err) });
+        return;
+      }
+      if (ev.status === 'expired' || ev.status.startsWith('expiring-')) {
+        const eventType =
+          ev.status === 'expired' ? 'license.expired' : 'license.expiry-approaching';
+        db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+          'revdev-daemon',
+          eventType,
+          JSON.stringify({
+            status: ev.status,
+            tier: ev.tier,
+            expiresAt: ev.expiresAt,
+            secondsRemaining: ev.secondsRemaining,
+          }),
+        ]).catch((err) => log.warn('license event log failed', { error: String(err) }));
+      }
+    },
+    24 * 60 * 60 * 1000,
+  );
+  licenseRecheckTimer.unref();
+
   // Remove stale socket
   const { unlink, chmod } = await import('node:fs/promises');
   await unlink(cfg.socketPath).catch(() => {});
@@ -1468,6 +1506,7 @@ export async function startDaemon(
           _shutdownController = null;
           if (pruneTimer) clearInterval(pruneTimer);
           clearInterval(nonceSweepTimer);
+          clearInterval(licenseRecheckTimer);
           server.close();
           for (const s of openSockets) {
             s.destroy();

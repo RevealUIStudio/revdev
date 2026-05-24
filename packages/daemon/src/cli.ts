@@ -27,6 +27,7 @@ import { dirname, join } from 'node:path';
 import './inference.js';
 import './vcs.js';
 import { DAEMON_DEFAULTS } from './config.js';
+import { LicenseConfigError, LicenseExpiredError } from './license.js';
 import { startDaemon } from './server.js';
 
 // Default log path for --detach mode. Use the user's data dir (mode 0700,
@@ -71,6 +72,11 @@ License tiers:
   max          + inference management, advanced coordination
   enterprise   Full access, all features
 `);
+  process.exit(0);
+}
+
+if (args.includes('--version') || args.includes('-v')) {
+  console.log('revdev-daemon 0.1.0');
   process.exit(0);
 }
 
@@ -120,7 +126,22 @@ console.log('');
 console.log('  RevDev Daemon v0.1.0');
 console.log('  ────────────────────');
 
-const daemon = await startDaemon(config);
+let daemon: Awaited<ReturnType<typeof startDaemon>>;
+try {
+  daemon = await startDaemon(config);
+} catch (err) {
+  // Fail-closed license errors are operator-actionable, not crashes:
+  // initLicenseGuard already logged the CRITICAL detail for an expired
+  // license; surface a config error then exit non-zero with no stack trace.
+  if (err instanceof LicenseExpiredError) {
+    process.exit(1);
+  }
+  if (err instanceof LicenseConfigError) {
+    console.error(`[license] ${err.message}`);
+    process.exit(1);
+  }
+  throw err;
+}
 
 // Write PID file so supervisors and Studio can find us
 await mkdir(dirname(pidFile), { recursive: true });

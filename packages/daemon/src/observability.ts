@@ -14,6 +14,7 @@ import {
   startMemoryMonitoring,
   updateActiveConnections,
 } from '@revealui/core/observability';
+import type { LicenseEvaluation } from './license.js';
 
 // ---------------------------------------------------------------------------
 // Daemon-specific metrics
@@ -46,6 +47,22 @@ export const activeSessions = metrics.gauge(
   'Registered agent sessions',
 );
 
+/** 1 when a valid Pro+ license is active, 0 otherwise (free/expired/invalid). */
+export const licenseValid = metrics.gauge(
+  'revdev_daemon_license_valid',
+  'Whether a valid Pro+ license is active (1) or not (0)',
+);
+
+/**
+ * License expiry as an absolute unix timestamp (seconds). 0 = perpetual or
+ * no license. Prometheus-idiomatic: alerting computes time-to-expiry as
+ * `revdev_daemon_license_expires_timestamp_seconds - time()`.
+ */
+export const licenseExpiresTimestamp = metrics.gauge(
+  'revdev_daemon_license_expires_timestamp_seconds',
+  'License expiry as a unix timestamp in seconds (0 = perpetual/none)',
+);
+
 // ---------------------------------------------------------------------------
 // Health checks
 // ---------------------------------------------------------------------------
@@ -76,6 +93,15 @@ export function initObservability(db: PGlite): void {
 
   // Start background memory usage tracking (every 30s)
   startMemoryMonitoring(30_000);
+}
+
+/**
+ * Record license state into metrics gauges. Boot-safe — gauges are in-memory
+ * and registered at module load, so this can run before initObservability().
+ */
+export function recordLicenseMetrics(ev: LicenseEvaluation): void {
+  licenseValid.set(ev.valid ? 1 : 0);
+  licenseExpiresTimestamp.set(ev.expiresAt ?? 0);
 }
 
 /**
