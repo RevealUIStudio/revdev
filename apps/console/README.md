@@ -2,10 +2,14 @@
 
 > **Status: Experimental** — Not production-deployed. Functional prototype.
 
-SSH-delivered TUI ops cockpit for RevealUI. Read-mostly view of agent health,
-deploys, billing, and alerts; fast keyboard ops for rollback, approve, rotate,
-ack, and credit purchases. Runs anywhere there's SSH — phone, borrowed laptop,
-server — and is explicitly **not** for editing code (that's Studio's job).
+SSH-delivered TUI for RevealUI account management and licensing. Runs anywhere
+there's SSH — phone, borrowed laptop, server — and is explicitly **not** for
+editing code (that's Studio's job).
+
+The TUI walks users through: browsing subscription tiers, initiating checkout
+(Stripe-hosted URL + QR code), entering a license key, and linking/verifying an
+email account via OTP. It can also proxy raw SSH sessions to the RevealUI agent
+API (pass `agents` as the SSH command, or set `TERMINAL_MODE=agents`).
 
 Built with the [Charm](https://charm.sh/) ecosystem:
 
@@ -18,7 +22,8 @@ Built with the [Charm](https://charm.sh/) ecosystem:
 The intended entry point — once hosted deployment ships — is a single SSH command:
 
 ```bash
-ssh console.revealui.com    # planned — hosted endpoint not yet live
+ssh terminal.revealui.com           # planned — hosted endpoint not yet live
+ssh terminal.revealui.com -t agents # agent proxy mode
 ```
 
 Until then, run locally via the [Development](#development) section.

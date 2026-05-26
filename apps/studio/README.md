@@ -8,12 +8,20 @@ Built with Tauri 2 + React 19 + Tailwind CSS v4.
 
 ## Features
 
-- **Dashboard** — Service status overview with tier badge
+- **Dashboard** — Service status overview with tier badge and mount status
 - **Vault** — Secret management via Revvault (age encryption), namespace filtering, clipboard integration
-- **Infrastructure** — App launcher (start/stop/open 5 apps by port) + DevPod mount/unmount
+- **Infrastructure** — App launcher (start/stop/read logs) + DevPod mount/unmount
 - **Sync** — Repository sync across locations (WSL, LTS, DevPod)
 - **Tunnel** — Tailscale status, connect/disconnect, peer list with 10s polling
-- **Setup** — First-run wizard (environment check, vault init, Tailscale, project setup)
+- **Setup** — First-run wizard (environment check, vault init, Tailscale, git identity)
+- **SSH** — SSH client with password/key auth, bookmarks (save/list/delete), interactive terminal
+- **Terminal** — Local PTY shell sessions (open/send/resize/close) + terminal emulator detection/install
+- **Git** — Full git workflow: status, diff, stage/unstage, discard, commit, branch management (create/switch/delete), push/pull, log, read/write files, diff content
+- **Deploy** — One-click deploy pipeline: Vercel (project create, env set, deploy, deployment status, blob token validate), Neon DB (test connection, migrate, seed), Stripe (validate keys, seed, run keys, catalog sync), email (Resend + SMTP test), health check, secret generation (KEK, RSA keypair)
+- **Harness** — Harness daemon coordination: ping, sessions, inbox, send/broadcast messages, mark-read, tasks (create/claim/complete/release), file reservations (reserve/check)
+- **Agent Spawner** — Spawn/stop/list/remove agent PTY sessions with input/resize
+- **Inference** — Ollama management (status, models, pull, delete, start, stop) + Ubuntu Snap inference (status, list, install, remove)
+- **Daemon Control** — Start/stop/restart/status of the harness daemon process
 
 ## Stack
 
@@ -45,24 +53,26 @@ pnpm build:windows
 apps/studio/
 ├── src/                    # React frontend
 │   ├── App.tsx
-│   ├── components/
-│   │   ├── apps/           # App launcher
-│   │   ├── dashboard/      # Dashboard + service cards
-│   │   ├── devbox/         # DevPod manager
-│   │   ├── infrastructure/ # Infrastructure panel (apps + devbox)
-│   │   ├── layout/         # AppShell, Sidebar, StatusBar
-│   │   ├── setup/          # Setup wizard + setup page
-│   │   ├── sync/           # Repo sync panel
-│   │   ├── tunnel/         # Tailscale tunnel panel
-│   │   └── vault/          # Secret vault UI
-│   ├── hooks/              # React hooks (use-apps, use-devbox, use-setup, use-status, use-sync, use-tunnel, use-vault)
-│   ├── lib/invoke.ts       # Typed Tauri command wrappers
-│   └── types.ts            # Shared TypeScript types
+│   ├── generated/          # ts-rs bindings (Git*, Harness*, Ollama*, Snap*, Ssh*, Deploy*, Agent*, …)
+│   └── lib/invoke.ts       # Typed Tauri command wrappers
 ├── src-tauri/              # Rust backend
 │   ├── src/
-│   │   ├── commands/       # Tauri commands (apps, devbox, sync, vault, tunnel)
+│   │   ├── commands/       # Tauri commands (agent, apps, config, deploy, git, harness,
+│   │   │                   #   inference, launcher, local_shell, mount, setup, spawner,
+│   │   │                   #   ssh, status, sync, terminal, tunnel, vault)
 │   │   ├── platform/       # PlatformOps trait + OS implementations
-│   │   └── lib.rs          # Plugin registration
+│   │   ├── config.rs       # App config state
+│   │   ├── daemon_ctl.rs   # Harness daemon process control
+│   │   ├── harness.rs      # Harness connection state
+│   │   ├── harness_watcher.rs # Daemon health watcher
+│   │   ├── inference.rs    # Ollama + Snap inference management
+│   │   ├── local_shell.rs  # Local PTY shell sessions
+│   │   ├── spawner.rs      # Agent spawner (PTY per agent)
+│   │   ├── ssh.rs          # SSH client (russh)
+│   │   ├── state.rs        # Managed AppState
+│   │   ├── tray.rs         # System tray
+│   │   ├── updater.rs      # Auto-updater (tauri-plugin-updater)
+│   │   └── lib.rs          # Plugin registration + invoke_handler
 │   └── Cargo.toml
 └── package.json
 ```
@@ -76,6 +86,8 @@ The Rust backend uses a `PlatformOps` trait for cross-platform operations:
 
 App management uses `ss -tlnp` for status detection and `fuser -k PORT/tcp` for stopping.
 
+Key Rust crates: `russh` 0.60 (SSH client), `portable-pty` (PTY sessions), `git2` 0.20 (vendored, git operations), `revvault-core` (vault), `age` 0.11 + `secrecy` (encryption), `lettre` (SMTP email), `ts-rs` (TypeScript binding generation), `tauri-plugin-updater` (auto-update), `reqwest` with rustls (HTTP).
+
 ## Related
 
 - [Architecture Guide](../../docs/ARCHITECTURE.md)
@@ -83,4 +95,4 @@ App management uses `ss -tlnp` for status detection and `fuser -k PORT/tcp` for 
 
 ## License
 
-MIT
+LicenseRef-RevealUI-Commercial (see `src-tauri/Cargo.toml`)
