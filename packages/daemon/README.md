@@ -117,7 +117,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"ping"}' | \
 ## Architecture pointers
 
 - `src/server.ts` — JSON-RPC dispatch, license guard, RPC handler registry, periodic stale-session prune (GAP-153).
-- `src/storage/schema.ts` — PGlite schema (8 tables: agent_sessions, agent_messages, file_reservations, tasks, events, worktrees, agent_memory, merge_requests).
+- `src/storage/schema.ts` — PGlite schema (11 tables: agent_sessions, agent_messages, file_reservations, tasks, events, worktrees, agent_memory, merge_requests, agent_identity, agent_identity_keys, agent_identity_nonces).
 - `src/neon.ts` — daemon → Neon dual-write helpers (GAP-154 Phases 2 + 3). Best-effort, no-op when `POSTGRES_URL` unset.
 - `src/guard.ts` — license tier check at RPC dispatch time.
 - `systemd/revdev-daemon.service` — systemd-user unit template.

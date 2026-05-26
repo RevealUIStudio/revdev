@@ -40,10 +40,9 @@ Studio talks to the daemon; the daemon coordinates agents and tools. Console tal
 ```
 revdev/
 ├── apps/studio/          # Tauri 2 desktop app (Studio UI)
-├── apps/console/         # Go TUI (Console — SSH ops cockpit)
+├── apps/console/         # Go TUI (Console — SSH billing/ops cockpit)
 ├── packages/daemon/      # Harness daemon (agent coordination, PTY, tools)
 ├── packages/protocol/    # JSON-RPC types shared across all apps
-├── packages/bridge/      # Thin adapter layer between daemon + apps
 └── packages/theme/       # Console theme tokens
 ```
 
@@ -98,6 +97,6 @@ pnpm test
 
 | Component | License |
 |---|---|
-| Studio | MIT |
+| Studio | LicenseRef-RevealUI-Commercial |
 | Console | MIT |
 | Harness Daemon | FSL-1.1-MIT (Fair Source, converts to MIT after 2 years) |
