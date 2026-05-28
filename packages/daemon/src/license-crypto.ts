@@ -149,26 +149,14 @@ export function verifyLicenseJWT(
       };
     }
 
-    // Validate exp (absent = perpetual; present = must be a number)
+    // Validate exp claim shape (absent = perpetual; present = must be a number).
+    // The temporal `now > exp` comparison is deferred until AFTER signature
+    // verification so a forged token with a past `exp` returns 'invalid-signature'
+    // (degrade-to-free) rather than 'expired' (which the daemon maps to
+    // fail-closed startup). See evaluateLicense() in license.ts.
     const exp = payload.exp;
     if (exp !== undefined && typeof exp !== 'number') {
       return { tier: 'free', valid: false, reason: 'invalid exp claim', code: 'invalid-claim' };
-    }
-
-    // Check expiration if exp is present
-    if (typeof exp === 'number') {
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      if (nowSeconds > exp) {
-        // Carry expiresAt so callers can compute time-since-expiry + drive
-        // fail-closed / telemetry without re-decoding the token.
-        return {
-          tier: 'free',
-          valid: false,
-          reason: 'license expired',
-          code: 'expired',
-          expiresAt: exp,
-        };
-      }
     }
 
     if (!publicKey) {
@@ -239,6 +227,24 @@ export function verifyLicenseJWT(
     const jti = payload.jti;
     if (typeof jti === 'string' && isRevokedJti(jti)) {
       return { tier: 'free', valid: false, reason: 'token has been revoked', code: 'revoked' };
+    }
+
+    // Temporal expiration check — performed AFTER signature + iss + aud + nbf
+    // verification so forged tokens can't trigger the daemon's
+    // fail-closed-on-expired path via a backdated `exp` claim.
+    if (typeof exp === 'number') {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (nowSeconds > exp) {
+        // Carry expiresAt so callers can compute time-since-expiry + drive
+        // fail-closed / telemetry without re-decoding the token.
+        return {
+          tier: 'free',
+          valid: false,
+          reason: 'license expired',
+          code: 'expired',
+          expiresAt: exp,
+        };
+      }
     }
 
     // expiresAt: 0 = perpetual (mirrors dotted-v2 semantics)
