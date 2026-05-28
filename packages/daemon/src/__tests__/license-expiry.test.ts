@@ -10,7 +10,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initLicenseGuard } from '../guard.js';
-import { verifyLicenseJWT } from '../license-crypto.js';
 import {
   checkLicense,
   evaluateLicense,
@@ -18,6 +17,7 @@ import {
   LicenseExpiredError,
   loadLicenseKey,
 } from '../license.js';
+import { verifyLicenseJWT } from '../license-crypto.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
