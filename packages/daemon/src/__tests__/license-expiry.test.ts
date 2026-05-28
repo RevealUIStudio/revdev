@@ -17,6 +17,7 @@ import {
   LicenseExpiredError,
   loadLicenseKey,
 } from '../license.js';
+import { verifyLicenseJWT } from '../license-crypto.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
@@ -172,6 +173,53 @@ describe('initLicenseGuard — fail-closed + warnings', () => {
     const state = initLicenseGuard();
     expect(state.valid).toBe(false);
     expect(state.tier).toBe('free');
+  });
+});
+
+describe('verifyLicenseJWT — signature precedes expiration check (Codex P1 #93)', () => {
+  // A forged token with a past `exp` must classify as `invalid-signature`
+  // (degrade-to-free), NOT `expired` (which the daemon maps to fail-closed
+  // startup). If signature verification happened AFTER the expiry check, a
+  // mistyped or attacker-supplied stale JWT would crash the daemon on boot
+  // instead of falling back to free tier.
+
+  it('forged token with past exp → code: "invalid-signature" (NOT "expired")', () => {
+    // Real signer + a separate keypair acting as the daemon's vendor key
+    const signer = generateTestLicense('enterprise', false, { daysUntilExpiry: -1 });
+    const vendor = generateTestLicense('enterprise', true);
+
+    // Verifying signer's expired token against vendor's PUBLIC key — signature mismatch
+    const result = verifyLicenseJWT(signer.licenseKey, vendor.publicKey);
+
+    expect(result.valid).toBe(false);
+    if (result.valid) return; // type narrow
+    expect(result.code).toBe('invalid-signature');
+    // expiresAt must NOT leak through on a signature failure
+    expect(result.expiresAt).toBeUndefined();
+  });
+
+  it('forged token with future exp → code: "invalid-signature" (regression)', () => {
+    const signer = generateTestLicense('pro', false, { daysUntilExpiry: 30 });
+    const vendor = generateTestLicense('pro', true);
+
+    const result = verifyLicenseJWT(signer.licenseKey, vendor.publicKey);
+
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+    expect(result.code).toBe('invalid-signature');
+  });
+
+  it('properly-signed expired token → code: "expired" (preserved)', () => {
+    // Sanity: the original fail-closed path still triggers for legitimate
+    // signed-but-expired tokens.
+    const kit = generateTestLicense('enterprise', false, { daysUntilExpiry: -1 });
+
+    const result = verifyLicenseJWT(kit.licenseKey, kit.publicKey);
+
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+    expect(result.code).toBe('expired');
+    expect(result.expiresAt).toBeGreaterThan(0);
   });
 });
 

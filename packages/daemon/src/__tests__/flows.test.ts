@@ -169,8 +169,17 @@ describe('verifyLicenseJWT — negative cases', () => {
 
     const now = Math.floor(Date.now() / 1000);
     const header = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT' })).toString('base64url');
+    // iss/aud required: temporal expiry now runs AFTER signature + iss + aud
+    // verification (see verifyLicenseJWT comments). Without them this would
+    // fall through to 'invalid iss' before the expiry check.
     const payloadB64 = Buffer.from(
-      JSON.stringify({ tier: 'pro', iat: now - 7200, exp: now - 3600 }),
+      JSON.stringify({
+        tier: 'pro',
+        iat: now - 7200,
+        exp: now - 3600,
+        iss: 'https://revealui.com',
+        aud: 'revealui-license',
+      }),
     ).toString('base64url');
     const message = `${header}.${payloadB64}`;
     const sig = sign(null, Buffer.from(message), privateKey).toString('base64url');
