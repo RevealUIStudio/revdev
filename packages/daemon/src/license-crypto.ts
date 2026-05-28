@@ -51,6 +51,24 @@ export function isRevokedJti(_jti: string): boolean {
   return false;
 }
 
+/**
+ * Machine-readable reason a verification failed. Lets callers branch on
+ * the failure class (e.g. fail-closed on `expired` while degrading to free
+ * tier on `invalid-signature`) without string-matching the human `reason`.
+ */
+export type LicenseFailureCode =
+  | 'invalid-format'
+  | 'unsupported-algorithm'
+  | 'invalid-tier'
+  | 'invalid-claim'
+  | 'expired'
+  | 'not-yet-valid'
+  | 'no-public-key'
+  | 'invalid-signature'
+  | 'invalid-issuer'
+  | 'invalid-audience'
+  | 'revoked';
+
 export interface LicenseJWTResult {
   tier: 'pro' | 'max' | 'enterprise';
   expiresAt: number; // unix seconds, 0 = perpetual
@@ -61,6 +79,13 @@ export interface LicenseJWTFailure {
   tier: 'free';
   valid: false;
   reason: string;
+  code: LicenseFailureCode;
+  /**
+   * Present when the token parsed far enough to read its `exp` claim — set
+   * on the `expired` failure so callers can report time-since-expiry and
+   * drive expiry telemetry without re-decoding the token.
+   */
+  expiresAt?: number;
 }
 
 function decodeBase64url(input: string): Buffer {
@@ -70,8 +95,8 @@ function decodeBase64url(input: string): Buffer {
 /**
  * Verify an Ed25519-signed JWT license key.
  *
- * Returns the tier + expiration if valid, or { valid: false, reason } if not.
- * Never throws — all parse/verify errors are returned as failures.
+ * Returns the tier + expiration if valid, or { valid: false, reason, code }
+ * if not. Never throws — all parse/verify errors are returned as failures.
  */
 export function verifyLicenseJWT(
   token: string,
@@ -80,7 +105,7 @@ export function verifyLicenseJWT(
   try {
     const parts = token.split('.');
     if (parts.length !== 3) {
-      return { tier: 'free', valid: false, reason: 'invalid format' };
+      return { tier: 'free', valid: false, reason: 'invalid format', code: 'invalid-format' };
     }
 
     const [headerB64, payloadB64, signatureB64] = parts as [string, string, string];
@@ -90,11 +115,16 @@ export function verifyLicenseJWT(
     try {
       header = JSON.parse(decodeBase64url(headerB64).toString('utf-8')) as Record<string, unknown>;
     } catch {
-      return { tier: 'free', valid: false, reason: 'invalid format' };
+      return { tier: 'free', valid: false, reason: 'invalid format', code: 'invalid-format' };
     }
 
     if (header.alg !== 'EdDSA') {
-      return { tier: 'free', valid: false, reason: 'unsupported algorithm' };
+      return {
+        tier: 'free',
+        valid: false,
+        reason: 'unsupported algorithm',
+        code: 'unsupported-algorithm',
+      };
     }
 
     // Decode + parse payload
@@ -105,27 +135,28 @@ export function verifyLicenseJWT(
         unknown
       >;
     } catch {
-      return { tier: 'free', valid: false, reason: 'invalid format' };
+      return { tier: 'free', valid: false, reason: 'invalid format', code: 'invalid-format' };
     }
 
     // Validate tier
     const tier = payload.tier;
     if (typeof tier !== 'string' || !VALID_TIERS.has(tier)) {
-      return { tier: 'free', valid: false, reason: `invalid tier: ${String(tier)}` };
+      return {
+        tier: 'free',
+        valid: false,
+        reason: `invalid tier: ${String(tier)}`,
+        code: 'invalid-tier',
+      };
     }
 
-    // Validate exp (absent = perpetual; present = must be a number)
+    // Validate exp claim shape (absent = perpetual; present = must be a number).
+    // The temporal `now > exp` comparison is deferred until AFTER signature
+    // verification so a forged token with a past `exp` returns 'invalid-signature'
+    // (degrade-to-free) rather than 'expired' (which the daemon maps to
+    // fail-closed startup). See evaluateLicense() in license.ts.
     const exp = payload.exp;
     if (exp !== undefined && typeof exp !== 'number') {
-      return { tier: 'free', valid: false, reason: 'invalid exp claim' };
-    }
-
-    // Check expiration if exp is present
-    if (typeof exp === 'number') {
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      if (nowSeconds > exp) {
-        return { tier: 'free', valid: false, reason: 'license expired' };
-      }
+      return { tier: 'free', valid: false, reason: 'invalid exp claim', code: 'invalid-claim' };
     }
 
     if (!publicKey) {
@@ -133,6 +164,7 @@ export function verifyLicenseJWT(
         tier: 'free',
         valid: false,
         reason: 'REVDEV_LICENSE_PUBLIC_KEY not set — cannot verify signature',
+        code: 'no-public-key',
       };
     }
 
@@ -144,37 +176,75 @@ export function verifyLicenseJWT(
     const isValid = verify(null, Buffer.from(message, 'utf-8'), publicKey, signatureBuffer);
 
     if (!isValid) {
-      return { tier: 'free', valid: false, reason: 'invalid signature' };
+      return {
+        tier: 'free',
+        valid: false,
+        reason: 'invalid signature',
+        code: 'invalid-signature',
+      };
     }
 
     // Validate iss
     if (payload.iss !== EXPECTED_ISS) {
-      return { tier: 'free', valid: false, reason: `invalid iss: ${String(payload.iss)}` };
+      return {
+        tier: 'free',
+        valid: false,
+        reason: `invalid iss: ${String(payload.iss)}`,
+        code: 'invalid-issuer',
+      };
     }
 
     // Validate aud (jose sets aud as an array or scalar; issuer uses scalar)
     const aud = payload.aud;
     const audValue = Array.isArray(aud) ? aud[0] : aud;
     if (audValue !== EXPECTED_AUD) {
-      return { tier: 'free', valid: false, reason: `invalid aud: ${String(aud)}` };
+      return {
+        tier: 'free',
+        valid: false,
+        reason: `invalid aud: ${String(aud)}`,
+        code: 'invalid-audience',
+      };
     }
 
     // Validate nbf if present
     const nbf = payload.nbf;
     if (nbf !== undefined) {
       if (typeof nbf !== 'number') {
-        return { tier: 'free', valid: false, reason: 'invalid nbf claim' };
+        return { tier: 'free', valid: false, reason: 'invalid nbf claim', code: 'invalid-claim' };
       }
       const nowSeconds = Math.floor(Date.now() / 1000);
       if (nowSeconds < nbf) {
-        return { tier: 'free', valid: false, reason: 'token not yet valid (nbf)' };
+        return {
+          tier: 'free',
+          valid: false,
+          reason: 'token not yet valid (nbf)',
+          code: 'not-yet-valid',
+        };
       }
     }
 
     // Check jti revocation
     const jti = payload.jti;
     if (typeof jti === 'string' && isRevokedJti(jti)) {
-      return { tier: 'free', valid: false, reason: 'token has been revoked' };
+      return { tier: 'free', valid: false, reason: 'token has been revoked', code: 'revoked' };
+    }
+
+    // Temporal expiration check — performed AFTER signature + iss + aud + nbf
+    // verification so forged tokens can't trigger the daemon's
+    // fail-closed-on-expired path via a backdated `exp` claim.
+    if (typeof exp === 'number') {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (nowSeconds > exp) {
+        // Carry expiresAt so callers can compute time-since-expiry + drive
+        // fail-closed / telemetry without re-decoding the token.
+        return {
+          tier: 'free',
+          valid: false,
+          reason: 'license expired',
+          code: 'expired',
+          expiresAt: exp,
+        };
+      }
     }
 
     // expiresAt: 0 = perpetual (mirrors dotted-v2 semantics)
@@ -186,6 +256,6 @@ export function verifyLicenseJWT(
       valid: true,
     };
   } catch {
-    return { tier: 'free', valid: false, reason: 'invalid format' };
+    return { tier: 'free', valid: false, reason: 'invalid format', code: 'invalid-format' };
   }
 }
