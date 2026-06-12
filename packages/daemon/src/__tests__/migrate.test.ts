@@ -17,12 +17,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIGRATIONS } from '../migrations/index.js';
 import { startDaemon } from '../server.js';
-import {
-  type Migration,
-  MigrationError,
-  migrate,
-  migrationStatus,
-} from '../storage/migrate.js';
+import { type Migration, MigrationError, migrate, migrationStatus } from '../storage/migrate.js';
 import { SCHEMA_SQL } from '../storage/schema.js';
 
 /** Cold PGlite WASM init is seconds, not milliseconds — see header. */

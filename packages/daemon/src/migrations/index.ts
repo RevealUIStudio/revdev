@@ -15,7 +15,7 @@
  * bundle (they would need a postbuild copy step that drifts).
  */
 
-import { MIGRATION_0001 } from './0001-initial-schema.js';
 import type { Migration } from '../storage/migrate.js';
+import { MIGRATION_0001 } from './0001-initial-schema.js';
 
 export const MIGRATIONS: readonly Migration[] = [MIGRATION_0001];
