@@ -20,7 +20,7 @@ staleness-status: FRESH
 
 | Component | Status | How to get it today |
 |---|---|---|
-| Studio | Buildable, unsigned | `pnpm --filter studio tauri build` — local binary. `studio-release.yml` defined; no public releases cut (updater pubkey not yet configured). |
+| Studio | Buildable; signing configured | `pnpm --filter studio tauri build` — local binary. `studio-release.yml` defined; updater pubkey + signing secrets configured 2026-06-11 (H1); no public releases cut yet — remaining gates are the H4 release endpoint + first `studio-v*` tag. |
 | Console | Buildable | `cd apps/console && go build -o ../../rvui .` — no root `go.mod`; module lives under `apps/console/`. `console-release.yml` defined; no releases cut. |
 | Harness daemon | Buildable, not published | `pnpm --filter @revdev/daemon build`; CLI at `packages/daemon/dist/cli.js`. Runs locally under systemd-user. |
 
@@ -57,11 +57,11 @@ Everything between today and the first commercial sale. Split agent-executable v
 
 | # | Task | Status (2026-06-11) | Notes |
 |---|---|---|---|
-| H1 | Generate Tauri updater signing keypair | **OPEN — P0, blocks auto-update** | `tauri.conf.json` → `plugins.updater.pubkey` is still `""`. `pnpm tauri signer generate -w ~/.tauri/revdev-studio.key`; public key into `tauri.conf.json`; private key into the vault; add `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` repo secrets. |
+| H1 | Generate Tauri updater signing keypair | ✅ **DONE 2026-06-11** | Keypair generated in tmpfs (never on persistent disk) and vaulted at `revdev/tauri-signing-{private-key,private-key-password,public-key}`; public key embedded in `tauri.conf.json` → `plugins.updater.pubkey`; `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` repo secrets set. Re-running the generator ROTATES the key — existing installs would reject updates signed by a new key, so don't regenerate casually. Runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) §1. |
 | H2 | Generate license signing keypair (Ed25519) | ✅ **DONE 2026-06-10** | Canonical pair lives at `revdev/license-signing-{private,public}-key`; prod env carries it. Remaining tail: embed the public key in the Studio binary (resource or `tauri.conf.json`) and mirror to CI if integration tests need Pro+ gating. Runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md). |
 | H3 | Issue first customer licenses | **READY — awaiting first sale** | `pnpm exec tsx scripts/issue-license.ts --tier pro --customer "<name>" --days 365` (or `--perpetual`). Output is an Ed25519-signed JWT; customer sets it as `REVEALUI_LICENSE_KEY`. (The old `RVUI.v2.…` wording in the retired launch plan was wrong — the daemon rejects that format.) |
 | H4 | Release endpoint for auto-update | **OPEN — P1** | Pick GitHub Releases (simplest) vs S3/CloudFront vs edge proxy; `tauri.conf.json` already points at `releases.revealui.com/studio/{{target}}/{{arch}}/latest.json`. |
-| H5 | CI secrets for signed builds | **OPEN — P1** | `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` (from H1) + Apple cert/notarization set (from H7). Linux/Windows builds work without the Apple set. |
+| H5 | CI secrets for signed builds | **PARTIAL — Tauri set done 2026-06-11** | `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` set (H1). Remaining: the Apple cert/notarization set (from H7) for macOS builds. Linux/Windows signed builds work today. |
 | H6 | Daemon service on dev machine | ✅ **DONE** | systemd-user unit installed + running (closed 2026-04-28 via [#27](https://github.com/RevealUIStudio/revdev/pull/27) + [#23](https://github.com/RevealUIStudio/revdev/pull/23)). |
 | H7 | Apple Developer account + certs | **OPEN — P2, blocks macOS distribution** | Developer ID cert, app-specific password, .p12 into the vault. |
 | H8 | Windows code-signing certificate | **OPEN — P2, blocks Windows distribution** | EV vs OV vs Azure Trusted Signing; store cert + password in the vault. |
@@ -74,7 +74,7 @@ Everything between today and the first commercial sale. Split agent-executable v
 - [x] Daemon running as a service on the dev machine, dogfooded (H6)
 - [x] RPC params validated — no unbounded-input attacks (A1)
 - [x] Daemon restarts automatically after crash (systemd `Restart=on-failure`)
-- [ ] Tauri signing keypair generated + in repo secrets (H1)
+- [x] Tauri signing keypair generated + in repo secrets (H1, 2026-06-11)
 - [ ] Customer license key verifiably unlocks Pro features end-to-end (H3 dry-run)
 - [ ] Auto-update endpoint serves `latest.json` (H4) and an update verifiably applies (v0.1.0 → v0.1.1)
 - [ ] CI secrets configured; first signed Studio build published (H5 + release)
@@ -154,12 +154,11 @@ Carve-outs that stay: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (term
 
 | # | Item | Unblocks | Priority |
 |---|---|---|---|
-| 1 | H1 Tauri updater keypair | Auto-update, W6 | **P0** |
-| 2 | H4 release-endpoint decision + H5 CI secrets | First signed release | P1 |
-| 3 | H9 pricing + purchase flow decision | Revenue | P1 (owner-gated) |
-| 4 | W3 architecture ratification (server-mediated) | Cross-machine coordination | On demand |
-| 5 | H7 Apple / H8 Windows certs | Platform distribution | P2 |
-| 6 | W5 Console-home decision | Console productization | P3 |
+| 1 | H4 release-endpoint decision (GitHub Releases is the low-friction default) | First signed release + auto-update (H1 keypair done 2026-06-11) | **P1** |
+| 2 | H9 pricing + purchase flow decision | Revenue | P1 (owner-gated) |
+| 3 | W3 architecture ratification (server-mediated) | Cross-machine coordination | On demand |
+| 4 | H7 Apple / H8 Windows certs (completes H5) | Platform distribution | P2 |
+| 5 | W5 Console-home decision | Console productization | P3 |
 
 ## References
 
