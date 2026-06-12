@@ -44,6 +44,14 @@ RevDev Daemon — AI agent coordination runtime
 
 Usage:
   revdev-daemon [options]
+  revdev-daemon migrate [--status]
+
+Commands:
+  migrate        Apply pending schema migrations and exit (non-zero on
+                 failure). With --status, report current/latest/pending
+                 versions without applying anything. PGlite allows one
+                 process per data dir — stop the daemon first, or point
+                 REVDEV_DAEMON_DATA at the target copy.
 
 Options:
   --help, -h     Show this help message
@@ -78,6 +86,55 @@ License tiers:
 if (args.includes('--version') || args.includes('-v')) {
   console.log('revdev-daemon 0.1.0');
   process.exit(0);
+}
+
+// `migrate` subcommand — bring the schema to the latest version (or report
+// status) without starting the daemon. PGlite is single-process per data
+// dir: if the daemon currently holds it, this fails loudly instead of
+// corrupting anything — stop the daemon first.
+if (args[0] === 'migrate') {
+  const dataDir = process.env.REVDEV_DAEMON_DATA ?? DAEMON_DEFAULTS.dataDir;
+  const { PGlite } = await import('@electric-sql/pglite');
+  const { MigrationError, migrate, migrationStatus } = await import('./storage/migrate.js');
+  let db: InstanceType<typeof PGlite> | undefined;
+  try {
+    db = new PGlite(dataDir);
+    if (args.includes('--status')) {
+      const status = await migrationStatus(db);
+      console.log(`[migrate] data dir: ${dataDir}`);
+      console.log(`[migrate] schema version: ${status.current} (latest known: ${status.latest})`);
+      if (status.pending.length === 0) {
+        console.log('[migrate] pending: none');
+      } else {
+        for (const m of status.pending) {
+          console.log(`[migrate] pending: ${m.version} (${m.name})`);
+        }
+      }
+    } else {
+      const result = await migrate(db);
+      if (result.applied.length === 0) {
+        console.log(`[migrate] schema already at version ${result.current} — nothing to apply`);
+      } else {
+        console.log(
+          `[migrate] applied migration(s) ${result.applied.join(', ')} — schema now at version ${result.current}`,
+        );
+      }
+    }
+    await db.close();
+    process.exit(0);
+  } catch (err) {
+    if (db) {
+      await db.close().catch(() => {});
+    }
+    if (err instanceof MigrationError) {
+      console.error(`[migrate] ${err.message}`);
+    } else {
+      console.error(
+        `[migrate] failed: ${String(err)} — if the daemon is running it holds the PGlite data dir; stop it first (systemctl --user stop revdev-daemon)`,
+      );
+    }
+    process.exit(1);
+  }
 }
 
 // --detach: re-spawn ourselves in a new session, redirect stdio to a log,

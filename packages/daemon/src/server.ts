@@ -55,7 +55,7 @@ import {
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import { revvaultSet } from './revvault-client.js';
-import { SCHEMA_SQL } from './storage/schema.js';
+import { migrate } from './storage/migrate.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
 
 const log = createLogger({ service: 'revdev-daemon' });
@@ -1138,11 +1138,16 @@ export async function startDaemon(
   await mkdir(cfg.dataDir, { recursive: true });
   await mkdir(dirname(cfg.socketPath), { recursive: true });
 
-  // Initialize PGlite
+  // Initialize PGlite and bring the schema to the latest version. A failed
+  // or future-version migration throws MigrationError — the daemon refuses
+  // to start rather than run on a half-migrated schema (fail-fast).
   log.info('initializing database', { dataDir: cfg.dataDir });
   const db = new PGlite(cfg.dataDir);
-  await db.exec(SCHEMA_SQL);
-  log.info('schema initialized');
+  const migration = await migrate(db);
+  log.info('schema migrated', {
+    version: migration.current,
+    applied: migration.applied.length > 0 ? migration.applied : 'none',
+  });
 
   // Initialize observability (metrics + health checks)
   initObservability(db);

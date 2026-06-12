@@ -50,3 +50,8 @@ ts-rs = { version = "10", features = ["serde-compat"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+# Integration tests (tests/) drive the async harness client + daemon_ctl
+# commands directly, so they need a tokio runtime + test macros.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

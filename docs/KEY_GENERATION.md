@@ -9,27 +9,36 @@ All keys are stored in revvault (encrypted at rest).
 
 Signs Studio desktop binaries for auto-update verification.
 
+> **STATUS: DONE 2026-06-11.** The keypair exists. Private key, password, and public key live in revvault at `revdev/tauri-signing-{private-key,private-key-password,public-key}`; the public key is embedded in `apps/studio/src-tauri/tauri.conf.json` → `plugins.updater.pubkey`; the `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` repo secrets are set.
+>
+> **Re-running this section ROTATES the key.** Installed Studio builds verify updates against the embedded public key — a new keypair orphans every existing install until it manually reinstalls. Only rotate on compromise, and treat it as a breaking release event.
+
 ```bash
-# Generate keypair (prompts for a password)
-cd ~/revfleet/revdev/apps/studio/src-tauri
-npx @tauri-apps/cli signer generate -w ~/.tauri/revdev-studio.key
+# Generate in tmpfs so the private key never lands on persistent disk,
+# with a random password (no interactive prompt):
+D=/dev/shm/h1-tauri && mkdir -m 700 "$D"
+openssl rand -base64 24 > "$D/pw"
+cd ~/revfleet/revdev/apps/studio
+node_modules/.bin/tauri signer generate -w "$D/revdev-studio.key" --password "$(cat "$D/pw")"
 
-# Store in revvault
-revvault set revdev/tauri-signing-private-key < ~/.tauri/revdev-studio.key
-revvault set revdev/tauri-signing-password
-# ^ enter the password you chose during generation
+# Vault all three (revvault set reads stdin)
+revvault set revdev/tauri-signing-private-key          < "$D/revdev-studio.key"
+revvault set revdev/tauri-signing-private-key-password < "$D/pw"
+revvault set revdev/tauri-signing-public-key           < "$D/revdev-studio.key.pub"
 
-# Copy the PUBLIC KEY printed during generation — needed for tauri.conf.json
-# It looks like: dW50cnVzdGVkIGNvbW1lbnQ6...
+# Mirror to CI secrets, then shred
+gh secret set TAURI_SIGNING_PRIVATE_KEY          -R RevealUIStudio/revdev < "$D/revdev-studio.key"
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD -R RevealUIStudio/revdev < "$D/pw"
+shred -u "$D/pw" "$D/revdev-studio.key" && rm -rf "$D"
 ```
 
-**After**: Give the public key to Claude Code to wire into `tauri.conf.json`.
+**After**: wire the public key (`revdev-studio.key.pub` content) into `tauri.conf.json` → `plugins.updater.pubkey`.
 
 ---
 
 ## 2. License Signing Key (Ed25519)
 
-Signs customer license keys (RVUI.v2 format) so the daemon can verify them.
+Signs customer license keys (Ed25519-signed JWTs — the daemon rejects legacy `RVUI.v2.*` / `RVUI-*` formats) so the daemon can verify them.
 
 ```bash
 # Mint Ed25519 keypair; auto-stores both halves in revvault at
@@ -83,10 +92,10 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tasks.create","params":{"title":"test ta
 
 Add these to RevealUIStudio/revdev → Settings → Secrets → Actions:
 
-| Secret | Value Source |
-|--------|-------------|
-| `TAURI_SIGNING_PRIVATE_KEY` | `revvault get --full revdev/tauri-signing-private-key` |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | `revvault get --full revdev/tauri-signing-password` |
+| Secret | Value Source | Status |
+|--------|-------------|--------|
+| `TAURI_SIGNING_PRIVATE_KEY` | `revvault get --full revdev/tauri-signing-private-key` | ✅ set 2026-06-11 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | `revvault get --full revdev/tauri-signing-private-key-password` | ✅ set 2026-06-11 |
 
 macOS-only (when ready for Apple distribution):
 | Secret | Value Source |
