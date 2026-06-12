@@ -1,7 +1,10 @@
 mod commands;
 mod config;
-mod daemon_ctl;
-mod harness;
+// daemon_ctl + harness are `pub` so the integration tests in `tests/`
+// (external crate view) can exercise the real daemon boundary — see
+// tests/harness_integration.rs + tests/daemon_ctl_integration.rs.
+pub mod daemon_ctl;
+pub mod harness;
 mod harness_watcher;
 mod inference;
 mod local_shell;

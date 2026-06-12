@@ -116,6 +116,16 @@ pub async fn daemon_start() -> Result<u32, String> {
 
         let pid = child.id();
 
+        // Reap the child when it eventually exits. Without this, the exited
+        // daemon lingers as a zombie of THIS process — and `is_pid_alive`
+        // (kill with signal 0) counts zombies as alive, so daemon_stop would
+        // report "did not exit within 10s" for a daemon that exited cleanly
+        // on the first SIGTERM. Surfaced by tests/daemon_ctl_integration.rs.
+        std::thread::spawn(move || {
+            let mut child = child;
+            let _ = child.wait();
+        });
+
         // Wait for socket to become reachable (up to 5s).
         // If the daemon never becomes reachable, return an error rather than
         // a false-success Ok(pid) — the child may have exited (bind/startup
