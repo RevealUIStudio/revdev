@@ -47,7 +47,7 @@ Everything between today and the first commercial sale. Split agent-executable v
 | # | Task | Status (2026-06-11) | Notes |
 |---|---|---|---|
 | A1 | Zod input validation on RPC dispatch | ✅ **SHIPPED** | `packages/daemon/src/validation/schemas.ts`; invalid params → `-32602`. |
-| A2 | Versioned migration system for PGlite | **OPEN — P1** | Daemon still runs a single `SCHEMA_SQL` with `CREATE TABLE IF NOT EXISTS` (`src/storage/schema.ts`); no `migrations/` dir. Build: `schema_version` table, sequential `migrations/000N_*.sql`, fail-fast on error, `revdev-daemon migrate [--status]` subcommands. Verify: fresh DB applies all; existing DB applies only pending; bad SQL refuses to start. |
+| A2 | Versioned migration system for PGlite | ✅ **SHIPPED 2026-06-11** | `src/migrations/` registry (TS modules, not loose `.sql` — tsup bundles the daemon and runtime-loaded files don't survive the bundle) + `src/storage/migrate.ts` runner: `schema_version` table, ascending one-shot transactional application, fail-fast `MigrationError` (daemon refuses to start), future-schema refusal, pre-migration DBs adopt the `IF NOT EXISTS` baseline as a recorded no-op. `revdev-daemon migrate [--status]` subcommand (PGlite is single-process — stop the daemon first). Covered by `__tests__/migrate.test.ts`. |
 | A3 | HTTP gateway for remote daemon access | **SUPERSEDED by W3 design** | Tracked as [#2](https://github.com/RevealUIStudio/revdev/issues/2). The GAP-154 Phase 5 design recommends a *server-mediated* cross-machine path rather than every daemon hosting public HTTP — do not implement a daemon-hosted gateway before the W3 architecture decision is ratified. |
 | A4 | Studio UI for daemon status + lifecycle | ✅ **SHIPPED** | `apps/studio/src/components/infrastructure/{DaemonPanel,InfrastructurePanel}.tsx`. Before closing permanently, confirm start/stop/restart controls cover the systemd-managed case. |
 | A5 | Rust integration tests (Tauri bridge ↔ real daemon) | **OPEN — P2** | `apps/studio/src-tauri/tests/` does not exist. Build: round-trip, timeout-when-unreachable, retry-on-transient, daemon start/stop lifecycle; add `cargo test` to CI. |
@@ -80,7 +80,7 @@ Everything between today and the first commercial sale. Split agent-executable v
 - [ ] CI secrets configured; first signed Studio build published (H5 + release)
 - [ ] Customer can purchase and receive a license (H9)
 - [ ] Minimum customer docs exist: install + activate + troubleshoot (H10)
-- [ ] Database migrations work so the schema can evolve post-launch (A2)
+- [x] Database migrations work so the schema can evolve post-launch (A2, 2026-06-11)
 
 ### W2 — Daemon identity: DID + Ed25519 per-RPC signing (Phases 2–4)
 
