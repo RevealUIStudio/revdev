@@ -136,21 +136,52 @@ async fn full_rpc_round_trip_against_real_daemon() {
     let agent_id = harness::ensure_session().await.expect("session registers");
     assert!(!agent_id.is_empty(), "ensure_session returned an empty id");
 
-    // harness.health round-trips with the injected actorAgentId
-    let health = harness::rpc_call("harness.health", serde_json::json!({}))
-        .await
-        .expect("harness.health succeeds");
-    assert!(health.is_object(), "health result is an object: {health}");
-
-    // session.list shows at least our own registration
+    // session.list (license-exempt) shows our registration, with the
+    // client-injected actorAgentId accepted by the daemon's Zod layer.
     let list = harness::rpc_call("session.list", serde_json::json!({}))
         .await
         .expect("session.list succeeds");
-    let sessions = list
-        .get("sessions")
+    assert!(
+        session_ids(&list).iter().any(|id| id == &agent_id),
+        "session.list does not show our registration {agent_id}: {list}"
+    );
+
+    // session.end → the session drops out of the active list.
+    harness::rpc_call("session.end", serde_json::json!({ "sessionId": agent_id }))
+        .await
+        .expect("session.end succeeds");
+    let after = harness::rpc_call("session.list", serde_json::json!({}))
+        .await
+        .expect("session.list succeeds after end");
+    assert!(
+        !session_ids(&after).iter().any(|id| id == &agent_id),
+        "ended session {agent_id} still listed as active: {after}"
+    );
+
+    // The daemon runs unlicensed (free tier) here, and harness.health is
+    // LICENSE-gated (the license-exempt set is only ping + session.* —
+    // narrower than the identity-exempt set). Assert the gate end to end
+    // through the Rust client: a clean RPC-level "License required", not
+    // a transport error.
+    let gated = harness::rpc_call("harness.health", serde_json::json!({}))
+        .await
+        .expect_err("harness.health must be license-gated on a free-tier daemon");
+    assert!(
+        gated.contains("License required"),
+        "expected the license gate, got: {gated}"
+    );
+}
+
+/// Extract the `id` column of every row in a `session.list` response.
+fn session_ids(list: &serde_json::Value) -> Vec<String> {
+    list.get("sessions")
         .and_then(|v| v.as_array())
-        .unwrap_or_else(|| panic!("session.list returned no sessions array: {list}"));
-    assert!(!sessions.is_empty(), "expected at least one session");
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| row.get("id").and_then(|v| v.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_else(|| panic!("session.list returned no sessions array: {list}"))
 }
 
 #[tokio::test]
