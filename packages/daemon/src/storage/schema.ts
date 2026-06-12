@@ -3,9 +3,15 @@
  *
  * Uses raw SQL (no ORM) for minimal dependencies.
  * PGlite runs in-process — no external database needed.
+ *
+ * FROZEN BASELINE — this SQL ships as migration 0001
+ * (`src/migrations/0001-initial-schema.ts`). Do not edit it for schema
+ * changes; add a new migration in `src/migrations/` instead. Everything
+ * here is IF NOT EXISTS so pre-migration databases adopt the baseline
+ * as a no-op.
  */
 
-/** SQL statements to initialize the daemon database. */
+/** SQL statements to initialize the daemon database (migration 0001). */
 export const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS agent_sessions (
     id            TEXT PRIMARY KEY,
