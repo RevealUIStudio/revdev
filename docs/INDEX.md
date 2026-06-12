@@ -1,7 +1,7 @@
 ---
 type: repo-doc-index
 repo: revdev
-updated: 2026-05-15
+updated: 2026-06-11
 ---
 
 # RevDev — Documentation Index
@@ -10,17 +10,20 @@ Agent-first SDLC toolkit: Studio (Tauri 2 desktop) + Console (Go SSH TUI) + harn
 
 ## This repo's masters
 
-- [`MASTER_PLAN.md`](./MASTER_PLAN.md) — authoritative plan for RevDev
-- [`MASTER_SPEC.md`](./MASTER_SPEC.md) — design spec
-- [`PRODUCTION_LAUNCH_PLAN.md`](./PRODUCTION_LAUNCH_PLAN.md) — task-level breakdown for production launch
+Exactly one plan and one spec, each behind a stable entry point:
+
+- [`MASTER_PLAN.md`](./MASTER_PLAN.md) → [`PLAN.md`](./PLAN.md) — **the plan**: verified state, workstreams, owner queue, exit criteria
+- [`MASTER_SPEC.md`](./MASTER_SPEC.md) → [`SPEC.md`](./SPEC.md) — **the spec**: architecture, JSON-RPC contract, license model, identity
+
+(`PRODUCTION_LAUNCH_PLAN.md` was absorbed into `PLAN.md` on 2026-06-11 and removed.)
+
+## Reference docs
+
+- [`API_REFERENCE.md`](./API_REFERENCE.md) — JSON-RPC API surface
+- [`GETTING_STARTED.md`](./GETTING_STARTED.md) — quick start
+- [`KEY_GENERATION.md`](./KEY_GENERATION.md) — signing-key runbook (Tauri updater + license keypair)
+- [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) — common issues
 
 ## Fleet coordination
 
-Part of [RevFleet](https://github.com/RevealUIStudio). For agents working in `~/revfleet/revdev/`:
-
-- Fleet master index: `~/revfleet/.jv/docs/MASTER_INDEX.md`
-- Fleet master plan: `~/revfleet/.jv/docs/MASTER_PLAN.md`
-- Active lanes (multi-session work): `~/revfleet/.jv/docs/lanes/`
-- GAP tracker: `~/revfleet/.jv/docs/gaps/` + `~/revfleet/.jv/docs/gap-specs/`
-- Live workboard: `~/revfleet/.jv/.claude/workboard.md`
-- ADR for lanes convention: `~/revfleet/.jv/docs/decisions/2026-05-15-docs-organization-lanes.md`
+Part of [RevFleet](https://github.com/RevealUIStudio). Fleet-level planning, lanes, the gap tracker, and the live workboard live in the RevealUI Studio internal coordination hub (private repo); this repo's docs are RevDev-scoped only.
