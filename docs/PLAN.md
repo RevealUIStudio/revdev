@@ -84,12 +84,12 @@ Everything between today and the first commercial sale. Split agent-executable v
 
 ### W2 — Daemon identity: DID + Ed25519 per-RPC signing (Phases 2–4)
 
-Decision record: internal ADR `2026-05-16-revdev-did-ed25519-rpc-signing` (the public security-limitations disclosure names this work as the planned remediation for socket-bound identity).
+Decision record: internal ADR `2026-05-16-revdev-did-ed25519-rpc-signing` — **accepted by the owner 2026-06-11** (the public security-limitations disclosure names this work as the planned remediation for socket-bound identity; that disclosure retires when P3 enforcement ships).
 
 | Phase | Scope | Status |
 |---|---|---|
 | P1 | Identity tables, DID bootstrap on register, vault-backed keys, accept-if-present verification | ✅ **SHIPPED** (in daemon since 2026-05-16; on `main` via promotion #97) |
-| P2 | Telemetry: per-RPC signature-status events; observe ≥95% valid-signature rate across 7 days | **NEXT** |
+| P2 | Telemetry: per-RPC signature-status events; observe ≥95% valid-signature rate across 7 days | **NEXT — clear to start** (ADR accepted 2026-06-11) |
 | P3 | Enforce: non-exempt RPCs without a valid signature fail (`-32099`); revertible via `REVDEV_REQUIRE_SIGNATURE` | Pending P2 acceptance |
 | P4 | Remove legacy socket-bound identity fallback | Pending 30 days clean P3 |
 
