@@ -5,7 +5,7 @@
 | Component | Stack | Purpose |
 |---|---|---|
 | **Studio** | Tauri 2 + React 19 | Desktop AI editor and agent coordination dashboard |
-| **Console** | Go + Bubble Tea | SSH TUI ops cockpit — agent health, deploys, billing, alerts |
+| **Console** | Go + Bubble Tea | SSH payment + licensing TUI (tiers, checkout, license, email/OTP) + agent-terminal proxy |
 | **Harness Daemon** | Node.js | Coordinates AI agents, manages PTY sessions, routes tools |
 
 ## Vendor-agnostic by design
@@ -33,14 +33,14 @@ Per the fleet [agnosticism principle](https://github.com/RevealUIStudio/revealui
   Claude Code hooks + other agent runtimes
 ```
 
-Studio talks to the daemon; the daemon coordinates agents and tools. Console talks to the RevealUI API directly for ops work — it doesn't need the daemon hop.
+Studio talks to the daemon; the daemon coordinates agents and tools. Console talks to the RevealUI API directly for payment + licensing — it doesn't need the daemon hop.
 
 ## Repository layout
 
 ```
 revdev/
 ├── apps/studio/          # Tauri 2 desktop app (Studio UI)
-├── apps/console/         # Go TUI (Console — SSH billing/ops cockpit)
+├── apps/console/         # Go TUI (Console — SSH payment/licensing TUI + agent proxy)
 ├── packages/daemon/      # Harness daemon (agent coordination, PTY, tools)
 ├── packages/protocol/    # JSON-RPC types shared across all apps
 └── packages/theme/       # Console theme tokens
@@ -57,7 +57,7 @@ RevDev consumes RevealUI packages — it doesn't contain them:
 - `@revealui/harnesses` — AI harness adapters (Fair Source)
 - `@revealui/presentation` — Studio shims tokens and components through this. Dogfood Phase 1+2 shipped via [revdev#67](https://github.com/RevealUIStudio/revdev/pull/67), [#71](https://github.com/RevealUIStudio/revdev/pull/71), [#73](https://github.com/RevealUIStudio/revdev/pull/73).
 
-The harness daemon is the brain. Studio and Console are UIs for it.
+The harness daemon is the brain; Studio is its UI. Console is a separate SSH surface talking to the RevealUI API, not the daemon.
 
 ## Status
 
