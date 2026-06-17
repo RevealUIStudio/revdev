@@ -1,0 +1,96 @@
+version: 2
+updates:
+  # npm workspace (pnpm monorepo: root + apps/studio + packages/*)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - automated
+    groups:
+      patch-and-minor:
+        update-types: ["patch", "minor"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Rust crate behind the Tauri Studio app.
+  # NOTE: apps/studio/src-tauri is NOT compiled in PR CI (only studio-release.yml).
+  # Cargo bumps have no PR safety net -- verify locally with `cargo check` before merge.
+  - package-ecosystem: cargo
+    directory: /apps/studio/src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - automated
+    groups:
+      patch-and-minor:
+        update-types: ["patch", "minor"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Go module (Console)
+  - package-ecosystem: gomod
+    directory: /apps/console
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - automated
+    groups:
+      patch-and-minor:
+        update-types: ["patch", "minor"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - github-actions
+      - automated
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Docker base image (Console)
+  - package-ecosystem: docker
+    directory: /apps/console
+    schedule:
+      interval: monthly
+      timezone: UTC
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - docker
+      - automated
