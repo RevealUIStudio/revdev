@@ -130,6 +130,16 @@ Carve-outs that stay: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (term
 | Console v0.1.0 | A6 + `console-release.yml` first tag. |
 | Daemon on npm | Not planned until after first Studio release; daemon ships embedded today. |
 
+### W7 — Synchronous, secure agent-to-agent messaging (real-time directives) — BACKLOG, owner unblocks
+
+The concrete delivery of **product exit criterion #1** ("messages injected automatically into agent context") for the *real-time* case. Today agent coordination is store-and-poll: the shared workboard plus the daemon's best-effort dual-write of mail/tasks/events to Neon (W3 P0–4). A peer only sees a directive on its **next** workboard read, so there is no way to reach an agent mid-task. This caused a concrete miss on 2026-06-18: a sonnet peer committed a rejected SEO direction on `feat/seo-audience-modes` before the owner's corrected directive reached it, because the directive sat in the workboard until the peer's next read. Synchronous delivery would have stopped it before the commit.
+
+- **Capability — a daemon-mediated notify/subscribe channel** so daemon→agent and agent→agent (relayed through the daemon) deliver a message into a live session in real time, not just persist it for the next poll. Minimum surface: a directed `coordination.send` RPC (one named peer) + a session-scoped subscription the harness drains the moment it arrives (inbox-flush at the next tool boundary, or interrupt — see open questions).
+- **Secure by default (hard requirement; the reason this gates on W2).** Every message is an Ed25519-signed envelope under the sender's DID (W2). The daemon rejects unsigned or unverifiable messages with **no opt-out** — this surface ships *after* W2 P3 enforcement, never on the accept-if-present fallback. Authorization is capability-scoped: a peer cannot forge an **owner-authority** directive; owner-relayed directives carry a distinct, separately-issued capability so the receiver can trust "this came from the owner" vs "this is a peer suggestion." Delivery targets only authenticated, currently-registered sessions; revocation is immediate (reuses W3's single-row revoke).
+- **Dependencies / sequencing.** Builds on W2 (signed identity must be *enforced*, not accept-if-present, before real-time directives are safe to trust) and rides W3's transport for the cross-machine case. **Same-machine real-time delivery over the local socket is the v1 target**; cross-machine inherits W3's server-mediated path.
+- **Open questions for the owner before execution.** (1) interrupt-an-active-turn vs deliver-to-inbox-flushed-at-the-next-tool-call — the harness side defines what "synchronous" means in practice; (2) whether owner-authority directives require human-in-the-loop confirmation before a peer acts on them; (3) flood control / rate-limiting between agents.
+- **Status: backlog**, owner triggers execution. Filed 2026-06-18 off the PR4 direction-race miss.
+
 ---
 
 ## Dogfood milestones (owner using RevDev daily)
@@ -159,6 +169,7 @@ Carve-outs that stay: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (term
 | 3 | W3 architecture ratification (server-mediated) | Cross-machine coordination | On demand |
 | 4 | H7 Apple / H8 Windows certs (completes H5) | Platform distribution | P2 |
 | 5 | W5 Console-home decision | Console productization | P3 |
+| 6 | W7 synchronous-messaging go-ahead (after W2 P3 signature enforcement) | Real-time agent-to-agent directives | On demand |
 
 ## References
 
