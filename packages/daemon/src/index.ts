@@ -25,6 +25,7 @@ export {
 } from './guard.js';
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
 export { registerHandler, startDaemon } from './server.js';
+
 // Side-effect imports: register built-in handler groups.
 import './inference.js';
 import './vcs.js';
