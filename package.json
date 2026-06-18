@@ -25,8 +25,8 @@
     "typecheck:studio": "pnpm --filter studio typecheck"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.1.1",
-    "typescript": "^6.0.2"
+    "@biomejs/biome": "^2.5.0",
+    "typescript": "^6.0.3"
   },
   "pnpm": {
     "overrides": {
