@@ -7,7 +7,7 @@ Native developer experience for RevealUI. One product, two interfaces.
 | App | Stack | Purpose |
 |-----|-------|---------|
 | Studio | Tauri 2 + React 19 | Desktop AI editor + agent coordination dashboard |
-| Console | Go (Bubble Tea) | SSH TUI ops cockpit — agent health, deploys, billing, alerts |
+| Console | Go (Bubble Tea) | SSH payment + licensing TUI (tiers, checkout, license, email/OTP) + agent-terminal proxy |
 
 ## Architecture
 
@@ -37,7 +37,7 @@ RevDev **consumes** RevealUI packages — it does not contain them:
 - `@revealui/harnesses` — AI harness adapters (npm dependency, Pro)
 - RevealUI API — HTTP/WebSocket (Console talks directly to API)
 
-The harness daemon is the brain. Studio and Console are UIs for it.
+The harness daemon is the brain; Studio is its UI. Console is a separate SSH surface talking to the RevealUI API, not the daemon.
 
 ## Git Identity
 RevealUI Studio <founder@revealui.com>
