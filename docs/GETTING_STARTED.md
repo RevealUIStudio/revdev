@@ -132,12 +132,12 @@ Once Studio is connected to the daemon:
 5. **Vault** — Secret management via revvault integration
 6. **Deploy** — Multi-step deployment wizard (Vercel, Neon, Stripe, Email)
 
-### Using with Claude Code
+### Using with an MCP-compatible AI coding tool
 
-RevDev's MCP Bridge exposes the daemon to Claude Code:
+RevDev's MCP Bridge exposes the daemon to any MCP-compatible AI coding tool (Claude Code, Codex, Cursor, Windsurf, or custom agents). For example, with Claude Code:
 
 ```json
-// In your Claude Code MCP config:
+// In your MCP client config (Claude Code shown as an example):
 {
   "revdev": {
     "command": "node",
@@ -146,7 +146,7 @@ RevDev's MCP Bridge exposes the daemon to Claude Code:
 }
 ```
 
-This gives Claude Code access to agent coordination, file reservations, and task management.
+This gives the tool access to agent coordination, file reservations, and task management.
 
 ---
 

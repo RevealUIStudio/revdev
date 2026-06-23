@@ -110,7 +110,7 @@ macOS-only (when ready for Apple distribution):
 
 ## After All Keys Are Set
 
-Tell Claude Code: "keys are generated" — it will:
+Tell your AI coding tool: "keys are generated" — it will:
 1. Wire Tauri public key into `tauri.conf.json`
 2. Tag `studio-v0.1.0` for first signed release
 3. Verify CI builds succeed with signing
