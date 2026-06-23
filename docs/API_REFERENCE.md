@@ -67,9 +67,9 @@ Register a new agent session. Returns a sessionId to use as identity.
 | Field | Type | Description |
 |-------|------|-------------|
 | `agentId` | string? | Stable ID (upserts if exists). Omit for ephemeral UUID. |
-| `agentName` | string? | Human-readable name (e.g., "claude-main") |
+| `agentName` | string? | Human-readable name (e.g., "agent-main") |
 | `workDir` | string? | Agent's working directory |
-| `backend` | string? | Agent backend type (e.g., "studio", "claude-code") |
+| `backend` | string? | Agent backend type (e.g., "studio", "mcp-agent") |
 
 **Response**: `{ sessionId: string }`
 
