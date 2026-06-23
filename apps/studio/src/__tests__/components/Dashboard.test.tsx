@@ -43,6 +43,7 @@ const defaultSettings = {
     pollingIntervalMs: 30_000,
     solanaWalletAddress: '',
     solanaNetwork: 'devnet' as const,
+    localMode: false,
   },
   updateSettings: vi.fn(),
   resetSettings: vi.fn(),
