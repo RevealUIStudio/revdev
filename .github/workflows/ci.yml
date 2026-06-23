@@ -61,10 +61,12 @@ jobs:
         with:
           workspaces: apps/studio/src-tauri -> target
       - run: pnpm install --frozen-lockfile
-      # Studio frontend `tsc -b` imports ./generated/* (ts-rs bindings, gitignored),
-      # so regenerate them from the Rust source before typechecking.
+      # Studio frontend build imports ./generated/* (ts-rs bindings, gitignored),
+      # so regenerate them from the Rust source first. `build` runs `tsc -b` (the
+      # #143 failure mode) then `vite build`, mirroring build-windows.ps1's frontend
+      # step, catching type errors AND bundling errors on every PR.
       - run: bash apps/studio/scripts/generate-types.sh
-      - run: pnpm typecheck:studio
+      - run: pnpm --filter studio build
 
   test:
     name: Test
