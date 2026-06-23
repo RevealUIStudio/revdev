@@ -110,7 +110,7 @@ describe('useDevBox', () => {
 
     const { result } = renderHook(() => useDevBox());
 
-    let mountPromise: Promise<void>;
+    let mountPromise: Promise<void> | undefined;
     act(() => {
       mountPromise = result.current.mount();
     });
@@ -120,7 +120,7 @@ describe('useDevBox', () => {
 
     await act(async () => {
       resolveMount('Done');
-      await mountPromise!;
+      await mountPromise;
     });
 
     expect(result.current.operating).toBe(false);
