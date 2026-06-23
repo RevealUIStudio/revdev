@@ -10,6 +10,12 @@ export interface StudioSettings {
   solanaWalletAddress: string;
   /** Solana network for RVUI queries. */
   solanaNetwork: 'devnet' | 'mainnet-beta';
+  /**
+   * Local mode: skip API sign-in and use Studio's local, self-contained
+   * tools (terminal, shell, git) offline. Off by default. Account and
+   * API-backed features stay disabled until you sign in.
+   */
+  localMode: boolean;
 }
 
 const DEFAULT_API_URL = import.meta.env.DEV ? 'http://localhost:3004' : 'https://api.revealui.com';
@@ -20,6 +26,7 @@ const DEFAULT_SETTINGS: StudioSettings = {
   pollingIntervalMs: 30_000,
   solanaWalletAddress: '',
   solanaNetwork: 'devnet',
+  localMode: false,
 };
 
 const STORAGE_KEY = 'revealui-studio-settings';
@@ -52,6 +59,7 @@ function loadSettings(): StudioSettings {
         obj.solanaNetwork === 'devnet' || obj.solanaNetwork === 'mainnet-beta'
           ? obj.solanaNetwork
           : DEFAULT_SETTINGS.solanaNetwork,
+      localMode: typeof obj.localMode === 'boolean' ? obj.localMode : DEFAULT_SETTINGS.localMode,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
