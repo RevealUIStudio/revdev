@@ -149,8 +149,8 @@ export default function SettingsPanel() {
                 ))}
               </div>
               <span className="text-xs text-neutral-500">
-                Skip sign-in and use local tools (terminal, shell, git) offline. Account
-                and API-backed features stay disabled until you sign in.
+                Skip sign-in and use local tools (terminal, shell, git) offline. Account and
+                API-backed features stay disabled until you sign in.
               </span>
             </div>
           </div>
