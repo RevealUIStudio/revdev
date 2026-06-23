@@ -1347,7 +1347,7 @@ export async function startDaemon(
         // Validate params
         const validation = validateParams(req.method, req.params);
         if (!validation.valid) {
-          socket.write(`${invalidParamsResponse(req.id, validation.error!)}\n`);
+          socket.write(`${invalidParamsResponse(req.id, validation.error ?? 'Invalid params')}\n`);
           continue;
         }
 
