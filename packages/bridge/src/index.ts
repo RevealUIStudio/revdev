@@ -34,7 +34,7 @@ server.tool(
   'session_register',
   'Register this agent session with the harness daemon',
   {
-    agentName: z.string().describe('Name for this agent (e.g. "claude-main")'),
+    agentName: z.string().describe('Name for this agent (e.g. "agent-main")'),
     workDir: z.string().describe('Working directory for this session'),
     backend: z.string().optional().describe('Backend identifier (default: "mcp-agent")'),
   },
