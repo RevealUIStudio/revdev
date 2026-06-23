@@ -6,7 +6,7 @@
 //  3. Connects to WS /api/terminal/ws/:id
 //  4. Pipes SSH I/O ↔ WebSocket I/O bidirectionally
 //
-// This enables controlling Claude Code agents from any SSH client (iPhone, iPad, etc.).
+// This enables controlling AI coding tool sessions from any SSH client (iPhone, iPad, etc.).
 package proxy
 
 import (
@@ -90,7 +90,7 @@ func (p *Proxy) listSessions() ([]SessionInfo, error) {
 	return sessions, nil
 }
 
-// spawnSession creates a new Claude Code session via the API.
+// spawnSession creates a new agent session via the API.
 func (p *Proxy) spawnSession(name string) (string, error) {
 	body := fmt.Sprintf(`{"name":"%s","cols":120,"rows":30}`, name)
 	endpoint := fmt.Sprintf("%s/api/terminal/sessions", p.apiURL)

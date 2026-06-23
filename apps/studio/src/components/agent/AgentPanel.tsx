@@ -1,7 +1,7 @@
 /**
  * AgentPanel — workboard-aware change review (Pro)
  *
- * Left pane:  active Claude Code sessions, parsed from a configurable workboard.md
+ * Left pane:  active agent sessions, parsed from a configurable workboard.md
  * Right pane: pending git changes with per-file stage / discard and bulk actions
  */
 
