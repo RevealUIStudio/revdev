@@ -91,7 +91,15 @@ export function useAuthContext(): AuthContextValue {
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 
-export function useAuth(apiUrl: string): AuthContextValue {
+/** Synthetic identity used in local mode (no API account, no token). */
+const LOCAL_USER: AuthUser = {
+  id: 'local',
+  email: 'local@localhost',
+  name: 'Local',
+  role: 'local',
+};
+
+export function useAuth(apiUrl: string, localMode = false): AuthContextValue {
   const [step, setStep] = useState<AuthStep>('idle');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
@@ -102,6 +110,22 @@ export function useAuth(apiUrl: string): AuthContextValue {
   // Check stored token on mount
   useEffect(() => {
     let cancelled = false;
+
+    // Local mode: skip the API entirely and present a synthetic local
+    // identity. Unlocks Studio's self-contained local tools (terminal,
+    // shell, git) offline. Account and API features stay disabled until
+    // the user signs in (which they can do by turning local mode off).
+    if (localMode) {
+      setUser(LOCAL_USER);
+      setTokenExpiresAt(null);
+      setError(null);
+      setStep('authenticated');
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     (async () => {
       try {
         const token = await loadToken();
@@ -138,7 +162,7 @@ export function useAuth(apiUrl: string): AuthContextValue {
     return () => {
       cancelled = true;
     };
-  }, [apiUrl]);
+  }, [apiUrl, localMode]);
 
   // Auto-refresh token when it's within 7 days of expiry
   useEffect(() => {
