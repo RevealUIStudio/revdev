@@ -144,8 +144,8 @@ export default function LoginScreen() {
               Continue in local mode
             </button>
             <p className="text-center text-[11px] text-neutral-600">
-              Use local tools (terminal, shell, git) without signing in. Account
-              features stay disabled until you sign in.
+              Use local tools (terminal, shell, git) without signing in. Account features stay
+              disabled until you sign in.
             </p>
           </div>
         )}

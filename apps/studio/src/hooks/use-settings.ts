@@ -59,8 +59,7 @@ function loadSettings(): StudioSettings {
         obj.solanaNetwork === 'devnet' || obj.solanaNetwork === 'mainnet-beta'
           ? obj.solanaNetwork
           : DEFAULT_SETTINGS.solanaNetwork,
-      localMode:
-        typeof obj.localMode === 'boolean' ? obj.localMode : DEFAULT_SETTINGS.localMode,
+      localMode: typeof obj.localMode === 'boolean' ? obj.localMode : DEFAULT_SETTINGS.localMode,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
