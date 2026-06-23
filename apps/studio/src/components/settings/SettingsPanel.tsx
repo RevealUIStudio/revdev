@@ -20,6 +20,11 @@ const POLLING_OPTIONS = [
   { label: '5m', value: 300_000 },
 ];
 
+const LOCAL_MODE_OPTIONS = [
+  { label: 'On', value: true },
+  { label: 'Off', value: false },
+];
+
 export default function SettingsPanel() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
   const [appVersion, setAppVersion] = useState('dev');
@@ -124,6 +129,29 @@ export default function SettingsPanel() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm text-neutral-400">Local mode</span>
+              <div className="flex gap-2">
+                {LOCAL_MODE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => updateSettings({ localMode: opt.value })}
+                    className={`rounded-md px-4 py-2 text-sm transition-colors ${
+                      settings.localMode === opt.value
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-neutral-500">
+                Skip sign-in and use local tools (terminal, shell, git) offline. Account
+                and API-backed features stay disabled until you sign in.
+              </span>
             </div>
           </div>
         </Card>

@@ -16,7 +16,7 @@ import Input from '../ui/Input';
 
 export default function LoginScreen() {
   const { step, loading, error, sendOtp, submitOtp } = useAuthContext();
-  const { settings } = useSettingsContext();
+  const { settings, updateSettings } = useSettingsContext();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
@@ -132,6 +132,23 @@ export default function LoginScreen() {
             </div>
           </form>
         ) : null}
+
+        {/* Local mode escape hatch (email step only) */}
+        {showOtp ? null : (
+          <div className="space-y-2 border-t border-neutral-800 pt-4">
+            <button
+              type="button"
+              onClick={() => updateSettings({ localMode: true })}
+              className="w-full rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+            >
+              Continue in local mode
+            </button>
+            <p className="text-center text-[11px] text-neutral-600">
+              Use local tools (terminal, shell, git) without signing in. Account
+              features stay disabled until you sign in.
+            </p>
+          </div>
+        )}
 
         {/* Footer */}
         <p className="text-center text-[11px] text-neutral-600">Connecting to {settings.apiUrl}</p>
