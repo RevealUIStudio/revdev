@@ -2,6 +2,13 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import IntentScreen from '../../components/intent/IntentScreen';
 
+/** Click the <button> ancestor of a heading, failing loudly if absent. */
+function clickHeadingButton(name: string): void {
+  const button = screen.getByRole('heading', { name }).closest('button');
+  if (!button) throw new Error(`No <button> ancestor for heading "${name}"`);
+  fireEvent.click(button);
+}
+
 describe('IntentScreen', () => {
   it('renders welcome heading and description', () => {
     render(<IntentScreen onSelect={vi.fn()} />);
@@ -26,7 +33,7 @@ describe('IntentScreen', () => {
   it('enables Continue after selecting Deploy', () => {
     render(<IntentScreen onSelect={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('heading', { name: 'Deploy' }).closest('button')!);
+    clickHeadingButton('Deploy');
     expect(screen.getByText('Continue')).not.toBeDisabled();
   });
 
@@ -34,7 +41,7 @@ describe('IntentScreen', () => {
     const onSelect = vi.fn();
     render(<IntentScreen onSelect={onSelect} />);
 
-    fireEvent.click(screen.getByRole('heading', { name: 'Deploy' }).closest('button')!);
+    clickHeadingButton('Deploy');
     fireEvent.click(screen.getByText('Continue'));
     expect(onSelect).toHaveBeenCalledWith('deploy');
   });
@@ -43,7 +50,7 @@ describe('IntentScreen', () => {
     const onSelect = vi.fn();
     render(<IntentScreen onSelect={onSelect} />);
 
-    fireEvent.click(screen.getByRole('heading', { name: 'Develop' }).closest('button')!);
+    clickHeadingButton('Develop');
     fireEvent.click(screen.getByText('Continue'));
     expect(onSelect).toHaveBeenCalledWith('develop');
   });
