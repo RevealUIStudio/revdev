@@ -76,7 +76,7 @@ interface RpcRequest {
 export interface SocketContext {
   /** Agent identity for this socket. Null until session.register/attach succeeds. */
   agentId: string | null;
-  /** Human-readable agent name (e.g. "claude-main"). */
+  /** Human-readable agent name (e.g. "agent-main"). */
   agentName: string | null;
   /**
    * How `agentId` was bound to this socket:
