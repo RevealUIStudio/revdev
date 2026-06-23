@@ -149,7 +149,11 @@ if (args.includes('--detach')) {
   // stdout (1) and stderr (2). stdin is /dev/null.
   const logFd = openSync(logPath, 'a');
   const childArgs = args.filter((a) => a !== '--detach');
-  const child = spawn(process.execPath, [process.argv[1]!, ...childArgs], {
+  const entryScript = process.argv[1];
+  if (!entryScript) {
+    throw new Error('Cannot determine daemon entry script (process.argv[1] missing)');
+  }
+  const child = spawn(process.execPath, [entryScript, ...childArgs], {
     detached: true,
     stdio: ['ignore', logFd, logFd],
     env: process.env,
