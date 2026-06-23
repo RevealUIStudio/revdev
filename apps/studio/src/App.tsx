@@ -21,7 +21,7 @@ import TunnelPanel from './components/tunnel/TunnelPanel';
 import VaultPanel from './components/vault/VaultPanel';
 import { AuthContext, useAuth } from './hooks/use-auth';
 import { useConfig } from './hooks/use-config';
-import { SettingsContext, useSettings } from './hooks/use-settings';
+import { SettingsContext, useSettings, useSettingsContext } from './hooks/use-settings';
 import type { Page } from './types';
 
 interface EditorTarget {
@@ -40,8 +40,8 @@ export default function App() {
 }
 
 function AuthGatedApp() {
-  const { settings } = useSettings();
-  const auth = useAuth(settings.apiUrl);
+  const { settings } = useSettingsContext();
+  const auth = useAuth(settings.apiUrl, settings.localMode);
 
   return (
     <AuthContext.Provider value={auth}>

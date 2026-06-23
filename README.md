@@ -30,7 +30,7 @@ Per the fleet [agnosticism principle](https://github.com/RevealUIStudio/revealui
 └──────┬───────┘
        │ Unix socket JSON-RPC
        ▼
-  Claude Code hooks + other agent runtimes
+  AI coding tool hooks + other agent runtimes
 ```
 
 Studio talks to the daemon; the daemon coordinates agents and tools. Console talks to the RevealUI API directly for payment + licensing — it doesn't need the daemon hop.
