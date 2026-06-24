@@ -185,6 +185,27 @@ function gitRelPath(repoReal: string, filePathRaw: string): string {
 }
 
 /**
+ * Refuse a `file.*` mutation whose resolved target is the repo's `.git`
+ * directory or anything inside it. Git internals are reached through the
+ * `git.*` RPCs, never `file.*`; permitting a write here is the post-`project.open`
+ * config-exec vector: a signed agent could `file.write` `.git/config`
+ * `filter.<d>.process=<cmd>` + an in-tree `.gitattributes`, then `git.stageFile`
+ * (clean) or a checkout (smudge) fires the filter as the daemon UID. The
+ * `filter.*` namespace cannot be `-c`-cleared at runtime, and `assertNoExecConfig`
+ * only runs at `project.open`, so a post-open `.git/config` write would otherwise
+ * slip past every guard. `repoReal` and `target` are both realpath-resolved by
+ * the caller, so this lexical first-segment check is not symlink-foolable.
+ */
+function assertNotGitInternal(repoReal: string, target: string, filePathRaw: string): void {
+  const rel = relative(repoReal, target);
+  if (rel === '.git' || rel.split(sep)[0] === '.git') {
+    throw new Error(
+      `refusing to modify git internals via file.*: ${filePathRaw} resolves into .git/`,
+    );
+  }
+}
+
+/**
  * True when a git config key (already lower-cased by `git config --list`) names
  * an arbitrary-command vector that runs as the daemon UID on a routine read or
  * checkout. A command-line `-c` neutralizes some of these per-spawn, but
@@ -232,27 +253,64 @@ function isExecBearingConfigKey(key: string, value: string): boolean {
 }
 
 /**
- * Scan a repo's effective git config (local + any includes it pulls in) and
- * refuse to register a repo that carries an exec-bearing key. `git config
- * --list` itself never invokes a filter/diff/hook driver, so listing the
+ * List a repo's effective local git config as lower-cased `[key, value]` pairs.
+ * `git config --list` never invokes a filter/diff/hook driver, so listing the
  * config of an untrusted repo is safe; it runs under the hardened env from
  * vcs.ts. `-z` is NUL-delimited so a multi-line value can't be confused with an
- * entry boundary; within an entry the key and value are split on the first \n.
- * A config git itself cannot parse (r.ok === false) can't drive an exploit
- * either, so we treat that as "nothing to refuse".
+ * entry boundary; within an entry the key and value split on the first `\n`. A
+ * config git itself cannot parse (r.ok === false) yields `[]` — it can't drive
+ * an exploit either, so "unreadable" and "empty" are treated the same.
  */
-async function assertNoExecConfig(repoReal: string): Promise<void> {
+async function localConfigEntries(repoReal: string): Promise<Array<[string, string]>> {
   const r = await runGit(['config', '--list', '--local', '-z'], repoReal);
-  if (!r.ok) return;
+  if (!r.ok) return [];
+  const entries: Array<[string, string]> = [];
   for (const entry of r.stdout.split('\0')) {
     if (entry.length === 0) continue;
     const nl = entry.indexOf('\n');
     const key = (nl === -1 ? entry : entry.slice(0, nl)).toLowerCase();
     const value = nl === -1 ? '' : entry.slice(nl + 1);
+    entries.push([key, value]);
+  }
+  return entries;
+}
+
+/**
+ * Refuse to register a repo whose config carries any exec-bearing key. Runs once
+ * at `project.open` — the trust boundary for a third-party repo.
+ */
+async function assertNoExecConfig(repoReal: string): Promise<void> {
+  for (const [key, value] of await localConfigEntries(repoReal)) {
     if (isExecBearingConfigKey(key, value)) {
       throw new Error(
         `refusing to open repo: .git/config sets exec-bearing key "${key}" ` +
           '(arbitrary-command vector; remove it before opening this repo)',
+      );
+    }
+  }
+}
+
+/**
+ * Refuse a worktree-materializing op (`git add` → `clean`, checkout/restore →
+ * `smudge`/`process`) when the repo defines a `filter.<d>.process/.clean/.smudge`
+ * driver. This is the residual `project.open`'s open-time scan can't cover alone:
+ * unlike diff.external/textconv (runtime-neutralized by `--no-ext-diff`/
+ * `--no-textconv`) and hooks (`core.hooksPath=/dev/null`), a content filter
+ * CANNOT be `-c`-cleared per spawn, so the only safe response to a repo that
+ * carries one is to refuse the op. The `.git/`-write block keeps a filter out of
+ * a daemon-opened repo; this is the runtime backstop for a config planted by any
+ * other route. Narrower than `assertNoExecConfig` on purpose — `add`/checkout do
+ * not run diff.external/textconv, so those stay neutralize-and-proceed.
+ */
+async function assertNoFilterDriver(repoReal: string): Promise<void> {
+  for (const [key] of await localConfigEntries(repoReal)) {
+    if (
+      key.startsWith('filter.') &&
+      (key.endsWith('.process') || key.endsWith('.clean') || key.endsWith('.smudge'))
+    ) {
+      throw new Error(
+        `refusing op: .git/config sets a content filter driver "${key}" ` +
+          '(arbitrary-command vector that cannot be neutralized per-spawn; remove it)',
       );
     }
   }
@@ -327,7 +385,9 @@ registerHandler('file.read', async (params, _db, ctx) => {
 
 registerHandler('file.write', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
-  const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), false);
+  const filePathRaw = requireStr(params.filePath, 'filePath');
+  const target = await resolveInRoot(repoReal, filePathRaw, false);
+  assertNotGitInternal(repoReal, target, filePathRaw);
   const content = str(params.content) ?? '';
   // Open with O_NOFOLLOW so a symlink swapped in at the FINAL component between
   // resolveInRoot's parent-realpath check and the write (leaf TOCTOU) is
@@ -348,7 +408,9 @@ registerHandler('file.write', async (params, _db, ctx) => {
 
 registerHandler('file.delete', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
-  const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), true);
+  const filePathRaw = requireStr(params.filePath, 'filePath');
+  const target = await resolveInRoot(repoReal, filePathRaw, true);
+  assertNotGitInternal(repoReal, target, filePathRaw);
   await unlink(target);
   return { success: true };
 });
@@ -480,6 +542,11 @@ registerHandler('git.log', async (params, _db, ctx) => {
 
 registerHandler('git.stageFile', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
+  // Re-scan config right before the op: `git add` runs a `filter.<d>.clean`
+  // driver, which the per-spawn `-c` flags cannot neutralize. project.open's
+  // open-time scan + the .git/ write block already gate the daemon route, so
+  // this is defense in depth against a config planted by any other route.
+  await assertNoFilterDriver(repoReal);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   return gitOutcome(await runGit(['add', '--', rel], repoReal), 'git add');
 });
@@ -495,6 +562,9 @@ registerHandler('git.unstageFile', async (params, _db, ctx) => {
 
 registerHandler('git.discardFile', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
+  // `git restore` re-materializes the working-tree copy → runs a `smudge`
+  // filter; re-scan config first (defense in depth, see git.stageFile).
+  await assertNoFilterDriver(repoReal);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   // Restore the working-tree copy from the index (discard unstaged edits).
   return gitOutcome(await runGit(['restore', '--', rel], repoReal), 'git restore');
@@ -513,6 +583,9 @@ registerHandler('git.createBranch', async (params, _db, ctx) => {
 
 registerHandler('git.switchBranch', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
+  // A checkout runs a `filter.<d>.smudge`/`process` driver on the new tree;
+  // re-scan config first (defense in depth, see git.stageFile).
+  await assertNoFilterDriver(repoReal);
   const name = requireStr(params.name, 'name');
   return gitOutcome(await runGit(['switch', '--', name], repoReal), 'git switch');
 });
