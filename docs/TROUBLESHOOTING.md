@@ -91,24 +91,31 @@ You're on the Free tier. Set `REVEALUI_LICENSE_KEY` and restart the daemon. See 
 
 ### "running in FREE (degraded) mode"
 
-No valid license key detected. Set `REVEALUI_LICENSE_KEY` in your environment:
+No valid license key detected. Set `REVEALUI_LICENSE_KEY` (and `REVDEV_LICENSE_PUBLIC_KEY`) in your environment:
 
 ```bash
-export REVEALUI_LICENSE_KEY="RVUI.v2.pro.0.your-key-here"
+export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9..."
+export REVDEV_LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA...
+-----END PUBLIC KEY-----"
 systemctl --user restart revdev-daemon
 ```
 
-### "v1 license keys are no longer accepted"
+### Old-format key (`RVUI-*` or `RVUI.v2.*`) rejected
 
-You have an old-format key (`RVUI-pro-...`). Contact support@revealui.com for a v2 Ed25519-signed key.
+Both the v1 (`RVUI-pro-...`) and the dotted-v2 (`RVUI.v2.pro....`) formats
+are rejected — the daemon treats either as an invalid key and logs
+`[license] RevDev daemon running in FREE (degraded) mode` (it does **not**
+print a format-specific error). Current keys are Ed25519-signed JWTs
+starting with `eyJ`. Contact support@revealui.com for a current key.
 
 ### License key doesn't activate
 
 Verify the key format:
 ```bash
 echo $REVEALUI_LICENSE_KEY
-# Must start with RVUI.v2.
-# Format: RVUI.v2.<tier>.<expiresAt>.<signature>
+# Must start with eyJ
+# Format: a three-part base64url JWT <header>.<payload>.<signature> (alg: EdDSA)
 ```
 
 If the key is valid but still shows Free:
