@@ -13,9 +13,11 @@
 //! verbatim from the TypeScript implementation.
 
 use ed25519_dalek::{Signer, SigningKey};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// The fixed header for every envelope: `{"alg":"EdDSA","typ":"jws"}`.
 /// Hardcoded so the bytes that get base64url-encoded and signed exactly match
@@ -203,6 +205,74 @@ impl StudioIdentity {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Per-install keystore
+//
+// The signing seed lives in a small JSON file under the OS-local app-data dir
+// (`dirs::data_local_dir()`), NOT in a project path. On Windows that resolves
+// to %LOCALAPPDATA%, which is on the Windows profile — never ext4 / never
+// across the 9P boundary. Deliberately lighter than the age-vault so basic
+// file/git editing works out of the box without a vault-init step (RevDev is
+// a free daily-driver editor); the file is created 0600 on unix.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+struct StoredIdentity {
+    #[serde(rename = "agentId")]
+    agent_id: String,
+    #[serde(rename = "seedHex")]
+    seed_hex: String,
+}
+
+/// Default keystore path: `<local-data>/revealui-studio/studio-identity.json`.
+pub fn default_identity_path() -> Result<PathBuf, String> {
+    let dir = dirs::data_local_dir().ok_or_else(|| "no local data directory".to_string())?;
+    Ok(dir.join("revealui-studio").join("studio-identity.json"))
+}
+
+/// Load the identity from the default keystore, creating + persisting a fresh
+/// one (with a stable per-install agentId) on first run.
+pub fn load_or_create_identity() -> Result<StudioIdentity, String> {
+    load_or_create_at(&default_identity_path()?)
+}
+
+/// Keystore load/create against an explicit path (seam for tests).
+pub fn load_or_create_at(path: &Path) -> Result<StudioIdentity, String> {
+    if path.exists() {
+        let data = fs::read_to_string(path).map_err(|e| format!("read identity: {e}"))?;
+        let stored: StoredIdentity =
+            serde_json::from_str(&data).map_err(|e| format!("parse identity: {e}"))?;
+        let bytes =
+            hex::decode(stored.seed_hex.trim()).map_err(|e| format!("decode signing seed: {e}"))?;
+        let seed: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| "signing seed must be 32 bytes".to_string())?;
+        return Ok(StudioIdentity::from_seed(stored.agent_id, &seed));
+    }
+
+    let agent_id = format!("studio-{}", uuid::Uuid::new_v4());
+    let identity = StudioIdentity::generate(agent_id);
+    let stored = StoredIdentity {
+        agent_id: identity.agent_id.clone(),
+        seed_hex: identity.seed_hex(),
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create identity dir: {e}"))?;
+    }
+    fs::write(
+        path,
+        serde_json::to_string(&stored).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write identity: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    }
+    Ok(identity)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,6 +383,19 @@ mod tests {
             .unwrap();
         let sig = ed25519_dalek::Signature::from_slice(&sig_bytes).unwrap();
         assert!(vk.verify(message.as_bytes(), &sig).is_ok());
+    }
+
+    #[test]
+    fn keystore_round_trips_a_stable_identity() {
+        let dir = std::env::temp_dir().join(format!("revdev-id-{}", uuid::Uuid::new_v4()));
+        let path = dir.join("studio-identity.json");
+        let a = load_or_create_at(&path).expect("create");
+        let b = load_or_create_at(&path).expect("load");
+        assert_eq!(a.fingerprint, b.fingerprint);
+        assert_eq!(a.agent_id, b.agent_id);
+        assert_eq!(a.did, b.did);
+        assert!(a.agent_id.starts_with("studio-"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
