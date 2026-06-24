@@ -204,4 +204,27 @@ describe('daemon enrollment gate + per-agent root scoping', () => {
     const wa = await rpcFrame(socketPath, 'file.write', writeA, sign(a, 'file.write', writeA));
     expect((wa.result as { success: boolean }).success).toBe(true);
   });
+
+  it('rejects an UNSIGNED git.log naming a victim actorAgentId (-32003, B-1)', async () => {
+    // repoB is owned by agent-b. An UNSIGNED caller supplies the victim's
+    // actorAgentId to try to read B's history. git.log is now signature-
+    // REQUIRED, so it is refused at the gate (-32003) — the spoofable
+    // actorAgentId never reaches an authorization decision. (Was served before
+    // the B-1 fix.)
+    const res = await rpcFrame(socketPath, 'git.log', {
+      repoPath: repoB,
+      actorAgentId: b.agentId,
+      limit: 5,
+    });
+    expect(res.result).toBeUndefined();
+    expect(res.error?.code).toBe(-32003);
+
+    // Same for git.status.
+    const st = await rpcFrame(socketPath, 'git.status', {
+      repoPath: repoB,
+      actorAgentId: b.agentId,
+    });
+    expect(st.result).toBeUndefined();
+    expect(st.error?.code).toBe(-32003);
+  });
 });
