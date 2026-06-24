@@ -105,22 +105,26 @@ describe('deploy bridge (browser mocks)', () => {
 
   // ── Secrets ───────────────────────────────────────────────────────────────
 
-  it('generateSecret returns string of requested length', async () => {
+  it('generateSecret returns an obviously-fake secret of the requested length', async () => {
     const result = await generateSecret(48);
     expect(result).toHaveLength(48);
-    expect(result).toBe('x'.repeat(48));
+    // Must NOT look like a real secret — it should scream MOCK so it can't be
+    // mistaken for or copied into a real env (see audit Theme 2).
+    expect(result.startsWith('MOCK_SECRET')).toBe(true);
+    expect(result).not.toBe('x'.repeat(48));
   });
 
-  it('generateKek returns 64-char string', async () => {
+  it('generateKek returns an obviously-fake 64-char value', async () => {
     const result = await generateKek();
     expect(result).toHaveLength(64);
-    expect(result).toBe('a'.repeat(64));
+    expect(result.startsWith('MOCK_KEK')).toBe(true);
+    expect(result).not.toBe('a'.repeat(64));
   });
 
-  it('generateRsaKeypair returns PEM key tuple', async () => {
+  it('generateRsaKeypair returns obviously-fake key sentinels', async () => {
     const [priv, pub] = await generateRsaKeypair();
-    expect(priv).toBe('MOCK_PRIVATE_KEY_PEM');
-    expect(pub).toBe('MOCK_PUBLIC_KEY_PEM');
+    expect(priv).toBe('MOCK_PRIVATE_KEY_DO_NOT_USE');
+    expect(pub).toBe('MOCK_PUBLIC_KEY_DO_NOT_USE');
   });
 
   // ── Health ────────────────────────────────────────────────────────────────

@@ -133,8 +133,9 @@ describe('signed git.* flow (zero-9P P2)', () => {
     });
     const commits = r.result?.commits as Array<Record<string, unknown>>;
     expect(commits.length).toBe(1);
-    expect(typeof commits[0].timestamp).toBe('number');
-    expect(commits[0].timestamp as number).toBeGreaterThan(0);
-    expect(commits[0].subject).toBe('initial commit');
+    const first = commits[0] as Record<string, unknown>;
+    expect(typeof first.timestamp).toBe('number');
+    expect(first.timestamp as number).toBeGreaterThan(0);
+    expect(first.subject).toBe('initial commit');
   });
 });
