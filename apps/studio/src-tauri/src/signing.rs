@@ -53,6 +53,10 @@ pub fn requires_signature(method: &str) -> bool {
             | "git.diffContent"
             | "git.readBlobAtHead"
             | "git.readBlobAtIndex"
+            // Root registration is signature-required so the daemon records the
+            // root under the verified signer (per-agent root scoping). MUST
+            // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
+            | "project.open"
     )
 }
 
