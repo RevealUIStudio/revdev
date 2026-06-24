@@ -119,6 +119,52 @@ const IDENTITY_EXEMPT = new Set([
   'inference.generate',
 ]);
 
+/**
+ * Result of the per-request signature check (`verifyOrWarn`).
+ *   - 'verified': a well-formed Ed25519 envelope passed every check and
+ *     `ctx.agentId` is now bound to the signer.
+ *   - 'none': no `x-revdev-signature` was present.
+ *   - 'invalid': a signature was present but failed a check (parse, unknown
+ *     key, bad signature, stale ts, method/params mismatch, nonce replay).
+ */
+type VerificationResult = 'verified' | 'none' | 'invalid';
+
+/**
+ * Methods that MUST carry a verified Ed25519 signature — every mutation and
+ * every content-returning read. The `0600` socket alone stops a hostile
+ * non-owner WSL process, but ANY host process can `wsl.exe` in as the WSL
+ * user and reach the socket; the signature is the real barrier that keeps
+ * such a process from reading project files (or `~/.ssh`, `~/.age-identity`
+ * via a traversal) or mutating the repo without Studio's per-install key.
+ *
+ * Payload-free coordination reads (`ping`, `session.*`, `git.status` /
+ * `git.listBranches` / `git.log` name+metadata lists, `project.open`) stay
+ * signature-OPTIONAL behind the `0600` boundary — they expose no file
+ * content and registering a project root exfiltrates nothing on its own.
+ */
+const MUTATING_OR_CONTENT_METHODS = new Set([
+  // file surface — writes + content/metadata reads
+  'file.read',
+  'file.write',
+  'file.delete',
+  'file.stat',
+  // git mutations
+  'git.stageFile',
+  'git.unstageFile',
+  'git.discardFile',
+  'git.createBranch',
+  'git.switchBranch',
+  'git.deleteBranch',
+  'git.commit',
+  'git.push',
+  'git.pull',
+  // git content-returning reads (diffFile/diffContent embed source lines)
+  'git.diffFile',
+  'git.diffContent',
+  'git.readBlobAtHead',
+  'git.readBlobAtIndex',
+]);
+
 // ---------------------------------------------------------------------------
 // Stale-session pruning state (GAP-153)
 //
@@ -231,6 +277,24 @@ export function getShutdownSignal(): AbortSignal | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Active daemon config — set at startDaemon so handlers registered in other
+// modules (e.g. filegit.ts) can read effective limits like
+// `maxInlineReadBytes` without threading `cfg` through the handler signature.
+// Null before the first startDaemon call.
+// ---------------------------------------------------------------------------
+
+let _daemonConfig: DaemonConfig | null = null;
+
+/**
+ * Returns the effective config of the running daemon. Falls back to
+ * DAEMON_DEFAULTS when called before startDaemon (e.g. a handler invoked in
+ * a unit test that never started a server) so callers never see `null`.
+ */
+export function getDaemonConfig(): DaemonConfig {
+  return _daemonConfig ?? DAEMON_DEFAULTS;
+}
+
+// ---------------------------------------------------------------------------
 // In-flight handler counter + shutdown gate.
 //
 // `_activeHandlerCount` is incremented before each `await handler()` and
@@ -325,7 +389,11 @@ function asStringArray(v: unknown): string[] {
 const SIG_TS_WINDOW_SECS = 60;
 const NONCE_SWEEP_WINDOW_MINUTES = 10;
 
-async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Promise<void> {
+async function verifyOrWarn(
+  req: RpcRequest,
+  db: PGlite,
+  ctx: SocketContext,
+): Promise<VerificationResult> {
   // Reset any prior signature binding on this socket before processing the
   // current request. Connection-level bindings (register/attach/param) are
   // restored from the pre-signature snapshot. Without this, a signed call
@@ -344,19 +412,19 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
   const envelopeStr = req['x-revdev-signature'];
   if (!envelopeStr) {
     log.debug('no signature', { method: req.method });
-    return;
+    return 'none';
   }
 
   const parsed = parseEnvelope(envelopeStr);
   if (!parsed) {
     log.warn('signature parse failed', { method: req.method });
-    return;
+    return 'invalid';
   }
 
   const didParsed = parseDid(parsed.payload.did);
   if (!didParsed) {
     log.warn('signature did unparseable', { did: parsed.payload.did });
-    return;
+    return 'invalid';
   }
 
   if (parsed.payload.kid !== didParsed.fingerprint) {
@@ -364,7 +432,7 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
       kid: parsed.payload.kid,
       fingerprint: didParsed.fingerprint,
     });
-    return;
+    return 'invalid';
   }
 
   const keyRow = await db.query<{ public_key_pem: string }>(
@@ -374,18 +442,18 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
   );
   if (keyRow.rows.length === 0) {
     log.warn('signature unknown key', { kid: parsed.payload.kid, agentId: didParsed.agentId });
-    return;
+    return 'invalid';
   }
 
   const publicKeyPem = keyRow.rows[0]?.public_key_pem;
   if (!publicKeyPem || !verifyEnvelope(parsed, publicKeyPem)) {
     log.warn('signature invalid', { kid: parsed.payload.kid });
-    return;
+    return 'invalid';
   }
 
   if (Math.abs(Date.now() / 1000 - parsed.payload.ts) > SIG_TS_WINDOW_SECS) {
     log.warn('signature ts outside window', { ts: parsed.payload.ts });
-    return;
+    return 'invalid';
   }
 
   if (parsed.payload.method !== req.method) {
@@ -393,12 +461,12 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
       payloadMethod: parsed.payload.method,
       reqMethod: req.method,
     });
-    return;
+    return 'invalid';
   }
 
   if (hashParams(req.method, req.params) !== parsed.payload.paramsHash) {
     log.warn('signature paramsHash mismatch', { method: req.method });
-    return;
+    return 'invalid';
   }
 
   try {
@@ -408,7 +476,7 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
     ]);
   } catch {
     log.warn('signature nonce replay', { nonce: parsed.payload.nonce, agentId: didParsed.agentId });
-    return;
+    return 'invalid';
   }
 
   // Snapshot the pre-signature connection identity so the NEXT request can
@@ -422,6 +490,7 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
   ctx.agentId = didParsed.agentId;
   ctx.boundVia = 'signature';
   ctx.verifiedSignature = { kid: parsed.payload.kid, nonce: parsed.payload.nonce };
+  return 'verified';
 }
 
 /** Accept either `paths: string[]` or `filePath: string` — normalize to array. */
@@ -1120,6 +1189,9 @@ export async function startDaemon(
   config: Partial<DaemonConfig> = {},
 ): Promise<{ close: () => Promise<void>; _db: PGlite }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
+  // Publish the effective config so handlers in other modules (filegit.ts)
+  // can read limits like maxInlineReadBytes without a cfg parameter.
+  _daemonConfig = cfg;
 
   // Reset shutdown signal + closing gate for this daemon lifecycle.
   // _shutdownController is aborted in close(); _closing is set to true
@@ -1136,7 +1208,11 @@ export async function startDaemon(
 
   // Ensure data directory exists
   await mkdir(cfg.dataDir, { recursive: true });
-  await mkdir(dirname(cfg.socketPath), { recursive: true });
+  // Create the socket's parent dir with an explicit owner-only mode. Without
+  // `mode`, the dir inherits the umask; the socket itself is bound 0600 (see
+  // listen() below), but a world-traversable parent dir is an unnecessary
+  // weakening of the filesystem boundary that gates the Unix socket.
+  await mkdir(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });
 
   // Initialize PGlite and bring the schema to the latest version. A failed
   // or future-version migration throws MigrationError — the daemon refuses
@@ -1364,10 +1440,33 @@ export async function startDaemon(
           continue;
         }
 
-        // Signature gate (accept-if-present, P1). Attempts to bind ctx.agentId
-        // from a verified Ed25519 envelope. Never rejects the request — invalid
-        // or missing signatures fall through to the identity gate below.
-        await verifyOrWarn(req, db, ctx);
+        // Signature gate. Attempts to bind ctx.agentId from a verified Ed25519
+        // envelope. For coordination methods this is accept-if-present (invalid
+        // or missing signatures fall through to the identity gate below). For
+        // MUTATING_OR_CONTENT_METHODS the signature is REQUIRED — anything other
+        // than a fully-verified envelope is rejected with -32003 before the
+        // handler runs, mirroring the license-guard block above.
+        const verification = await verifyOrWarn(req, db, ctx);
+        if (MUTATING_OR_CONTENT_METHODS.has(req.method) && verification !== 'verified') {
+          socket.write(
+            `${JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              error: {
+                code: -32003,
+                message: 'Signature required',
+                data: {
+                  method: req.method,
+                  reason:
+                    verification === 'none'
+                      ? 'missing Ed25519 signature'
+                      : 'invalid Ed25519 signature',
+                },
+              },
+            })}\n`,
+          );
+          continue;
+        }
 
         // Identity gate: most coordination calls need a registered agent.
         // Fallback: accept `actorAgentId` in params (requireAgent will validate).

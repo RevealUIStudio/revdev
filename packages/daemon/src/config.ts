@@ -68,6 +68,23 @@ export interface DaemonConfig {
    */
   gitTimeoutMs: number;
   /**
+   * Maximum size in UTF-8 bytes of file/blob CONTENT returned inline by a
+   * content-returning read (`file.read`, `git.diffContent`,
+   * `git.readBlobAtHead`, `git.readBlobAtIndex`). The inbound `maxLineBytes`
+   * cap only guards request frames; it does NOT bound a response the daemon
+   * writes back. Without this, a multi-MB file would be serialized into a
+   * single JSON-RPC response frame and shipped over the relay, blowing the
+   * client's reassembly buffer.
+   *
+   * Above the cap the handler returns `{ tooLarge: true, bytes }` instead of
+   * `content`; the editor falls back to a streamed / read-only view (P1/P2).
+   * Measured pre-serialize on the raw bytes (JSON escaping can roughly double
+   * the wire size, so this sits comfortably under `maxLineBytes`).
+   *
+   * 768 KiB default is generous for any source file an editor opens inline.
+   */
+  maxInlineReadBytes: number;
+  /**
    * Maximum wall-clock time (in ms) the daemon's `close()` waits for
    * in-flight RPC handlers to complete before tearing down PGlite and
    * the Unix socket. Pre-this-flag, `db.close()` raced with active
@@ -107,5 +124,6 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   pruneIntervalMs: 60 * 60 * 1000, // 1 hour
   maxLineBytes: 1_048_576, // 1 MiB
   gitTimeoutMs: 60_000, // 60 s
+  maxInlineReadBytes: 786_432, // 768 KiB
   shutdownGracePeriodMs: 5_000, // 5 s
 };

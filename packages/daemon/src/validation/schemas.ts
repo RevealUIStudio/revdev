@@ -460,4 +460,142 @@ export const schemas: Record<string, z.ZodType> = {
       actorAgentId,
     })
     .passthrough(),
+
+  // -- File surface (P0: daemon-owned ext4 I/O) -------------------------------
+  // `safePath` already rejects `..` traversal + system roots; the handler
+  // additionally realpath-checks every target is a descendant of a registered
+  // project root, so this is a first (cheap) line of defense, not the only one.
+  'project.open': z
+    .object({
+      repoPath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.read': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.write': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      // Content is bounded by the inbound `maxLineBytes` frame cap, not here —
+      // MAX_BODY_LENGTH (50k) is far too small for a legitimate source file.
+      content: z.string(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.delete': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.stat': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  // -- Git surface (P0: daemon-owned, shells the git binary via vcs.ts) -------
+  'git.status': z.object({ repoPath: safePath, actorAgentId }).passthrough(),
+
+  'git.diffFile': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      staged: z.boolean().optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.diffContent': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.stageFile': z.object({ repoPath: safePath, filePath: safePath, actorAgentId }).passthrough(),
+
+  'git.unstageFile': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.discardFile': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.listBranches': z.object({ repoPath: safePath, actorAgentId }).passthrough(),
+
+  'git.createBranch': z
+    .object({
+      repoPath: safePath,
+      name: z.string().max(256),
+      baseBranch: z.string().max(256).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.switchBranch': z
+    .object({ repoPath: safePath, name: z.string().max(256), actorAgentId })
+    .passthrough(),
+
+  'git.deleteBranch': z
+    .object({
+      repoPath: safePath,
+      name: z.string().max(256),
+      force: z.boolean().optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.log': z
+    .object({
+      repoPath: safePath,
+      limit: z.number().int().min(1).max(1000).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.commit': z
+    .object({
+      repoPath: safePath,
+      message: z.string().min(1).max(MAX_BODY_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.push': z
+    .object({
+      repoPath: safePath,
+      remote: z.string().max(256).optional(),
+      branch: z.string().max(256).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.pull': z
+    .object({
+      repoPath: safePath,
+      remote: z.string().max(256).optional(),
+      branch: z.string().max(256).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.readBlobAtHead': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.readBlobAtIndex': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
 };

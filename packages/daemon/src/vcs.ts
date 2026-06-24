@@ -144,7 +144,7 @@ export function runChild(
   });
 }
 
-function runGit(
+export function runGit(
   args: string[],
   cwd: string,
   opts?: Partial<RunChildOptions>,
