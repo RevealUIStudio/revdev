@@ -73,6 +73,11 @@ export function _gitRelPathForTest(repoReal: string, filePathRaw: string): strin
   return gitRelPath(repoReal, filePathRaw);
 }
 
+/** @internal — test seam: classify a git config key as exec-bearing or not. */
+export function _isExecBearingConfigKeyForTest(key: string, value: string): boolean {
+  return isExecBearingConfigKey(key, value);
+}
+
 // ---------------------------------------------------------------------------
 // Param + path helpers
 // ---------------------------------------------------------------------------
@@ -180,6 +185,80 @@ function gitRelPath(repoReal: string, filePathRaw: string): string {
 }
 
 /**
+ * True when a git config key (already lower-cased by `git config --list`) names
+ * an arbitrary-command vector that runs as the daemon UID on a routine read or
+ * checkout. A command-line `-c` neutralizes some of these per-spawn, but
+ * `filter.*` is a wildcard namespace that `-c` cannot blanket-clear and a hook
+ * driver fires regardless — so a repo carrying any of them is refused outright
+ * at `project.open` rather than trusted to a per-command flag.
+ *
+ *   - diff.external                       — external diff program
+ *   - filter.<d>.process/.clean/.smudge   — content filter driver (clean on add,
+ *                                            smudge/process on checkout)
+ *   - <section>.textconv                  — diff textconv driver
+ *   - core.fsmonitor / core.sshCommand    — fsmonitor + ssh command
+ *   - core.pager                          — pager command
+ *   - remote.<r>.uploadpack/.receivepack  — remote-side program override
+ *   - url.<u>.insteadOf/.pushInsteadOf    — URL rewrite (pairs with ext::/ssh)
+ *   - alias.<a> whose value starts with ! — shell alias
+ *
+ * Value is consulted only for aliases (the `!` shell-escape marker); for every
+ * other key the presence of the key is itself the finding.
+ */
+function isExecBearingConfigKey(key: string, value: string): boolean {
+  if (
+    key === 'diff.external' ||
+    key === 'core.fsmonitor' ||
+    key === 'core.sshcommand' ||
+    key === 'core.pager'
+  ) {
+    return true;
+  }
+  if (
+    key.startsWith('filter.') &&
+    (key.endsWith('.process') || key.endsWith('.clean') || key.endsWith('.smudge'))
+  ) {
+    return true;
+  }
+  if (key.endsWith('.textconv')) return true;
+  if (key.startsWith('remote.') && (key.endsWith('.uploadpack') || key.endsWith('.receivepack'))) {
+    return true;
+  }
+  if (key.startsWith('url.') && (key.endsWith('.insteadof') || key.endsWith('.pushinsteadof'))) {
+    return true;
+  }
+  if (key.startsWith('alias.') && value.startsWith('!')) return true;
+  return false;
+}
+
+/**
+ * Scan a repo's effective git config (local + any includes it pulls in) and
+ * refuse to register a repo that carries an exec-bearing key. `git config
+ * --list` itself never invokes a filter/diff/hook driver, so listing the
+ * config of an untrusted repo is safe; it runs under the hardened env from
+ * vcs.ts. `-z` is NUL-delimited so a multi-line value can't be confused with an
+ * entry boundary; within an entry the key and value are split on the first \n.
+ * A config git itself cannot parse (r.ok === false) can't drive an exploit
+ * either, so we treat that as "nothing to refuse".
+ */
+async function assertNoExecConfig(repoReal: string): Promise<void> {
+  const r = await runGit(['config', '--list', '--local', '-z'], repoReal);
+  if (!r.ok) return;
+  for (const entry of r.stdout.split('\0')) {
+    if (entry.length === 0) continue;
+    const nl = entry.indexOf('\n');
+    const key = (nl === -1 ? entry : entry.slice(0, nl)).toLowerCase();
+    const value = nl === -1 ? '' : entry.slice(nl + 1);
+    if (isExecBearingConfigKey(key, value)) {
+      throw new Error(
+        `refusing to open repo: .git/config sets exec-bearing key "${key}" ` +
+          '(arbitrary-command vector; remove it before opening this repo)',
+      );
+    }
+  }
+}
+
+/**
  * Wrap content in an inline-or-tooLarge envelope. The inbound maxLineBytes
  * cap guards request frames only; a content-returning READ would otherwise
  * serialize an unbounded file into a single response frame. Above the cap the
@@ -225,6 +304,12 @@ registerHandler('project.open', async (params, _db, ctx) => {
     // change can never register an unowned (globally-usable) root.
     throw new Error('project.open requires a verified signer identity');
   }
+  // Refuse to register a git repo whose config carries an exec-bearing key.
+  // project.open is the trust boundary for a third-party repo: without this a
+  // routine `git.diffFile`/`git.stageFile`/checkout would run attacker code as
+  // the daemon UID (e.g. exfil ~/.age-identity/keys.txt). Done BEFORE adding to
+  // registeredRoots so a refused repo is never usable by file.*/git.*.
+  if (isRepo) await assertNoExecConfig(real);
   registeredRoots.set(real, ctx.agentId);
   return { success: true, root: real, isGitRepo: isRepo };
 });
@@ -320,7 +405,12 @@ registerHandler('git.status', async (params, _db, ctx) => {
 registerHandler('git.diffFile', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
-  const args = ['diff'];
+  // --no-ext-diff / --no-textconv neutralize a diff.external command or a
+  // textconv driver (both arbitrary-command vectors) for THIS spawn without
+  // breaking the diff — unlike `-c diff.external=`, which makes git try to exec
+  // the empty string and abort the diff. The config-set forms are also refused
+  // at project.open (assertNoExecConfig); this is the run-time backstop.
+  const args = ['diff', '--no-ext-diff', '--no-textconv'];
   if (params.staged === true) args.push('--cached');
   args.push('--', rel);
   const r = await runGit(args, repoReal);
