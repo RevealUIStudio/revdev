@@ -258,11 +258,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				select {
-				case <-done:
-				default:
-					close(done)
-				}
+				closeDone()
 				return
 			}
 
