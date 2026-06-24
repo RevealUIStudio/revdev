@@ -106,7 +106,12 @@ describe('Studio client-key signing (zero-9P P1)', () => {
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-signed-'));
     repo = await mkdtemp(join(tmpdir(), 'revdev-signed-repo-'));
     socketPath = join(dataDir, 'harness.sock');
-    daemon = await startDaemon({ socketPath, dataDir });
+    // Trust anchor: provision THIS client's fingerprint so enrollment is
+    // allowed (the production install writes this root-owned; the test points
+    // the daemon at a fixture via trustedClientFingerprintPath).
+    const anchor = join(dataDir, 'trusted-client-fingerprint');
+    await writeFile(anchor, `# test trust anchor\n${fingerprint}\n`);
+    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
   });
 
   afterAll(async () => {
