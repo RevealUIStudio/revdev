@@ -111,11 +111,21 @@ func (p *Proxy) spawnSession(name string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	// Check the status BEFORE decoding: an auth/server error returns an error
+	// body, not a session, and silently decoding it yields an empty SessionID
+	// that later panics at short()/slice sites or connects to ws/<empty>.
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("spawn failed: API returned %d", resp.StatusCode)
+	}
+
 	var result struct {
 		SessionID string `json:"sessionId"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("decode spawn response: %w", err)
+	}
+	if result.SessionID == "" {
+		return "", fmt.Errorf("spawn response contained an empty session id")
 	}
 	return result.SessionID, nil
 }
