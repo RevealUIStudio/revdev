@@ -26,6 +26,7 @@ import {
   generateAgentKeypair,
   hashParams,
   parseEnvelope,
+  spkiPemToRaw,
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
@@ -559,10 +560,18 @@ registerHandler('session.register', async (params, db, ctx) => {
   // Phase 1 decision #5 ("dual-write failure: best-effort, don't fail RPC").
   await syncSessionRegister({ agentId: id, agentName, env, task: workDir, pid });
 
-  // Agent identity bootstrap: generate or reuse an Ed25519 keypair and
-  // persist it to the agent_identity + agent_identity_keys tables.
-  // Returns the DID and public key PEM to include in the response.
-  const { did, publicKeyPem } = await bootstrapAgentIdentity(db, id, forceRotate);
+  // Agent identity. Two ownership models:
+  //   - CLIENT-OWNED (Studio zero-9P): the caller supplies `publicKeyPem` and
+  //     keeps the private key in its own (Windows-local) vault. The daemon
+  //     registers only the public half and never holds a private key. This is
+  //     the real barrier behind the relay — a host process without the key
+  //     cannot sign a mutation/content read (see MUTATING_OR_CONTENT_METHODS).
+  //   - DAEMON-MINTED (headless hooks): no key supplied, so the daemon
+  //     generates the keypair and mirrors it to revvault, as before.
+  const clientPublicKeyPem = strOrNull(params.publicKeyPem);
+  const { did, publicKeyPem } = clientPublicKeyPem
+    ? await registerClientIdentity(db, id, clientPublicKeyPem)
+    : await bootstrapAgentIdentity(db, id, forceRotate);
 
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
@@ -635,6 +644,62 @@ async function bootstrapAgentIdentity(
   void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
 
   return { did, publicKeyPem: kp.publicKeyPem };
+}
+
+/**
+ * Register a CLIENT-supplied Ed25519 public key for an agent (Studio zero-9P
+ * model). The daemon derives the fingerprint + DID from the SPKI PEM and
+ * stores ONLY the public half in agent_identity / agent_identity_keys — no
+ * private key is generated or written to revvault. Idempotent: re-registering
+ * the same key is a no-op; a different key rotates (supersedes the prior one).
+ */
+async function registerClientIdentity(
+  db: PGlite,
+  agentId: string,
+  publicKeyPem: string,
+): Promise<IdentityResult> {
+  const raw = spkiPemToRaw(publicKeyPem);
+  const fingerprint = computeFingerprint(raw);
+  const did = formatDid(agentId, fingerprint);
+
+  const existing = await db.query<{ fingerprint: string }>(
+    `SELECT fingerprint FROM agent_identity WHERE agent_id = $1`,
+    [agentId],
+  );
+
+  if (existing.rows.length === 0) {
+    await db.query(
+      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
+       VALUES ($1, $2, $3, $4)`,
+      [agentId, did, fingerprint, publicKeyPem],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, publicKeyPem],
+    );
+  } else if (existing.rows[0]?.fingerprint !== fingerprint) {
+    // Rotated to a new client key: supersede the old, register the new.
+    await db.query(
+      `UPDATE agent_identity_keys SET superseded_at = NOW()
+       WHERE agent_id = $1 AND superseded_at IS NULL`,
+      [agentId],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, publicKeyPem],
+    );
+    await db.query(
+      `UPDATE agent_identity
+       SET did = $1, fingerprint = $2, public_key_pem = $3, last_seen_at = NOW()
+       WHERE agent_id = $4`,
+      [did, fingerprint, publicKeyPem, agentId],
+    );
+  }
+  // else: same fingerprint already registered — idempotent no-op.
+
+  return { did, publicKeyPem };
 }
 
 function persistIdentityToRevvault(
