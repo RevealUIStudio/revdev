@@ -110,8 +110,13 @@ describe('Studio client-key signing (zero-9P P1)', () => {
     // allowed (the production install writes this root-owned; the test points
     // the daemon at a fixture via trustedClientFingerprintPath).
     const anchor = join(dataDir, 'trusted-client-fingerprint');
-    await writeFile(anchor, `# test trust anchor\n${fingerprint}\n`);
-    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
+    await writeFile(anchor, `# test trust anchor\n${agentId}:${fingerprint}\n`);
+    daemon = await startDaemon({
+      socketPath,
+      dataDir,
+      trustedClientFingerprintPath: anchor,
+      trustedAnchorRequireRootOwned: false,
+    });
   });
 
   afterAll(async () => {
