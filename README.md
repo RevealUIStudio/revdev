@@ -41,6 +41,7 @@ Studio talks to the daemon; the daemon coordinates agents and tools. Console tal
 revdev/
 ├── apps/studio/          # Tauri 2 desktop app (Studio UI)
 ├── apps/console/         # Go TUI (Console — SSH payment/licensing TUI + agent proxy)
+├── packages/bridge/      # MCP bridge — exposes the daemon to MCP-compatible AI coding tools
 ├── packages/daemon/      # Harness daemon (agent coordination, PTY, tools)
 ├── packages/protocol/    # JSON-RPC types shared across all apps
 └── packages/theme/       # Console theme tokens
