@@ -104,10 +104,16 @@ systemctl --user restart revdev-daemon
 ### Old-format key (`RVUI-*` or `RVUI.v2.*`) rejected
 
 Both the v1 (`RVUI-pro-...`) and the dotted-v2 (`RVUI.v2.pro....`) formats
-are rejected — the daemon treats either as an invalid key and logs
-`[license] RevDev daemon running in FREE (degraded) mode` (it does **not**
-print a format-specific error). Current keys are Ed25519-signed JWTs
-starting with `eyJ`. Contact support@revealui.com for a current key.
+are rejected. The daemon writes this exact line to stderr (visible in
+`journalctl --user -u revdev-daemon`) and then stays in Free mode:
+
+```
+[revdev] Legacy license formats (RVUI.v2.*, RVUI-*) are no longer accepted. Mint an Ed25519-signed JWT via the RevealUI license API or `revdev/scripts/issue-license.ts`.
+```
+
+Current keys are Ed25519-signed JWTs starting with `eyJ`. Contact
+support@revealui.com for a current key. (A non-legacy key that fails for
+another reason logs `[revdev] License validation failed: <reason>` instead.)
 
 ### License key doesn't activate
 
