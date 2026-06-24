@@ -1,7 +1,7 @@
 ---
 type: plan
 repo: revdev
-last-updated: 2026-06-11
+last-updated: 2026-06-23
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
