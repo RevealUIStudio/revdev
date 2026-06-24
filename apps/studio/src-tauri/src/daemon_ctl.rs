@@ -491,3 +491,34 @@ pub async fn daemon_restart() -> Result<u32, String> {
 
     daemon_start().await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_trust_anchor_provision_script, validate_client_fingerprint, TRUST_ANCHOR_PATH,
+    };
+
+    #[test]
+    fn validate_accepts_a_base58_fingerprint() {
+        // Representative bs58 string — alphanumeric, no 0/O/I/l.
+        assert!(validate_client_fingerprint("3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy").is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_empty_and_shell_metacharacters() {
+        assert!(validate_client_fingerprint("").is_err());
+        assert!(validate_client_fingerprint("abc'; rm -rf /").is_err());
+        assert!(validate_client_fingerprint("with space").is_err());
+        assert!(validate_client_fingerprint("with/slash").is_err());
+        assert!(validate_client_fingerprint("$(touch pwned)").is_err());
+    }
+
+    #[test]
+    fn provision_script_embeds_validated_fingerprint_and_anchor_path() {
+        let s = build_trust_anchor_provision_script("ABC123xyz");
+        assert!(s.contains("printf '%s\\n' 'ABC123xyz'"));
+        assert!(s.contains(TRUST_ANCHOR_PATH));
+        assert!(s.contains("sudo tee"));
+        assert!(s.contains("sudo chmod 0644"));
+    }
+}
