@@ -23,8 +23,8 @@
  * Fixed-string matching only (no regex) — typed predicates over each line.
  * Zero dependencies; runs under plain `node`.
  */
-import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 const LEGACY_TOKENS = ['RVUI.v2.', 'RVUI-'];
 const ALLOW_START = 'doclint:allow-legacy-format:start';
