@@ -436,6 +436,14 @@ pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
 
 /// Native Unix: the daemon runs as a local process; no WSL staging is needed.
 /// Register a systemd-user unit with packages/daemon/systemd/install.sh.
+///
+/// NOTE: the client-key enrollment gate still applies on native Unix — a
+/// native-Unix Studio install must provision its signing fingerprint into the
+/// root-owned trust anchor (default `/etc/revdev/trusted-client-fingerprint`,
+/// or REVDEV_DAEMON_TRUSTED_CLIENT_FP) or the daemon rejects its key. This is
+/// left to install.sh / a manual step here because native Unix is the dev/test
+/// surface (tests point the daemon at a fixture anchor); production ships
+/// Windows Studio + WSL daemon, handled by the not(unix) daemon_setup above.
 #[cfg(unix)]
 #[tauri::command]
 pub async fn daemon_setup(_app: tauri::AppHandle) -> Result<String, String> {
