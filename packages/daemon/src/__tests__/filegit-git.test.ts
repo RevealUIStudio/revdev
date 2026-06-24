@@ -135,12 +135,9 @@ describe('signed git.* flow (zero-9P P2)', () => {
   });
 
   it('git.log returns a numeric unix timestamp per commit', async () => {
-    // git.log is signature-optional; identity rides actorAgentId.
-    const r = await rpc(socketPath, 'git.log', {
-      repoPath: repo,
-      actorAgentId: agentId,
-      limit: 10,
-    });
+    // git.log is signature-REQUIRED now (scoped to the verified signer — B-1).
+    const logParams = { repoPath: repo, limit: 10 };
+    const r = await rpc(socketPath, 'git.log', logParams, sign('git.log', logParams));
     const commits = r.result?.commits as Array<Record<string, unknown>>;
     expect(commits.length).toBe(1);
     const first = commits[0] as Record<string, unknown>;
