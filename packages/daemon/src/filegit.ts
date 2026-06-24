@@ -376,7 +376,9 @@ registerHandler('git.discardFile', async (params) => {
 registerHandler('git.createBranch', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const name = requireStr(params.name, 'name');
-  const args = ['branch', name];
+  // `--` so a name/base that slipped past validation can't be read as a flag
+  // (defense in depth; schema's gitRefArg already rejects a leading '-').
+  const args = ['branch', '--', name];
   const base = str(params.baseBranch);
   if (base) args.push(base);
   return gitOutcome(await runGit(args, repoReal), 'git branch');
@@ -385,14 +387,14 @@ registerHandler('git.createBranch', async (params) => {
 registerHandler('git.switchBranch', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const name = requireStr(params.name, 'name');
-  return gitOutcome(await runGit(['switch', name], repoReal), 'git switch');
+  return gitOutcome(await runGit(['switch', '--', name], repoReal), 'git switch');
 });
 
 registerHandler('git.deleteBranch', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const name = requireStr(params.name, 'name');
   const flag = params.force === true ? '-D' : '-d';
-  return gitOutcome(await runGit(['branch', flag, name], repoReal), 'git branch -d');
+  return gitOutcome(await runGit(['branch', flag, '--', name], repoReal), 'git branch -d');
 });
 
 registerHandler('git.commit', async (params) => {

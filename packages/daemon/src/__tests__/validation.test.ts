@@ -381,6 +381,40 @@ describe('inference.status validation', () => {
   });
 });
 
+describe('git option-injection rejection (zero-9P)', () => {
+  it('rejects a branch name starting with "-"', () => {
+    expect(validateParams('git.switchBranch', { repoPath: '/r', name: '--orphan' }).valid).toBe(
+      false,
+    );
+    expect(validateParams('git.createBranch', { repoPath: '/r', name: '-D' }).valid).toBe(false);
+    expect(validateParams('git.deleteBranch', { repoPath: '/r', name: '--force' }).valid).toBe(
+      false,
+    );
+  });
+
+  it('rejects a push/pull remote starting with "-" (--receive-pack / --upload-pack)', () => {
+    expect(
+      validateParams('git.push', {
+        repoPath: '/r',
+        remote: '--receive-pack=touch /tmp/x',
+        branch: 'main',
+      }).valid,
+    ).toBe(false);
+    expect(validateParams('git.pull', { repoPath: '/r', remote: '--upload-pack=evil' }).valid).toBe(
+      false,
+    );
+  });
+
+  it('accepts ordinary branch and remote names', () => {
+    expect(validateParams('git.switchBranch', { repoPath: '/r', name: 'feature/x' }).valid).toBe(
+      true,
+    );
+    expect(
+      validateParams('git.push', { repoPath: '/r', remote: 'origin', branch: 'main' }).valid,
+    ).toBe(true);
+  });
+});
+
 describe('No-schema methods (pass-through)', () => {
   it('ping passes through with empty payload', () => {
     expect(validateParams('ping', {}).valid).toBe(true);
