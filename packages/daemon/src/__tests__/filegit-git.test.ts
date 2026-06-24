@@ -96,8 +96,13 @@ describe('signed git.* flow (zero-9P P2)', () => {
     socketPath = join(dataDir, 'harness.sock');
     // Provision this client's fingerprint into the trust anchor (fixture).
     const anchor = join(dataDir, 'trusted-client-fingerprint');
-    await writeFile(anchor, `${fingerprint}\n`);
-    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
+    await writeFile(anchor, `${agentId}:${fingerprint}\n`);
+    daemon = await startDaemon({
+      socketPath,
+      dataDir,
+      trustedClientFingerprintPath: anchor,
+      trustedAnchorRequireRootOwned: false,
+    });
     await rpc(socketPath, 'session.register', {
       agentId,
       agentName: 'studio-ui',
