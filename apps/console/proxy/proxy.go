@@ -175,7 +175,7 @@ func (p *Proxy) pickSession(s ssh.Session, sessions []SessionInfo) (string, erro
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(s, "  \033[32mSession created: %s\033[0m\r\n\r\n", sessionID[:8])
+		fmt.Fprintf(s, "  \033[32mSession created: %s\033[0m\r\n\r\n", short(sessionID))
 		return sessionID, nil
 	default:
 		// Try to parse as session index
@@ -194,7 +194,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
 	wsURL = fmt.Sprintf("%s/api/terminal/ws/%s", wsURL, sessionID)
 
-	fmt.Fprintf(s, "  \033[90mConnecting to %s...\033[0m\r\n", sessionID[:8])
+	fmt.Fprintf(s, "  \033[90mConnecting to %s...\033[0m\r\n", short(sessionID))
 
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
