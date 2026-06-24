@@ -34,7 +34,11 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
                 : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
             }`}
           >
-            <button type="button" className="flex-1 text-left" onClick={() => onSelect(secret.path)}>
+            <button
+              type="button"
+              className="flex-1 text-left"
+              onClick={() => onSelect(secret.path)}
+            >
               <p className="truncate text-sm font-medium">{secret.path.split('/').pop()}</p>
               <p className="truncate text-xs text-neutral-500">{secret.path}</p>
             </button>
@@ -67,9 +71,8 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
         title="Delete secret"
         body={
           <>
-            Permanently delete{' '}
-            <span className="font-mono text-neutral-100">{pendingDelete}</span>? This destroys the
-            stored value with no undo.
+            Permanently delete <span className="font-mono text-neutral-100">{pendingDelete}</span>?
+            This destroys the stored value with no undo.
           </>
         }
         confirmLabel="Delete secret"

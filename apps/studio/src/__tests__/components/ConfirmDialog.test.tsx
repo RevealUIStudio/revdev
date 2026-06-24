@@ -19,7 +19,13 @@ describe('ConfirmDialog', () => {
 
   it('enables confirm immediately when no type-to-confirm is required', () => {
     render(
-      <ConfirmDialog open title="Stop daemon" body="Sessions end." onConfirm={vi.fn()} onClose={vi.fn()} />,
+      <ConfirmDialog
+        open
+        title="Stop daemon"
+        body="Sessions end."
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
     );
     expect(screen.getByText('Delete').closest('button')).not.toBeDisabled();
   });
@@ -67,9 +73,7 @@ describe('ConfirmDialog', () => {
 
   it('calls onClose when Cancel is clicked', () => {
     const onClose = vi.fn();
-    render(
-      <ConfirmDialog open title="Delete" body="x" onConfirm={vi.fn()} onClose={onClose} />,
-    );
+    render(<ConfirmDialog open title="Delete" body="x" onConfirm={vi.fn()} onClose={onClose} />);
     fireEvent.click(screen.getByText('Cancel'));
     expect(onClose).toHaveBeenCalledOnce();
   });
