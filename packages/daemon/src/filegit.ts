@@ -375,13 +375,7 @@ registerHandler('file.stat', async (params, _db, ctx) => {
 // ---------------------------------------------------------------------------
 
 registerHandler('git.status', async (params, _db, ctx) => {
-  // Signature-OPTIONAL metadata read: accept the socket-bound identity OR a
-  // per-request actorAgentId (fresh-per-call clients). Still scoped to the
-  // owning agent — the strong boundary is the signed mutations + content reads.
-  const repoReal = await requireRoot(
-    requireStr(params.repoPath, 'repoPath'),
-    ctx.agentId ?? str(params.actorAgentId),
-  );
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const r = await runGit(['status', '--porcelain=v1', '--branch'], repoReal);
   if (!r.ok) return { success: false, error: r.stderr || 'git status failed' };
   let branch: string | null = null;
@@ -448,11 +442,7 @@ registerHandler('git.readBlobAtIndex', async (params, _db, ctx) => {
 });
 
 registerHandler('git.listBranches', async (params, _db, ctx) => {
-  // Signature-OPTIONAL metadata read — see git.status.
-  const repoReal = await requireRoot(
-    requireStr(params.repoPath, 'repoPath'),
-    ctx.agentId ?? str(params.actorAgentId),
-  );
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const r = await runGit(['branch', '--format=%(refname:short)'], repoReal);
   if (!r.ok) return { success: false, error: r.stderr || 'git branch failed' };
   const branches = r.stdout.split('\n').filter(Boolean);
@@ -461,11 +451,7 @@ registerHandler('git.listBranches', async (params, _db, ctx) => {
 });
 
 registerHandler('git.log', async (params, _db, ctx) => {
-  // Signature-OPTIONAL metadata read — see git.status.
-  const repoReal = await requireRoot(
-    requireStr(params.repoPath, 'repoPath'),
-    ctx.agentId ?? str(params.actorAgentId),
-  );
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const limit = typeof params.limit === 'number' ? Math.max(1, Math.floor(params.limit)) : 50;
   // %x1f = ASCII unit separator, unambiguous against any commit subject text.
   // %aI = author date ISO-8601 (display); %at = author date as a unix timestamp

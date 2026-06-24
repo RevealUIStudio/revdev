@@ -126,8 +126,24 @@ export interface DaemonConfig {
    * in-process and never handed out, so they are not spoofable by a host
    * process. Override the path via REVDEV_DAEMON_TRUSTED_CLIENT_FP (tests point
    * it at a fixture).
+   *
+   * Each line is `agentId:fingerprint` — the agentId is bound, not just the
+   * key, so one trusted key cannot enroll under arbitrary agentIds (review B-3).
    */
   trustedClientFingerprintPath: string;
+  /**
+   * When true (production default), the trust anchor AND every ancestor
+   * directory must be root-owned, non-symlink, and not group/other-writable,
+   * and the file is opened O_NOFOLLOW (review B-2). This is what neutralizes a
+   * WSL-user attacker who points REVDEV_DAEMON_TRUSTED_CLIENT_FP at a file they
+   * control: their path is not root-owned, so it is rejected.
+   *
+   * DELIBERATELY not env-settable — only the programmatic startDaemon config
+   * can set it false (tests, which use a fixture anchor in a tmpdir). An
+   * attacker controls their --user unit's environment but cannot reach this
+   * field, so they cannot disable the ownership requirement.
+   */
+  trustedAnchorRequireRootOwned: boolean;
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
@@ -148,4 +164,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   maxInlineReadBytes: 786_432, // 768 KiB
   shutdownGracePeriodMs: 5_000, // 5 s
   trustedClientFingerprintPath: '/etc/revdev/trusted-client-fingerprint',
+  trustedAnchorRequireRootOwned: true,
 };

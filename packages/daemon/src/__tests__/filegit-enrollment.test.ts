@@ -121,9 +121,16 @@ describe('daemon enrollment gate + per-agent root scoping', () => {
     repoB = await mkdtemp(join(tmpdir(), 'revdev-enroll-repoB-'));
     socketPath = join(dataDir, 'harness.sock');
     const anchor = join(dataDir, 'trusted-client-fingerprint');
-    // Anchor trusts A and B but NOT evil.
-    await writeFile(anchor, `${a.fingerprint}\n${b.fingerprint}\n`);
-    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
+    // Anchor trusts the (agentId, fingerprint) PAIRS of A and B but NOT evil.
+    await writeFile(anchor, `${a.agentId}:${a.fingerprint}\n${b.agentId}:${b.fingerprint}\n`);
+    daemon = await startDaemon({
+      socketPath,
+      dataDir,
+      trustedClientFingerprintPath: anchor,
+      // Fixture anchor in a tmpdir is not root-owned; disable the production
+      // ownership requirement via the programmatic config (not env).
+      trustedAnchorRequireRootOwned: false,
+    });
   });
 
   afterAll(async () => {
@@ -196,5 +203,28 @@ describe('daemon enrollment gate + per-agent root scoping', () => {
     const writeA = { repoPath: repoA, filePath: 'ok.txt', content: 'A owns this root' };
     const wa = await rpcFrame(socketPath, 'file.write', writeA, sign(a, 'file.write', writeA));
     expect((wa.result as { success: boolean }).success).toBe(true);
+  });
+
+  it('rejects an UNSIGNED git.log naming a victim actorAgentId (-32003, B-1)', async () => {
+    // repoB is owned by agent-b. An UNSIGNED caller supplies the victim's
+    // actorAgentId to try to read B's history. git.log is now signature-
+    // REQUIRED, so it is refused at the gate (-32003) — the spoofable
+    // actorAgentId never reaches an authorization decision. (Was served before
+    // the B-1 fix.)
+    const res = await rpcFrame(socketPath, 'git.log', {
+      repoPath: repoB,
+      actorAgentId: b.agentId,
+      limit: 5,
+    });
+    expect(res.result).toBeUndefined();
+    expect(res.error?.code).toBe(-32003);
+
+    // Same for git.status.
+    const st = await rpcFrame(socketPath, 'git.status', {
+      repoPath: repoB,
+      actorAgentId: b.agentId,
+    });
+    expect(st.result).toBeUndefined();
+    expect(st.error?.code).toBe(-32003);
   });
 });

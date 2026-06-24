@@ -343,6 +343,47 @@ pub async fn daemon_stop() -> Result<(), String> {
 
 // ── First-run setup ───────────────────────────────────────────────────────────
 
+/// Root-owned trust anchor path the daemon reads at client-key enrollment time.
+/// MUST match `DaemonConfig.trustedClientFingerprintPath` in
+/// packages/daemon/src/config.ts.
+#[cfg(any(not(unix), test))]
+const TRUST_ANCHOR_PATH: &str = "/etc/revdev/trusted-client-fingerprint";
+
+/// Validate the anchor components before they are shell-interpolated into the
+/// provisioning script: the agentId is [A-Za-z0-9._-] and the base58 (bs58)
+/// fingerprint is ASCII-alphanumeric — both non-empty, neither containing a
+/// `:` (the anchor delimiter) or any shell metacharacter, so a malformed
+/// identity file can never inject shell. Platform-independent + unit-tested on
+/// Linux even though the only caller is the not(unix) WSL `daemon_setup`.
+#[cfg(any(not(unix), test))]
+fn validate_anchor_components(agent_id: &str, fp: &str) -> Result<(), String> {
+    let ok_agent =
+        !agent_id.is_empty() && agent_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !ok_agent {
+        return Err(format!("refusing to provision a malformed agentId: {agent_id:?}"));
+    }
+    if fp.is_empty() || !fp.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(format!("refusing to provision a malformed client fingerprint: {fp:?}"));
+    }
+    Ok(())
+}
+
+/// Build the sudo script that writes `agentId:fingerprint` to the root-owned
+/// trust anchor. The agentId is bound (not just the key) so one trusted key
+/// cannot enroll under arbitrary agentIds (review B-3). It OVERWRITES (not
+/// appends), so re-running setup after a rotation replaces the value rather
+/// than accumulating stale keys. Callers MUST `validate_anchor_components` first.
+#[cfg(any(not(unix), test))]
+fn build_trust_anchor_provision_script(agent_id: &str, fp: &str) -> String {
+    let path = TRUST_ANCHOR_PATH;
+    format!(
+        "set -e; \
+         sudo mkdir -p /etc/revdev; \
+         printf '%s\\n' '{agent_id}:{fp}' | sudo tee {path} >/dev/null; \
+         sudo chmod 0644 {path}"
+    )
+}
+
 /// Provision the WSL side on Windows: assert systemd is enabled (writing the
 /// gate + failing with an actionable error if not), stage the bundled relay
 /// into `~/.local/bin`, and enable the daemon's systemd-user unit. Returns a
@@ -400,33 +441,26 @@ pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
     }
 
     // Provision the client trust anchor. The daemon rejects enrollment of any
-    // client key whose fingerprint is not in this ROOT-OWNED file (a host
-    // process running as the WSL user could forge a user-owned file, so the
-    // anchor must be root:root). Write THIS install's Studio signing
-    // fingerprint — "one install == one trusted client key". Overwrites (not
-    // appends) so re-running setup after an identity rotation replaces the old
-    // value rather than accumulating stale keys.
+    // (agentId, key) pair not in this ROOT-OWNED file (a host process running as
+    // the WSL user could forge a user-owned file, so the anchor must be
+    // root:root). Write THIS install's Studio (agentId, fingerprint) pair —
+    // "one install == one trusted client key". Overwrites (not appends) so
+    // re-running setup after a rotation replaces the old value.
     let identity = crate::signing::load_or_create_identity()?;
+    let agent_id = identity.agent_id;
     let fp = identity.fingerprint;
-    // Defense-in-depth: base58 fingerprints are alphanumeric. Refuse to shell-
-    // interpolate anything else (no injection via a malformed identity file).
-    if fp.is_empty() || !fp.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(format!("refusing to provision a malformed client fingerprint: {fp:?}"));
-    }
-    let provision = format!(
-        "set -e; \
-         sudo mkdir -p /etc/revdev; \
-         printf '%s\\n' '{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint >/dev/null; \
-         sudo chmod 0644 /etc/revdev/trusted-client-fingerprint"
-    );
+    // Validation + script construction are platform-independent helpers (unit-
+    // tested on Linux CI); only the wsl::run execution below is Windows-only.
+    validate_anchor_components(&agent_id, &fp)?;
+    let provision = build_trust_anchor_provision_script(&agent_id, &fp);
     let pout = wsl::run(&["bash", "-lc", &provision]).await?;
     if !pout.status.success() {
         return Err(format!(
             "Relay installed, but provisioning the client trust anchor failed (needs sudo). \
              The daemon will reject Studio's key until \
-             /etc/revdev/trusted-client-fingerprint contains this fingerprint. Run inside \
+             /etc/revdev/trusted-client-fingerprint contains this entry. Run inside \
              WSL, then re-run setup:\n\n  \
-             echo '{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint\n\nsudo error: {}",
+             echo '{agent_id}:{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint\n\nsudo error: {}",
             String::from_utf8_lossy(&pout.stderr).trim()
         ));
     }
@@ -461,4 +495,40 @@ pub async fn daemon_restart() -> Result<u32, String> {
     sleep(Duration::from_millis(500)).await;
 
     daemon_start().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_trust_anchor_provision_script, validate_anchor_components, TRUST_ANCHOR_PATH};
+
+    #[test]
+    fn validate_accepts_a_studio_agent_and_base58_fingerprint() {
+        // Representative agentId ("studio-...") + bs58 fingerprint.
+        assert!(
+            validate_anchor_components("studio-abc123", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy").is_ok()
+        );
+    }
+
+    #[test]
+    fn validate_rejects_empty_and_shell_metacharacters() {
+        // Bad fingerprint.
+        assert!(validate_anchor_components("studio-x", "").is_err());
+        assert!(validate_anchor_components("studio-x", "abc'; rm -rf /").is_err());
+        assert!(validate_anchor_components("studio-x", "with space").is_err());
+        assert!(validate_anchor_components("studio-x", "with/slash").is_err());
+        // Bad agentId — empty, colon (anchor delimiter), or shell metachars.
+        assert!(validate_anchor_components("", "ABC123").is_err());
+        assert!(validate_anchor_components("evil:agent", "ABC123").is_err());
+        assert!(validate_anchor_components("$(touch pwned)", "ABC123").is_err());
+        assert!(validate_anchor_components("a b", "ABC123").is_err());
+    }
+
+    #[test]
+    fn provision_script_embeds_agent_id_fingerprint_pair_and_anchor_path() {
+        let s = build_trust_anchor_provision_script("studio-xyz", "ABC123xyz");
+        assert!(s.contains("printf '%s\\n' 'studio-xyz:ABC123xyz'"));
+        assert!(s.contains(TRUST_ANCHOR_PATH));
+        assert!(s.contains("sudo tee"));
+        assert!(s.contains("sudo chmod 0644"));
+    }
 }
