@@ -134,14 +134,22 @@ The database may be corrupted. Back up and recreate:
 # Stop daemon
 systemctl --user stop revdev-daemon
 
-# Back up current database
+# Back up the entire data directory (see the warning below — this is not
+# just the database)
 mv ~/.local/share/revealui ~/.local/share/revealui.bak
 
 # Start daemon (creates fresh database)
 systemctl --user start revdev-daemon
 ```
 
-Note: this loses all session history, tasks, and file reservations. Agent memory and merge request history will also be cleared.
+**Warning — wider blast radius than the database alone.** `~/.local/share/revealui`
+is the whole daemon data directory, not just PGlite. Moving it discards
+**everything** under it: all session history, tasks, and file reservations,
+agent memory and merge-request history, **and** the harness socket
+(`harness.sock`), the PID file (`harness.pid`), and any sidecar/runtime state.
+Only do this with the daemon stopped (as above); the fresh start recreates the
+socket and PID file. If you want to reset *only* the database, scope the move
+to the PGlite subdirectory rather than the entire `revealui` directory.
 
 ### Database grows too large
 
