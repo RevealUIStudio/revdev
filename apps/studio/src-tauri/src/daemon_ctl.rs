@@ -441,26 +441,26 @@ pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
     }
 
     // Provision the client trust anchor. The daemon rejects enrollment of any
-    // client key whose fingerprint is not in this ROOT-OWNED file (a host
-    // process running as the WSL user could forge a user-owned file, so the
-    // anchor must be root:root). Write THIS install's Studio signing
-    // fingerprint — "one install == one trusted client key". Overwrites (not
-    // appends) so re-running setup after an identity rotation replaces the old
-    // value rather than accumulating stale keys.
+    // (agentId, key) pair not in this ROOT-OWNED file (a host process running as
+    // the WSL user could forge a user-owned file, so the anchor must be
+    // root:root). Write THIS install's Studio (agentId, fingerprint) pair —
+    // "one install == one trusted client key". Overwrites (not appends) so
+    // re-running setup after a rotation replaces the old value.
     let identity = crate::signing::load_or_create_identity()?;
+    let agent_id = identity.agent_id;
     let fp = identity.fingerprint;
     // Validation + script construction are platform-independent helpers (unit-
     // tested on Linux CI); only the wsl::run execution below is Windows-only.
-    validate_client_fingerprint(&fp)?;
-    let provision = build_trust_anchor_provision_script(&fp);
+    validate_anchor_components(&agent_id, &fp)?;
+    let provision = build_trust_anchor_provision_script(&agent_id, &fp);
     let pout = wsl::run(&["bash", "-lc", &provision]).await?;
     if !pout.status.success() {
         return Err(format!(
             "Relay installed, but provisioning the client trust anchor failed (needs sudo). \
              The daemon will reject Studio's key until \
-             /etc/revdev/trusted-client-fingerprint contains this fingerprint. Run inside \
+             /etc/revdev/trusted-client-fingerprint contains this entry. Run inside \
              WSL, then re-run setup:\n\n  \
-             echo '{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint\n\nsudo error: {}",
+             echo '{agent_id}:{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint\n\nsudo error: {}",
             String::from_utf8_lossy(&pout.stderr).trim()
         ));
     }
