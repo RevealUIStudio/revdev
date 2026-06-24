@@ -18,6 +18,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { DAEMON_DEFAULTS } from './config.js';
 import { getShutdownSignal, registerHandler } from './server.js';
 
@@ -46,6 +48,12 @@ export interface RunChildOptions {
    * SIGTERM if any source aborts.
    */
   externalSignal?: AbortSignal;
+  /**
+   * Environment for the child. When omitted the child inherits the parent
+   * process environment (Node's default). `runGit` always supplies a hardened
+   * env (see `gitHardenedEnv`); only the generic test seam leaves it unset.
+   */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -90,6 +98,10 @@ export function runChild(
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       signal,
+      // Only override the environment when a caller supplies one (runGit does;
+      // the generic runChild test seam does not). Passing `undefined` here would
+      // make spawn use an EMPTY env on some Node versions, so branch on it.
+      ...(opts.env ? { env: opts.env } : {}),
     });
 
     let stdout = '';
@@ -154,6 +166,14 @@ export function runChild(
  *   - protocol.ext.allow=never — block the `ext::` transport (arbitrary cmd).
  *   - core.fsmonitor= — disable the fsmonitor hook (runs a command).
  *   - core.sshCommand=false — neutralize an attacker-set ssh command.
+ *
+ * NOT here: `diff.external`. Forcing `-c diff.external=` (empty) does NOT make
+ * git fall back to the builtin diff — git tries to exec the empty string and
+ * fails the whole diff ("external diff died", exit 128). The non-breaking
+ * neutralizer is the per-command `--no-ext-diff`/`--no-textconv` flag, applied
+ * at the `git.diffFile` call site (filegit.ts). The config-set form of
+ * `diff.external`/`filter.*`/`*.textconv` is refused up front by the
+ * exec-key scan in `project.open`. See `gitHardenedEnv` for the env vectors.
  */
 const GIT_HARDENING = [
   '-c',
@@ -166,12 +186,37 @@ const GIT_HARDENING = [
   'core.sshCommand=false',
 ];
 
+/**
+ * Hardened environment for every daemon-spawned git. Closes the env-and-system
+ * config vectors a command-line `-c` cannot reach:
+ *   - GIT_CONFIG_NOSYSTEM=1 — ignore /etc/gitconfig (a system-level
+ *     diff.external/core.sshCommand would otherwise apply to every spawn).
+ *   - GIT_CONFIG_GLOBAL pinned to the DAEMON's own ~/.gitconfig — the only
+ *     trusted global, and immune to a $HOME-redirected global config. Pinning
+ *     (rather than nulling) preserves the daemon's commit identity.
+ *   - GIT_ATTR_NOSYSTEM=1 — ignore /etc/gitattributes, which can route a path
+ *     through a filter/textconv driver (arbitrary command) on diff/checkout.
+ *   - GIT_EXTERNAL_DIFF deleted — an inherited value would run on every diff.
+ */
+function gitHardenedEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  env.GIT_CONFIG_NOSYSTEM = '1';
+  env.GIT_CONFIG_GLOBAL = join(homedir(), '.gitconfig');
+  env.GIT_ATTR_NOSYSTEM = '1';
+  delete env.GIT_EXTERNAL_DIFF;
+  return env;
+}
+
 export function runGit(
   args: string[],
   cwd: string,
   opts?: Partial<RunChildOptions>,
 ): Promise<ShellResult> {
-  return runChild('git', [...GIT_HARDENING, ...args], { cwd, ...opts });
+  return runChild('git', [...GIT_HARDENING, ...args], {
+    cwd,
+    env: gitHardenedEnv(),
+    ...opts,
+  });
 }
 
 function str(v: unknown, fallback = ''): string {
