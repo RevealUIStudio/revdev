@@ -398,11 +398,52 @@ pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
-    Ok("RevDev relay installed and daemon enabled in WSL.".to_string())
+
+    // Provision the client trust anchor. The daemon rejects enrollment of any
+    // client key whose fingerprint is not in this ROOT-OWNED file (a host
+    // process running as the WSL user could forge a user-owned file, so the
+    // anchor must be root:root). Write THIS install's Studio signing
+    // fingerprint — "one install == one trusted client key". Overwrites (not
+    // appends) so re-running setup after an identity rotation replaces the old
+    // value rather than accumulating stale keys.
+    let identity = crate::signing::load_or_create_identity()?;
+    let fp = identity.fingerprint;
+    // Defense-in-depth: base58 fingerprints are alphanumeric. Refuse to shell-
+    // interpolate anything else (no injection via a malformed identity file).
+    if fp.is_empty() || !fp.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(format!("refusing to provision a malformed client fingerprint: {fp:?}"));
+    }
+    let provision = format!(
+        "set -e; \
+         sudo mkdir -p /etc/revdev; \
+         printf '%s\\n' '{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint >/dev/null; \
+         sudo chmod 0644 /etc/revdev/trusted-client-fingerprint"
+    );
+    let pout = wsl::run(&["bash", "-lc", &provision]).await?;
+    if !pout.status.success() {
+        return Err(format!(
+            "Relay installed, but provisioning the client trust anchor failed (needs sudo). \
+             The daemon will reject Studio's key until \
+             /etc/revdev/trusted-client-fingerprint contains this fingerprint. Run inside \
+             WSL, then re-run setup:\n\n  \
+             echo '{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint\n\nsudo error: {}",
+            String::from_utf8_lossy(&pout.stderr).trim()
+        ));
+    }
+
+    Ok("RevDev relay installed, client trust anchor provisioned, daemon enabled in WSL.".to_string())
 }
 
 /// Native Unix: the daemon runs as a local process; no WSL staging is needed.
 /// Register a systemd-user unit with packages/daemon/systemd/install.sh.
+///
+/// NOTE: the client-key enrollment gate still applies on native Unix — a
+/// native-Unix Studio install must provision its signing fingerprint into the
+/// root-owned trust anchor (default `/etc/revdev/trusted-client-fingerprint`,
+/// or REVDEV_DAEMON_TRUSTED_CLIENT_FP) or the daemon rejects its key. This is
+/// left to install.sh / a manual step here because native Unix is the dev/test
+/// surface (tests point the daemon at a fixture anchor); production ships
+/// Windows Studio + WSL daemon, handled by the not(unix) daemon_setup above.
 #[cfg(unix)]
 #[tauri::command]
 pub async fn daemon_setup(_app: tauri::AppHandle) -> Result<String, String> {

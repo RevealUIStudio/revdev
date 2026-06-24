@@ -15,7 +15,7 @@
  *   `session.register` are rejected with -32002.
  */
 
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
@@ -164,6 +164,12 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'git.diffContent',
   'git.readBlobAtHead',
   'git.readBlobAtIndex',
+  // Root registration. Signature-REQUIRED so the root is recorded under the
+  // VERIFIED signer's agentId (filegit per-agent root scoping) rather than a
+  // spoofable param — otherwise any unsigned caller could register a root that
+  // a later signed mutation would be authorized against. (Cross-language
+  // contract: signing.rs requires_signature() must mark project.open too.)
+  'project.open',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -646,12 +652,62 @@ async function bootstrapAgentIdentity(
   return { did, publicKeyPem: kp.publicKeyPem };
 }
 
+/** Thrown when a client-supplied key is not in the root-owned trust anchor. */
+class UntrustedClientKeyError extends Error {
+  /** JSON-RPC error code surfaced to the client (see dispatch catch). */
+  readonly code = -32004;
+  constructor(fingerprint: string, anchorPath: string) {
+    super(
+      `untrusted client key: fingerprint ${fingerprint} is not in the trust anchor ${anchorPath}. ` +
+        `A client identity may only be enrolled for the install-provisioned key. ` +
+        `If this is a fresh install, run the Studio daemon setup to provision the fingerprint.`,
+    );
+    this.name = 'UntrustedClientKeyError';
+  }
+}
+
+/**
+ * Read the root-owned trust anchor and return the set of allowed client-key
+ * fingerprints. One fingerprint per line; blank lines and `#` comments are
+ * ignored. A missing/unreadable file yields an EMPTY set — enrollment then
+ * fails closed (no client key is trusted) rather than open. The path is
+ * config-driven (DaemonConfig.trustedClientFingerprintPath) so tests point it
+ * at a fixture; production points it at the sudo-provisioned root:root file.
+ */
+async function loadTrustedClientFingerprints(anchorPath: string): Promise<Set<string>> {
+  let text: string;
+  try {
+    text = await readFile(anchorPath, 'utf8');
+  } catch (err) {
+    log.warn('trust anchor unreadable — client-key enrollment fails closed', {
+      anchorPath,
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return new Set();
+  }
+  const out = new Set<string>();
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+    out.add(trimmed);
+  }
+  return out;
+}
+
 /**
  * Register a CLIENT-supplied Ed25519 public key for an agent (Studio zero-9P
  * model). The daemon derives the fingerprint + DID from the SPKI PEM and
  * stores ONLY the public half in agent_identity / agent_identity_keys — no
  * private key is generated or written to revvault. Idempotent: re-registering
  * the same key is a no-op; a different key rotates (supersedes the prior one).
+ *
+ * SECURITY: the supplied key's fingerprint MUST appear in the root-owned trust
+ * anchor or enrollment is rejected (-32004). This closes the self-enrollment
+ * hole (any process reaching the 0600 socket could previously enroll its own
+ * key) AND the key-takeover hole (supplying a different key for an existing
+ * agentId previously SUPERSEDED the legitimate key). The check runs on every
+ * path — fresh insert, rotation, and the idempotent re-register — so an
+ * untrusted key can never enter agent_identity_keys.
  */
 async function registerClientIdentity(
   db: PGlite,
@@ -661,6 +717,14 @@ async function registerClientIdentity(
   const raw = spkiPemToRaw(publicKeyPem);
   const fingerprint = computeFingerprint(raw);
   const did = formatDid(agentId, fingerprint);
+
+  // Trust-anchor gate (fail-closed). Reject any client key whose fingerprint
+  // is not provisioned, BEFORE touching agent_identity_keys.
+  const anchorPath = getDaemonConfig().trustedClientFingerprintPath;
+  const trusted = await loadTrustedClientFingerprints(anchorPath);
+  if (!trusted.has(fingerprint)) {
+    throw new UntrustedClientKeyError(fingerprint, anchorPath);
+  }
 
   const existing = await db.query<{ fingerprint: string }>(
     `SELECT fingerprint FROM agent_identity WHERE agent_id = $1`,
@@ -1578,12 +1642,18 @@ export async function startDaemon(
           socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
         } catch (err) {
           trackRpcCall(req.method, 'error', Date.now() - startMs);
+          // A handler may carry an explicit numeric JSON-RPC code (e.g.
+          // UntrustedClientKeyError → -32004). Guard on `typeof === 'number'`
+          // so Node's string error codes (ENOENT, EACCES, …) don't leak into
+          // the JSON-RPC `code` field — those fall back to the generic -32000.
+          const rawCode = (err as { code?: unknown }).code;
+          const code = typeof rawCode === 'number' ? rawCode : -32000;
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
               id: req.id,
               error: {
-                code: -32000,
+                code,
                 message: err instanceof Error ? err.message : 'Internal error',
               },
             })}\n`,

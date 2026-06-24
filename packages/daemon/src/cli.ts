@@ -179,6 +179,8 @@ const config = {
     'REVDEV_DAEMON_SHUTDOWN_GRACE_MS',
     DAEMON_DEFAULTS.shutdownGracePeriodMs,
   ),
+  trustedClientFingerprintPath:
+    process.env.REVDEV_DAEMON_TRUSTED_CLIENT_FP ?? DAEMON_DEFAULTS.trustedClientFingerprintPath,
 };
 
 const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;

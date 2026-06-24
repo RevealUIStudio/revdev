@@ -80,11 +80,22 @@ async fn spawn_daemon_at(dir: &Path, socket: &Path) -> DaemonGuard {
     std::fs::create_dir_all(dir).expect("create daemon dir");
     let data_dir = dir.join(format!("db-{}", DIR_COUNTER.fetch_add(1, Ordering::Relaxed)));
 
+    // Provision the client trust anchor with Studio's signing fingerprint so
+    // the daemon's enrollment gate (Fix A) accepts the harness's client-key
+    // session.register. The harness loads the same identity from the same
+    // keystore, so the fingerprints match.
+    let anchor = dir.join("trusted-client-fingerprint");
+    let fp = studio_lib::signing::load_or_create_identity()
+        .expect("load studio identity")
+        .fingerprint;
+    std::fs::write(&anchor, format!("{fp}\n")).expect("write trust anchor");
+
     let child = Command::new("node")
         .arg(daemon_cli())
         .env("REVDEV_DAEMON_SOCKET", socket)
         .env("REVDEV_DAEMON_DATA", &data_dir)
         .env("REVDEV_DAEMON_PID", dir.join("harness.pid"))
+        .env("REVDEV_DAEMON_TRUSTED_CLIENT_FP", &anchor)
         // Deterministic free-tier daemon regardless of the host shell's env.
         .env_remove("REVEALUI_LICENSE_KEY")
         .env_remove("REVDEV_LICENSE_PUBLIC_KEY")

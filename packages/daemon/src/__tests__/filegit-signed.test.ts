@@ -106,7 +106,12 @@ describe('Studio client-key signing (zero-9P P1)', () => {
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-signed-'));
     repo = await mkdtemp(join(tmpdir(), 'revdev-signed-repo-'));
     socketPath = join(dataDir, 'harness.sock');
-    daemon = await startDaemon({ socketPath, dataDir });
+    // Trust anchor: provision THIS client's fingerprint so enrollment is
+    // allowed (the production install writes this root-owned; the test points
+    // the daemon at a fixture via trustedClientFingerprintPath).
+    const anchor = join(dataDir, 'trusted-client-fingerprint');
+    await writeFile(anchor, `# test trust anchor\n${fingerprint}\n`);
+    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
   });
 
   afterAll(async () => {
@@ -129,11 +134,15 @@ describe('Studio client-key signing (zero-9P P1)', () => {
   });
 
   it('accepts a signed file.write + file.read round-trip with no stale read', async () => {
-    // project.open is signature-optional but needs an identity → actorAgentId.
-    const open = await rpcFrame(socketPath, 'project.open', {
-      repoPath: repo,
-      actorAgentId: agentId,
-    });
+    // project.open is now signature-REQUIRED — the root is recorded under the
+    // verified signer (per-agent root scoping), so it must be signed too.
+    const openParams = { repoPath: repo };
+    const open = await rpcFrame(
+      socketPath,
+      'project.open',
+      openParams,
+      sign('project.open', openParams, did, fingerprint, kp.privateKeyPem),
+    );
     expect((open.result as { success: boolean }).success).toBe(true);
 
     const writeParams = { repoPath: repo, filePath: 'note.txt', content: 'zero-9P round trip' };

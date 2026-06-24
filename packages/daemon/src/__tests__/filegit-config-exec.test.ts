@@ -144,7 +144,10 @@ describe('git config-exec hardening (zero-9P security)', () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-cfgexec-'));
     socketPath = join(dataDir, 'harness.sock');
-    daemon = await startDaemon({ socketPath, dataDir });
+    // Provision this client's fingerprint into the trust anchor (fixture).
+    const anchor = join(dataDir, 'trusted-client-fingerprint');
+    await writeFile(anchor, `${fingerprint}\n`);
+    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
 
     const reg = await rpcFrame(socketPath, 'session.register', {
       agentId,
@@ -169,10 +172,8 @@ describe('git config-exec hardening (zero-9P security)', () => {
     await git(repo, ['config', 'diff.external', script]);
     await git(repo, ['config', 'filter.evil.process', script]);
 
-    const open = await rpcFrame(socketPath, 'project.open', {
-      repoPath: repo,
-      actorAgentId: agentId,
-    });
+    // project.open is signature-REQUIRED now (records the root under the signer).
+    const open = await signedRpc('project.open', { repoPath: repo });
     expect(open.error).toBeDefined();
     expect(open.error?.message).toContain('exec-bearing');
 
@@ -189,10 +190,8 @@ describe('git config-exec hardening (zero-9P security)', () => {
     await git(repo, ['branch', 'feature']);
 
     // Open while the repo is clean (passes the exec-key scan).
-    const open = await rpcFrame(socketPath, 'project.open', {
-      repoPath: repo,
-      actorAgentId: agentId,
-    });
+    // project.open is signature-REQUIRED now (records the root under the signer).
+    const open = await signedRpc('project.open', { repoPath: repo });
     expect((open.result as { success: boolean }).success).toBe(true);
 
     // Now poison: a diff.external command + a post-checkout hook. These are the
