@@ -94,14 +94,19 @@ describe('signed git.* flow (zero-9P P2)', () => {
     execFileSync('git', ['config', 'user.email', 'test@revealui.com'], { cwd: repo });
     execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repo });
     socketPath = join(dataDir, 'harness.sock');
-    daemon = await startDaemon({ socketPath, dataDir });
+    // Provision this client's fingerprint into the trust anchor (fixture).
+    const anchor = join(dataDir, 'trusted-client-fingerprint');
+    await writeFile(anchor, `${fingerprint}\n`);
+    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
     await rpc(socketPath, 'session.register', {
       agentId,
       agentName: 'studio-ui',
       backend: 'studio',
       publicKeyPem: kp.publicKeyPem,
     });
-    await rpc(socketPath, 'project.open', { repoPath: repo, actorAgentId: agentId });
+    // project.open is signature-REQUIRED now (records the root under the signer).
+    const openParams = { repoPath: repo };
+    await rpc(socketPath, 'project.open', openParams, sign('project.open', openParams));
   });
 
   afterAll(async () => {
