@@ -10,7 +10,9 @@
 
 use crate::signing;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -163,6 +165,52 @@ pub async fn rpc_call(
         }
     }
     rpc_call_raw(method, params, signature).await
+}
+
+/// Project roots already registered with the daemon this session, so we skip a
+/// redundant `project.open` round-trip per call. Self-heals on daemon restart:
+/// a "not registered" error clears the entry and `repo_rpc` re-opens + retries.
+static OPENED_PROJECTS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Ensure `repo_path` is registered as a daemon project root (idempotent). The
+/// daemon's file.* / git.* handlers reject any repo that hasn't been opened —
+/// it is the allowlist that confines file access to known roots.
+async fn ensure_project_open(repo_path: &str) -> Result<(), String> {
+    if OPENED_PROJECTS.lock().unwrap().contains(repo_path) {
+        return Ok(());
+    }
+    rpc_call("project.open", serde_json::json!({ "repoPath": repo_path })).await?;
+    OPENED_PROJECTS
+        .lock()
+        .unwrap()
+        .insert(repo_path.to_string());
+    Ok(())
+}
+
+/// Call a repo-scoped file.* / git.* method: register the root (cached), inject
+/// `repoPath`, dispatch, and — if the daemon was restarted and forgot the root
+/// — re-open and retry once.
+pub async fn repo_rpc(
+    method: &str,
+    repo_path: &str,
+    mut params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if let Some(obj) = params.as_object_mut() {
+        obj.insert(
+            "repoPath".to_string(),
+            serde_json::Value::String(repo_path.to_string()),
+        );
+    }
+    ensure_project_open(repo_path).await?;
+    match rpc_call(method, params.clone()).await {
+        Err(e) if e.contains("not registered") => {
+            OPENED_PROJECTS.lock().unwrap().remove(repo_path);
+            ensure_project_open(repo_path).await?;
+            rpc_call(method, params).await
+        }
+        other => other,
+    }
 }
 
 #[cfg(unix)]

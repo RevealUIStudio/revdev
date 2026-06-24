@@ -49,7 +49,8 @@ ed25519-dalek = "2"
 bs58 = "0.5"
 rsa = { version = "0.9", features = ["pem"] }
 lettre = { version = "0.11", features = ["tokio1-rustls-tls", "smtp-transport", "builder"], default-features = false }
-git2 = { version = "0.20", default-features = false, features = ["vendored-openssl", "vendored-libgit2"] }
+# git2 removed (zero-9P P2): all git/file I/O now routes through the WSL daemon
+# RPC surface; no in-process libgit2 / ext4 access from the Windows app.
 similar = "2"
 dissimilar = "1"
 ts-rs = { version = "10", features = ["serde-compat"] }
