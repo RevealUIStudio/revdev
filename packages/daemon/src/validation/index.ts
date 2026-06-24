@@ -30,7 +30,21 @@ export function validateParams(method: string, params: unknown): ValidationResul
     return { valid: true };
   }
 
-  const result = schema.safeParse(params ?? {});
+  // safeParse is documented not to throw on validation failure, but a custom
+  // `.refine()` predicate CAN throw (e.g. JSON.stringify on a BigInt/circular
+  // payload). Such a throw would escape here into the per-socket data handler
+  // as an unhandled rejection — a pre-auth remote DoS. Treat any throw as
+  // invalid params so the connection survives with a clean -32602. This guard
+  // protects every caller and any future schema, not just events.log.
+  let result: ReturnType<typeof schema.safeParse>;
+  try {
+    result = schema.safeParse(params ?? {});
+  } catch (err) {
+    return {
+      valid: false,
+      error: `params failed validation: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
   if (result.success) {
     return { valid: true };
   }
