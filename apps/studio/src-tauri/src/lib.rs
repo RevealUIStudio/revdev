@@ -59,14 +59,9 @@ pub fn run() {
             // Register the tile-gallery hotkey dynamically so registration
             // failures (e.g. a stale WSLg compositor claim) degrade to a
             // warning instead of crashing the whole app.
-            let shortcut = Shortcut::new(
-                Some(Modifiers::CONTROL | Modifiers::SHIFT),
-                Code::KeyL,
-            );
+            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyL);
             if let Err(err) = app.global_shortcut().register(shortcut) {
-                eprintln!(
-                    "warning: failed to register CmdOrCtrl+Shift+L global shortcut: {err}"
-                );
+                eprintln!("warning: failed to register CmdOrCtrl+Shift+L global shortcut: {err}");
             }
             Ok(())
         })
@@ -181,6 +176,7 @@ pub fn run() {
             daemon_ctl::daemon_start,
             daemon_ctl::daemon_stop,
             daemon_ctl::daemon_restart,
+            daemon_ctl::daemon_setup,
             updater::check_for_update,
             updater::install_update,
         ])
