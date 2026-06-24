@@ -100,10 +100,16 @@ function within(root: string, target: string): boolean {
 }
 
 /**
- * Resolve a raw repoPath to its realpath and assert it is a registered root.
- * Throws if the path does not exist or was never registered via project.open.
+ * Resolve a raw repoPath to its realpath and assert it is a root registered by
+ * THIS caller (`callerAgentId`). Throws if the path does not exist, was never
+ * registered via project.open, OR was registered by a different agent.
+ *
+ * The "not registered" and "owned by another agent" cases throw the SAME
+ * message on purpose — a caller must not be able to probe which roots another
+ * agent has opened (no cross-agent existence oracle). The ownership mismatch
+ * is logged server-side for debugging.
  */
-async function requireRoot(repoPathRaw: string): Promise<string> {
+async function requireRoot(repoPathRaw: string, callerAgentId: string | null): Promise<string> {
   const expanded = expandTilde(repoPathRaw);
   let real: string;
   try {
@@ -111,7 +117,8 @@ async function requireRoot(repoPathRaw: string): Promise<string> {
   } catch {
     throw new Error(`project root does not exist: ${repoPathRaw}`);
   }
-  if (!registeredRoots.has(real)) {
+  const owner = registeredRoots.get(real);
+  if (owner === undefined || callerAgentId === null || owner !== callerAgentId) {
     throw new Error(`project root not registered: ${repoPathRaw} (call project.open first)`);
   }
   return real;
