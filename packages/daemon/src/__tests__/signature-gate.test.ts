@@ -34,10 +34,15 @@ const SIGNED = [
   // Root registration: signature-required so the root is recorded under the
   // verified signer (per-agent root scoping), not a spoofable param.
   'project.open',
+  // git metadata reads: signature-required so they are scoped to the verified
+  // signer (no cross-agent branch/history/dirty-path leak — review B-1).
+  'git.status',
+  'git.listBranches',
+  'git.log',
 ];
 
-// Payload-free coordination reads stay signature-OPTIONAL.
-const OPTIONAL = ['git.status', 'git.listBranches', 'git.log', 'ping', 'session.list'];
+// Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.
+const OPTIONAL = ['ping', 'session.list'];
 
 describe('signature-required method set (zero-9P)', () => {
   for (const m of SIGNED) {
