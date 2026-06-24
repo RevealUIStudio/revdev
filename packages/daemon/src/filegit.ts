@@ -343,8 +343,10 @@ registerHandler('git.log', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const limit = typeof params.limit === 'number' ? Math.max(1, Math.floor(params.limit)) : 50;
   // %x1f = ASCII unit separator, unambiguous against any commit subject text.
+  // %aI = author date ISO-8601 (display); %at = author date as a unix timestamp
+  // (integer seconds, what UI clients sort/format with).
   const r = await runGit(
-    ['log', '--pretty=format:%H%x1f%an%x1f%aI%x1f%s', '-n', String(limit)],
+    ['log', '--pretty=format:%H%x1f%an%x1f%aI%x1f%at%x1f%s', '-n', String(limit)],
     repoReal,
   );
   if (!r.ok) {
@@ -354,8 +356,8 @@ registerHandler('git.log', async (params) => {
   }
   const commits = r.stdout
     ? r.stdout.split('\n').map((l) => {
-        const [hash, author, date, subject] = l.split('\x1f');
-        return { hash, author, date, subject };
+        const [hash, author, date, at, subject] = l.split('\x1f');
+        return { hash, author, date, timestamp: Number(at), subject };
       })
     : [];
   return { success: true, commits };
@@ -414,7 +416,13 @@ registerHandler('git.deleteBranch', async (params) => {
 registerHandler('git.commit', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const message = requireStr(params.message, 'message');
-  return gitOutcome(await runGit(['commit', '-m', message], repoReal), 'git commit');
+  const commit = await runGit(['commit', '-m', message], repoReal);
+  if (!commit.ok) return { success: false, error: commit.stderr || 'git commit failed' };
+  // Resolve the new HEAD so callers get the created commit's SHA (the editor
+  // surfaces the short SHA after a commit).
+  const head = await runGit(['rev-parse', 'HEAD'], repoReal);
+  const sha = head.ok ? head.stdout : '';
+  return { success: true, sha, shortSha: sha.slice(0, 7), stdout: commit.stdout };
 });
 
 registerHandler('git.push', async (params) => {
