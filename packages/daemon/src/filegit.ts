@@ -371,7 +371,11 @@ registerHandler('git.listBranches', async (params, _db, ctx) => {
 });
 
 registerHandler('git.log', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
+  // Signature-OPTIONAL metadata read — see git.status.
+  const repoReal = await requireRoot(
+    requireStr(params.repoPath, 'repoPath'),
+    ctx.agentId ?? str(params.actorAgentId),
+  );
   const limit = typeof params.limit === 'number' ? Math.max(1, Math.floor(params.limit)) : 50;
   // %x1f = ASCII unit separator, unambiguous against any commit subject text.
   // %aI = author date ISO-8601 (display); %at = author date as a unix timestamp
