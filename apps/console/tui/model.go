@@ -55,6 +55,11 @@ type Model struct {
 	tiers  []Tier
 	cursor int
 
+	// pricingOffline is true while the displayed tiers are the hardcoded
+	// fallback (API not yet loaded or fetch failed) rather than live pricing,
+	// so the view can warn the operator the prices may be out of date.
+	pricingOffline bool
+
 	selected *Tier
 	qrCode   string
 	qrURL    string
@@ -120,15 +125,16 @@ func NewModel(s ssh.Session, client *api.Client) Model {
 	}
 
 	return Model{
-		session:     s,
-		client:      client,
-		fingerprint: fp,
-		view:        ViewLoading,
-		tiers:       fallbackTiers(),
-		loading:     true,
-		loadingMsg:  "Loading pricing…",
-		width:       80,
-		height:      24,
+		session:        s,
+		client:         client,
+		fingerprint:    fp,
+		view:           ViewLoading,
+		tiers:          fallbackTiers(),
+		pricingOffline: true,
+		loading:        true,
+		loadingMsg:     "Loading pricing…",
+		width:          80,
+		height:         24,
 	}
 }
 
@@ -160,6 +166,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pricingMsg:
 		if len(msg.tiers) > 0 {
 			m.tiers = msg.tiers
+			m.pricingOffline = false
 		}
 		// If still on loading view, transition to tiers
 		if m.view == ViewLoading {
@@ -199,8 +206,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.loading = false
 		m.err = msg.err
-		// If we were on loading, show tiers with fallback data
+		// An error during the initial load means pricing never arrived, so the
+		// tiers on screen are stale fallback data. Only flag offline here (not
+		// for later checkout/lookup errors, which don't touch pricing).
 		if m.view == ViewLoading {
+			m.pricingOffline = true
 			m.view = ViewTiers
 		}
 		return m, nil
@@ -469,9 +479,9 @@ var (
 			Bold(true)
 
 	highlightBorder = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#3B82F6")).
-				Padding(0, 1)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#3B82F6")).
+			Padding(0, 1)
 
 	badgeStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("#7C3AED")).
@@ -492,6 +502,11 @@ func (m Model) viewLoading() string {
 
 func (m Model) viewTiers() string {
 	s := titleStyle.Render("RevealUI — Choose Your Plan") + "\n"
+
+	// Warn when the displayed prices are stale fallback data, not live pricing.
+	if m.pricingOffline {
+		s += errorStyle.Render("  ⚠ Offline pricing — may be out of date") + "\n"
+	}
 
 	// Show current user info if known
 	if m.currentUser != nil {

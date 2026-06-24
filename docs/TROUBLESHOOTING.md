@@ -91,24 +91,39 @@ You're on the Free tier. Set `REVEALUI_LICENSE_KEY` and restart the daemon. See 
 
 ### "running in FREE (degraded) mode"
 
-No valid license key detected. Set `REVEALUI_LICENSE_KEY` in your environment:
+No valid license key detected. Set `REVEALUI_LICENSE_KEY` (and `REVDEV_LICENSE_PUBLIC_KEY`) in your environment:
 
 ```bash
-export REVEALUI_LICENSE_KEY="RVUI.v2.pro.0.your-key-here"
+export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9..."
+export REVDEV_LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA...
+-----END PUBLIC KEY-----"
 systemctl --user restart revdev-daemon
 ```
 
-### "v1 license keys are no longer accepted"
+<!-- doclint:allow-legacy-format:start — this section documents the REJECTED formats on purpose -->
+### Old-format key (`RVUI-*` or `RVUI.v2.*`) rejected
 
-You have an old-format key (`RVUI-pro-...`). Contact support@revealui.com for a v2 Ed25519-signed key.
+Both the v1 (`RVUI-pro-...`) and the dotted-v2 (`RVUI.v2.pro....`) formats
+are rejected. The daemon writes this exact line to stderr (visible in
+`journalctl --user -u revdev-daemon`) and then stays in Free mode:
+
+```
+[revdev] Legacy license formats (RVUI.v2.*, RVUI-*) are no longer accepted. Mint an Ed25519-signed JWT via the RevealUI license API or `revdev/scripts/issue-license.ts`.
+```
+
+Current keys are Ed25519-signed JWTs starting with `eyJ`. Contact
+support@revealui.com for a current key. (A non-legacy key that fails for
+another reason logs `[revdev] License validation failed: <reason>` instead.)
+<!-- doclint:allow-legacy-format:end -->
 
 ### License key doesn't activate
 
 Verify the key format:
 ```bash
 echo $REVEALUI_LICENSE_KEY
-# Must start with RVUI.v2.
-# Format: RVUI.v2.<tier>.<expiresAt>.<signature>
+# Must start with eyJ
+# Format: a three-part base64url JWT <header>.<payload>.<signature> (alg: EdDSA)
 ```
 
 If the key is valid but still shows Free:
@@ -127,14 +142,22 @@ The database may be corrupted. Back up and recreate:
 # Stop daemon
 systemctl --user stop revdev-daemon
 
-# Back up current database
+# Back up the entire data directory (see the warning below — this is not
+# just the database)
 mv ~/.local/share/revealui ~/.local/share/revealui.bak
 
 # Start daemon (creates fresh database)
 systemctl --user start revdev-daemon
 ```
 
-Note: this loses all session history, tasks, and file reservations. Agent memory and merge request history will also be cleared.
+**Warning — wider blast radius than the database alone.** `~/.local/share/revealui`
+is the whole daemon data directory, not just PGlite. Moving it discards
+**everything** under it: all session history, tasks, and file reservations,
+agent memory and merge-request history, **and** the harness socket
+(`harness.sock`), the PID file (`harness.pid`), and any sidecar/runtime state.
+Only do this with the daemon stopped (as above); the fresh start recreates the
+socket and PID file. If you want to reset *only* the database, scope the move
+to the PGlite subdirectory rather than the entire `revealui` directory.
 
 ### Database grows too large
 

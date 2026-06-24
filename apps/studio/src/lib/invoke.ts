@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { markDegraded } from './degraded-mode';
 
 const MOCK_COMMIT_RECENT_S = 300; // 5 minutes ago
 const MOCK_COMMIT_OLDER_S = 3600; // 1 hour ago
@@ -476,8 +477,10 @@ function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
     return httpRpc<T>(rpcMethod, params);
   }
 
-  // Fallback: mock data for non-harness commands
+  // Fallback: mock data for non-harness commands. Serving fabricated system
+  // state — flag degraded mode so the shell banner stays visible.
   if (cmd in MOCK_DATA) {
+    markDegraded('Demo data — showing mocked system state, not a real daemon.');
     return Promise.resolve(MOCK_DATA[cmd] as T);
   }
   return Promise.reject(new Error(`No mock data for command: ${cmd}`));
