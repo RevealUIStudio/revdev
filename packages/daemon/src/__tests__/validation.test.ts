@@ -390,3 +390,54 @@ describe('No-schema methods (pass-through)', () => {
     expect(validateParams('not.a.method', { foo: 'bar' }).valid).toBe(true);
   });
 });
+
+describe('events.log payload DoS guard', () => {
+  it('accepts a small JSON-serializable payload', () => {
+    expect(
+      validateParams('events.log', { eventType: 'note', payload: { ok: true } }).valid,
+    ).toBe(true);
+  });
+
+  it('accepts a missing (optional) payload', () => {
+    expect(validateParams('events.log', { eventType: 'note' }).valid).toBe(true);
+  });
+
+  // The pre-fix refine called JSON.stringify, which throws on a BigInt — that
+  // throw escaped safeParse and crashed the per-socket handler (pre-auth DoS).
+  // It must now be rejected cleanly without throwing.
+  it('rejects a BigInt payload without throwing (returns invalid)', () => {
+    let result: ReturnType<typeof validateParams>;
+    expect(() => {
+      result = validateParams('events.log', { eventType: 'note', payload: { n: 1n } });
+    }).not.toThrow();
+    // biome-ignore lint/style/noNonNullAssertion: assigned in the callback above
+    expect(result!.valid).toBe(false);
+  });
+
+  it('rejects a circular payload without throwing (returns invalid)', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    let result: ReturnType<typeof validateParams>;
+    expect(() => {
+      result = validateParams('events.log', { eventType: 'note', payload: circular });
+    }).not.toThrow();
+    // biome-ignore lint/style/noNonNullAssertion: assigned in the callback above
+    expect(result!.valid).toBe(false);
+  });
+
+  it('rejects a non-JSON (function) payload without throwing', () => {
+    // JSON.stringify returns undefined here, so the pre-fix `.length` also threw.
+    expect(() =>
+      validateParams('events.log', { eventType: 'note', payload: () => 'x' }),
+    ).not.toThrow();
+    expect(
+      validateParams('events.log', { eventType: 'note', payload: () => 'x' }).valid,
+    ).toBe(false);
+  });
+
+  it('rejects an oversize payload', () => {
+    const huge = 'x'.repeat(200_000);
+    const result = validateParams('events.log', { eventType: 'note', payload: huge });
+    expect(result.valid).toBe(false);
+  });
+});
