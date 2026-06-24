@@ -279,6 +279,37 @@ pub fn load_or_create_at(path: &Path) -> Result<StudioIdentity, String> {
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
     }
+    #[cfg(windows)]
+    {
+        // The seed IS the signing private key. Default %LOCALAPPDATA% ACLs can
+        // be broader than owner-only, so strip inherited ACEs and grant only the
+        // current user. Fail CLOSED — if we cannot lock it, delete the file and
+        // error rather than leave an unprotected private key on disk (which
+        // would nullify the whole signing model on Windows, the primary
+        // platform).
+        let user = std::env::var("USERNAME").map_err(|_| {
+            let _ = fs::remove_file(path);
+            "cannot resolve %USERNAME% to ACL the signing key".to_string()
+        })?;
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/inheritance:r")
+            .arg("/grant:r")
+            .arg(format!("{user}:F"))
+            .status()
+            .map_err(|e| {
+                let _ = fs::remove_file(path);
+                format!("icacls (lock signing key) failed to run: {e}")
+            })?;
+        if !status.success() {
+            let _ = fs::remove_file(path);
+            return Err(
+                "icacls (lock signing key) returned non-zero; refusing to leave an unprotected \
+                 signing key on disk"
+                    .to_string(),
+            );
+        }
+    }
     Ok(identity)
 }
 
