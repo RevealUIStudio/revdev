@@ -16,7 +16,7 @@
  */
 
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdir, open as fsOpen, readFile } from 'node:fs/promises';
+import { open as fsOpen, lstat, mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
@@ -733,7 +733,8 @@ async function readRootOwnedFile(filePath: string): Promise<string> {
     const dstat = await lstat(dir);
     if (dstat.isSymbolicLink()) throw new Error(`anchor ancestor is a symlink: ${dir}`);
     if (!dstat.isDirectory()) throw new Error(`anchor ancestor is not a directory: ${dir}`);
-    if (dstat.uid !== 0) throw new Error(`anchor ancestor not root-owned (uid ${dstat.uid}): ${dir}`);
+    if (dstat.uid !== 0)
+      throw new Error(`anchor ancestor not root-owned (uid ${dstat.uid}): ${dir}`);
     if ((dstat.mode & 0o022) !== 0) throw new Error(`anchor ancestor group/other-writable: ${dir}`);
     const parent = dirname(dir);
     if (parent === dir) break; // reached the filesystem root
@@ -743,8 +744,10 @@ async function readRootOwnedFile(filePath: string): Promise<string> {
   try {
     const fstat = await handle.stat();
     if (!fstat.isFile()) throw new Error(`trust anchor is not a regular file: ${filePath}`);
-    if (fstat.uid !== 0) throw new Error(`trust anchor not root-owned (uid ${fstat.uid}): ${filePath}`);
-    if ((fstat.mode & 0o022) !== 0) throw new Error(`trust anchor group/other-writable: ${filePath}`);
+    if (fstat.uid !== 0)
+      throw new Error(`trust anchor not root-owned (uid ${fstat.uid}): ${filePath}`);
+    if ((fstat.mode & 0o022) !== 0)
+      throw new Error(`trust anchor group/other-writable: ${filePath}`);
     return await handle.readFile('utf8');
   } finally {
     await handle.close();
