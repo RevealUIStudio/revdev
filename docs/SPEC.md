@@ -163,7 +163,7 @@ Tier authorization is orthogonal: the DID proves *who* is calling, the license p
 Per `packages/daemon/src/license.ts` + `license-crypto.ts` + `scripts/issue-license.ts`:
 
 - **Format:** Ed25519-signed JWT (RFC 7519), header `{ alg: "EdDSA", typ: "JWT" }`. Detection: keys starting `eyJ` take the JWT path.
-- **Legacy formats are rejected** — `RVUI.v2.*` (dotted v2) and `RVUI-*` (v1) fail with an explicit message directing the holder to obtain a fresh JWT. Also rejected with named reasons: RS256/wrong-algorithm JWTs, wrong-key signatures, non-JSON payloads, unrecognized tiers, malformed 2-part tokens.
+- **Legacy formats are rejected** — `RVUI.v2.*` (dotted v2) and `RVUI-*` (v1) fail with an explicit message directing the holder to obtain a fresh JWT. Also rejected with named reasons: RS256/wrong-algorithm JWTs, wrong-key signatures, non-JSON payloads, unrecognized tiers, malformed 2-part tokens. <!-- doclint:allow-legacy-format -->
 - **Verification:** `node:crypto.verify(null, …)` — no third-party JWT library (avoids the algorithm-confusion CVE class). Signature is verified **before** the expiration check.
 - **Acceptance:** perpetual JWT (no `exp`), or non-perpetual with a valid `exp`.
 - **Tiers (whitelist):** `free` / `pro` / `max` / `enterprise`. Feature gating via the daemon's license guard.

@@ -24,7 +24,8 @@
  * traversal nor a symlink can escape to `~/.ssh`, `~/.age-identity`, etc.
  */
 
-import { readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { getDaemonConfig, registerHandler } from './server.js';
@@ -222,7 +223,20 @@ registerHandler('file.write', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), false);
   const content = str(params.content) ?? '';
-  await writeFile(target, content, 'utf8');
+  // Open with O_NOFOLLOW so a symlink swapped in at the FINAL component between
+  // resolveInRoot's parent-realpath check and the write (leaf TOCTOU) is
+  // refused (ELOOP) — a write can't be redirected outside the registered root.
+  const handle = await open(
+    target,
+    // eslint-disable-next-line no-bitwise
+    fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW,
+    0o644,
+  );
+  try {
+    await handle.writeFile(content, 'utf8');
+  } finally {
+    await handle.close();
+  }
   return { success: true, bytes: Buffer.byteLength(content, 'utf8') };
 });
 
@@ -378,7 +392,9 @@ registerHandler('git.discardFile', async (params) => {
 registerHandler('git.createBranch', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const name = requireStr(params.name, 'name');
-  const args = ['branch', name];
+  // `--` so a name/base that slipped past validation can't be read as a flag
+  // (defense in depth; schema's gitRefArg already rejects a leading '-').
+  const args = ['branch', '--', name];
   const base = str(params.baseBranch);
   if (base) args.push(base);
   return gitOutcome(await runGit(args, repoReal), 'git branch');
@@ -387,14 +403,14 @@ registerHandler('git.createBranch', async (params) => {
 registerHandler('git.switchBranch', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const name = requireStr(params.name, 'name');
-  return gitOutcome(await runGit(['switch', name], repoReal), 'git switch');
+  return gitOutcome(await runGit(['switch', '--', name], repoReal), 'git switch');
 });
 
 registerHandler('git.deleteBranch', async (params) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
   const name = requireStr(params.name, 'name');
   const flag = params.force === true ? '-D' : '-d';
-  return gitOutcome(await runGit(['branch', flag, name], repoReal), 'git branch -d');
+  return gitOutcome(await runGit(['branch', flag, '--', name], repoReal), 'git branch -d');
 });
 
 registerHandler('git.commit', async (params) => {

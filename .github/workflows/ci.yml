@@ -118,8 +118,8 @@ jobs:
       - name: Scan for private paths and credentials
         run: bash scripts/check-no-private-leaks.sh
 
-  zero-9p-fence:
-    name: Zero-9P Fence
+  docs-accuracy:
+    name: Docs Accuracy
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -127,7 +127,7 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
-      # Fails if Studio's file/git command modules reintroduce direct ext4 / git
-      # access — all I/O must route through the WSL daemon (ADR P5). No deps.
-      - name: Zero-9P regression fence
-        run: node scripts/check-zero-9p-fence.mjs
+      # Zero-dependency lint (no pnpm install needed): fails if docs present a
+      # rejected legacy license format (RVUI.v2.* / RVUI-*) as if usable.
+      - name: License-format doc-lint
+        run: node scripts/doc-lint-license-format.mjs
