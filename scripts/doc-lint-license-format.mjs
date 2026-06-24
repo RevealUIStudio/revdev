@@ -33,7 +33,13 @@ const ALLOW_INLINE = 'doclint:allow-legacy-format';
 
 function trackedMarkdownFiles() {
   const out = execFileSync('git', ['ls-files', '*.md'], { encoding: 'utf-8' });
-  return out.split('\n').filter(Boolean);
+  // Analysis docs (audits) legitimately quote the rejected legacy formats
+  // while documenting that they ARE rejected; this lint targets instruction
+  // docs only, so exclude the audit/analysis tree.
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .filter((file) => !file.startsWith('docs/audits/'));
 }
 
 function hasLegacyToken(line) {
