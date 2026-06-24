@@ -653,35 +653,51 @@ async function bootstrapAgentIdentity(
   return { did, publicKeyPem: kp.publicKeyPem };
 }
 
-/** Thrown when a client-supplied key is not in the root-owned trust anchor. */
+/** Thrown when a client (agentId, key) pair is not in the trust anchor. */
 class UntrustedClientKeyError extends Error {
   /** JSON-RPC error code surfaced to the client (see dispatch catch). */
   readonly code = -32004;
-  constructor(fingerprint: string, anchorPath: string) {
+  constructor(agentId: string, fingerprint: string, anchorPath: string) {
     super(
-      `untrusted client key: fingerprint ${fingerprint} is not in the trust anchor ${anchorPath}. ` +
-        `A client identity may only be enrolled for the install-provisioned key. ` +
-        `If this is a fresh install, run the Studio daemon setup to provision the fingerprint.`,
+      `untrusted client identity: (agentId ${agentId}, fingerprint ${fingerprint}) is not in ` +
+        `the trust anchor ${anchorPath}. A client identity may only be enrolled for the ` +
+        `install-provisioned (agentId, key) pair. If this is a fresh install, run the Studio ` +
+        `daemon setup to provision it.`,
     );
     this.name = 'UntrustedClientKeyError';
   }
 }
 
 /**
- * Read the root-owned trust anchor and return the set of allowed client-key
- * fingerprints. One fingerprint per line; blank lines and `#` comments are
- * ignored. A missing/unreadable file yields an EMPTY set — enrollment then
- * fails closed (no client key is trusted) rather than open. The path is
- * config-driven (DaemonConfig.trustedClientFingerprintPath) so tests point it
- * at a fixture; production points it at the sudo-provisioned root:root file.
+ * Read the trust anchor and return the set of allowed `agentId:fingerprint`
+ * pairs. One `agentId:fingerprint` per line; blank lines and `#` comments are
+ * ignored. Binding the agentId — not just the fingerprint — stops a single
+ * trusted key from enrolling under arbitrary agentIds and becoming many owning
+ * agents, which would defeat per-agent root scoping (review B-3).
+ *
+ * A missing / unreadable / UNTRUSTED file yields an EMPTY set — enrollment then
+ * fails closed. When `requireRootOwned` (production, review B-2), the file AND
+ * every ancestor directory must be a root-owned, non-symlink entry with no
+ * group/other write bit, and the file is opened O_NOFOLLOW + fstat-checked — so
+ * a WSL-user attacker cannot point the daemon at a file they control, even via
+ * a systemd-user `Environment=REVDEV_DAEMON_TRUSTED_CLIENT_FP=...` override
+ * (their path is not root-owned, so it is rejected). The disable lives ONLY in
+ * the programmatic startDaemon config (tests), never in an env var an attacker
+ * could set on their own --user unit.
  */
-async function loadTrustedClientFingerprints(anchorPath: string): Promise<Set<string>> {
+async function loadTrustedClientEntries(
+  anchorPath: string,
+  requireRootOwned: boolean,
+): Promise<Set<string>> {
   let text: string;
   try {
-    text = await readFile(anchorPath, 'utf8');
+    text = requireRootOwned
+      ? await readRootOwnedFile(anchorPath)
+      : await readFile(anchorPath, 'utf8');
   } catch (err) {
-    log.warn('trust anchor unreadable — client-key enrollment fails closed', {
+    log.warn('trust anchor unreadable/untrusted — client-key enrollment fails closed', {
       anchorPath,
+      requireRootOwned,
       reason: err instanceof Error ? err.message : String(err),
     });
     return new Set();
@@ -690,9 +706,42 @@ async function loadTrustedClientFingerprints(anchorPath: string): Promise<Set<st
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
     if (trimmed === '' || trimmed.startsWith('#')) continue;
-    out.add(trimmed);
+    const idx = trimmed.indexOf(':');
+    // Require a non-empty agentId AND fingerprint on either side of the colon.
+    if (idx <= 0 || idx >= trimmed.length - 1) continue;
+    out.add(`${trimmed.slice(0, idx)}:${trimmed.slice(idx + 1)}`);
   }
   return out;
+}
+
+/**
+ * Read a file that MUST be root-owned and tamper-resistant: every ancestor
+ * directory must be a root-owned, non-symlink directory with no group/other
+ * write bit, and the file itself is opened O_NOFOLLOW then fstat-checked
+ * (regular file, uid 0, not group/other-writable). Throws otherwise.
+ */
+async function readRootOwnedFile(filePath: string): Promise<string> {
+  let dir = dirname(resolve(filePath));
+  for (;;) {
+    const dstat = await lstat(dir);
+    if (dstat.isSymbolicLink()) throw new Error(`anchor ancestor is a symlink: ${dir}`);
+    if (!dstat.isDirectory()) throw new Error(`anchor ancestor is not a directory: ${dir}`);
+    if (dstat.uid !== 0) throw new Error(`anchor ancestor not root-owned (uid ${dstat.uid}): ${dir}`);
+    if ((dstat.mode & 0o022) !== 0) throw new Error(`anchor ancestor group/other-writable: ${dir}`);
+    const parent = dirname(dir);
+    if (parent === dir) break; // reached the filesystem root
+    dir = parent;
+  }
+  const handle = await fsOpen(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    const fstat = await handle.stat();
+    if (!fstat.isFile()) throw new Error(`trust anchor is not a regular file: ${filePath}`);
+    if (fstat.uid !== 0) throw new Error(`trust anchor not root-owned (uid ${fstat.uid}): ${filePath}`);
+    if ((fstat.mode & 0o022) !== 0) throw new Error(`trust anchor group/other-writable: ${filePath}`);
+    return await handle.readFile('utf8');
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
