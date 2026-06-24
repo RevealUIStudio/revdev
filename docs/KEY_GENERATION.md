@@ -38,7 +38,7 @@ shred -u "$D/pw" "$D/revdev-studio.key" && rm -rf "$D"
 
 ## 2. License Signing Key (Ed25519)
 
-Signs customer license keys (Ed25519-signed JWTs — the daemon rejects legacy `RVUI.v2.*` / `RVUI-*` formats) so the daemon can verify them.
+Signs customer license keys (Ed25519-signed JWTs — the daemon rejects legacy `RVUI.v2.*` / `RVUI-*` formats) so the daemon can verify them. <!-- doclint:allow-legacy-format -->>
 
 ```bash
 # Mint Ed25519 keypair; auto-stores both halves in revvault at
