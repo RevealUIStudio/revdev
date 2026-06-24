@@ -89,12 +89,19 @@ RevDev operates in **Free (degraded) mode** without a license. Free mode allows:
 To unlock Pro features (agent spawning, inference, merge pipeline, memory, coordination):
 
 1. Purchase a license at [revealui.com/pro](https://revealui.com/pro)
-2. You'll receive a license key starting with `RVUI.v2.`
-3. Set it as an environment variable:
+2. You'll receive a license key starting with `eyJ` — an Ed25519-signed JWT (RFC 7519, `alg: EdDSA`), a three-part `<header>.<payload>.<signature>` token.
+3. Set it, **and the vendor public key the daemon verifies it against**, as environment variables:
 
 ```bash
 # Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
-export REVEALUI_LICENSE_KEY="RVUI.v2.pro.0.your-signature-here"
+export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ0aWVyIjoicHJvIiwuLi59.<signature>"
+
+# Required to verify the license signature (PEM-encoded Ed25519 public key).
+# Self-host activation cannot succeed without this — the daemon stays in
+# Free mode with reason "REVDEV_LICENSE_PUBLIC_KEY not set" until it is set.
+export REVDEV_LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA...
+-----END PUBLIC KEY-----"
 ```
 
 4. Restart the daemon:
@@ -106,8 +113,10 @@ systemctl --user restart revdev-daemon
 5. Verify activation:
 
 ```bash
-journalctl --user -u revdev-daemon | grep license
-# Expected: "running with PRO license"
+journalctl --user -u revdev-daemon | grep "running with"
+# Expected: "[license] RevDev daemon running with PRO license"
+# If you instead see "running in FREE (degraded) mode", the key or the
+# public key is missing/invalid — see TROUBLESHOOTING.md › License Issues.
 ```
 
 ### License Tiers
