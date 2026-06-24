@@ -142,7 +142,7 @@ type VerificationResult = 'verified' | 'none' | 'invalid';
  * signature-OPTIONAL behind the `0600` boundary — they expose no file
  * content and registering a project root exfiltrates nothing on its own.
  */
-const MUTATING_OR_CONTENT_METHODS = new Set([
+export const MUTATING_OR_CONTENT_METHODS = new Set([
   // file surface — writes + content/metadata reads
   'file.read',
   'file.write',

@@ -20,6 +20,7 @@ import { isValidAgentId } from '@revdev/protocol/did';
 import { z } from 'zod';
 import {
   MAX_BODY_LENGTH,
+  MAX_FILE_WRITE_BYTES,
   MAX_IDS_BATCH,
   MAX_MEMORY_LENGTH,
   MAX_NAME_LENGTH,
@@ -514,9 +515,10 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       repoPath: safePath,
       filePath: safePath,
-      // Content is bounded by the inbound `maxLineBytes` frame cap, not here —
-      // MAX_BODY_LENGTH (50k) is far too small for a legitimate source file.
-      content: z.string(),
+      // Bounded explicitly (symmetric with the read cap) rather than only by
+      // the inbound frame cap; MAX_BODY_LENGTH (50k) is too small for a source
+      // file, MAX_FILE_WRITE_BYTES (768 KiB) is the editor-write ceiling.
+      content: z.string().max(MAX_FILE_WRITE_BYTES),
       actorAgentId,
     })
     .passthrough(),
