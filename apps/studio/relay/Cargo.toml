@@ -1,0 +1,15 @@
+[package]
+name = "revdev-relay"
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-RevealUI-Commercial"
+authors = ["RevealUI Studio <noreply@revealui.com>"]
+description = "AF_UNIX <-> stdio relay bridging Windows Studio to the WSL-side RevDev daemon socket (zero-9P transport, ADR 2026-06-23)"
+
+[[bin]]
+name = "revdev-relay"
+path = "src/main.rs"
+
+# Zero dependencies by design — the relay is a fully-owned, auditable byte pump
+# (ADR pre-flight gate: bundle a tiny Rust relay rather than depend on socat).
+[dependencies]

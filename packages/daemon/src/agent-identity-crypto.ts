@@ -46,6 +46,29 @@ export function computeFingerprint(publicKeyRaw: Uint8Array): string {
   return base58Encode(createHash('sha256').update(publicKeyRaw).digest());
 }
 
+/**
+ * Extract the 32-byte raw Ed25519 public key from an SPKI PEM. Mirrors the
+ * extraction in `generateAgentKeypair` (the raw key is the trailing 32 bytes
+ * of the SPKI DER). Used when a CLIENT supplies its own public key at
+ * `session.register` (the Studio zero-9P model, where the daemon holds only
+ * the public half and Studio keeps the private key in its Windows-local
+ * vault). Throws on a malformed PEM.
+ */
+export function spkiPemToRaw(publicKeyPem: string): Uint8Array {
+  const b64 = publicKeyPem
+    .split('\n')
+    .filter((line) => line.length > 0 && !line.startsWith('-----'))
+    .map((line) => line.trim())
+    .join('');
+  const der = Buffer.from(b64, 'base64');
+  // Ed25519 SPKI is a fixed 44-byte structure: a 12-byte algorithm-id prefix
+  // followed by the 32-byte raw key. Reject anything too short to hold it.
+  if (der.length < 32) {
+    throw new Error('invalid SPKI public key: too short');
+  }
+  return new Uint8Array(der.subarray(der.length - 32));
+}
+
 export function canonicalizeJSON(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
