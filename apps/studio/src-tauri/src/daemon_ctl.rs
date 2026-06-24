@@ -343,6 +343,42 @@ pub async fn daemon_stop() -> Result<(), String> {
 
 // ── First-run setup ───────────────────────────────────────────────────────────
 
+/// Root-owned trust anchor path the daemon reads at client-key enrollment time.
+/// MUST match `DaemonConfig.trustedClientFingerprintPath` in
+/// packages/daemon/src/config.ts.
+#[cfg(any(not(unix), test))]
+const TRUST_ANCHOR_PATH: &str = "/etc/revdev/trusted-client-fingerprint";
+
+/// Validate a client signing fingerprint before it is shell-interpolated into
+/// the provisioning script. base58 (bs58) fingerprints are ASCII-alphanumeric;
+/// refuse anything else so a malformed identity file can never inject shell.
+/// Platform-independent + unit-tested on Linux even though the only caller is
+/// the not(unix) WSL `daemon_setup`.
+#[cfg(any(not(unix), test))]
+fn validate_client_fingerprint(fp: &str) -> Result<(), String> {
+    if fp.is_empty() || !fp.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(format!(
+            "refusing to provision a malformed client fingerprint: {fp:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// Build the sudo script that writes `fp` to the root-owned trust anchor. It
+/// OVERWRITES (not appends), so re-running setup after an identity rotation
+/// replaces the value rather than accumulating stale keys. Callers MUST
+/// `validate_client_fingerprint(fp)` first.
+#[cfg(any(not(unix), test))]
+fn build_trust_anchor_provision_script(fp: &str) -> String {
+    let path = TRUST_ANCHOR_PATH;
+    format!(
+        "set -e; \
+         sudo mkdir -p /etc/revdev; \
+         printf '%s\\n' '{fp}' | sudo tee {path} >/dev/null; \
+         sudo chmod 0644 {path}"
+    )
+}
+
 /// Provision the WSL side on Windows: assert systemd is enabled (writing the
 /// gate + failing with an actionable error if not), stage the bundled relay
 /// into `~/.local/bin`, and enable the daemon's systemd-user unit. Returns a
