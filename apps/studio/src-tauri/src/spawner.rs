@@ -211,54 +211,7 @@ pub fn spawn(
     let sid_wait = session_id.clone();
     let state_wait = state.clone();
     std::thread::spawn(move || {
-        let poll_interval = std::time::Duration::from_millis(100);
-        let exit_code = loop {
-            // Briefly lock only to poll; the guard is dropped at the end of this
-            // block, well before the sleep below.
-            let poll = match state_wait.lock() {
-                Ok(mut sessions) => match sessions.get_mut(&sid_wait) {
-                    Some(proc) => proc.child.try_wait(),
-                    // Session was removed out from under us — stop waiting.
-                    None => break None,
-                },
-                // Lock poisoned — give up rather than spin forever.
-                Err(_) => break None,
-            };
-
-            match poll {
-                Ok(Some(status)) => {
-                    // Exited. Record the terminal status under a brief lock, but
-                    // don't clobber an explicit "stopped" already set by `stop`
-                    // (a killed child reports unsuccessful, yet the user asked to
-                    // stop it — that's a clean stop, not an error).
-                    if let Ok(mut sessions) = state_wait.lock() {
-                        if let Some(proc) = sessions.get_mut(&sid_wait) {
-                            if proc.status == "running" {
-                                proc.status = if status.success() {
-                                    "stopped".to_string()
-                                } else {
-                                    "errored".to_string()
-                                };
-                            }
-                        }
-                    }
-                    break status.code();
-                }
-                // Still running — sleep WITHOUT holding the lock, then re-poll.
-                Ok(None) => std::thread::sleep(poll_interval),
-                Err(_) => {
-                    if let Ok(mut sessions) = state_wait.lock() {
-                        if let Some(proc) = sessions.get_mut(&sid_wait) {
-                            if proc.status == "running" {
-                                proc.status = "errored".to_string();
-                            }
-                        }
-                    }
-                    break None;
-                }
-            }
-        };
-
+        let exit_code = wait_for_exit(&state_wait, &sid_wait);
         let _ = app_handle.emit(
             "agent_exit",
             AgentExitEvent {
@@ -269,6 +222,69 @@ pub fn spawn(
     });
 
     Ok(session_id)
+}
+
+/// Block until the agent child for `sid` exits, recording its terminal status.
+///
+/// CRITICAL: never hold the `sessions` Mutex across a blocking `child.wait()`.
+/// Doing so pins the lock for the entire lifetime of the agent process, so
+/// every other RPC (`stop`, `list`, `remove`, and the next `spawn`'s insert)
+/// blocks on `state.lock()` indefinitely — and `stop` can't acquire the lock to
+/// kill the child, so the child never exits: a true deadlock that hangs the
+/// whole agent panel. Instead we poll `try_wait()` under a brief lock and
+/// release it (and sleep) between polls, so `stop` can grab the lock and kill
+/// the child between two polls; the next poll reaps it.
+///
+/// Returns the child's exit code, or `None` if the session was removed, the
+/// lock was poisoned, or the wait itself errored.
+fn wait_for_exit(state: &Arc<Mutex<HashMap<String, AgentProcess>>>, sid: &str) -> Option<i32> {
+    let poll_interval = std::time::Duration::from_millis(100);
+    loop {
+        // Briefly lock only to poll; the guard is dropped at the end of this
+        // block, well before the sleep below.
+        let poll = match state.lock() {
+            Ok(mut sessions) => match sessions.get_mut(sid) {
+                Some(proc) => proc.child.try_wait(),
+                // Session removed out from under us — stop waiting.
+                None => return None,
+            },
+            // Lock poisoned — give up rather than spin forever.
+            Err(_) => return None,
+        };
+
+        match poll {
+            Ok(Some(status)) => {
+                // Exited. Record the terminal status under a brief lock, but
+                // don't clobber an explicit "stopped" already set by `stop`
+                // (a killed child reports unsuccessful, yet the user asked to
+                // stop it — that's a clean stop, not an error).
+                if let Ok(mut sessions) = state.lock() {
+                    if let Some(proc) = sessions.get_mut(sid) {
+                        if proc.status == "running" {
+                            proc.status = if status.success() {
+                                "stopped".to_string()
+                            } else {
+                                "errored".to_string()
+                            };
+                        }
+                    }
+                }
+                return status.code();
+            }
+            // Still running — sleep WITHOUT holding the lock, then re-poll.
+            Ok(None) => std::thread::sleep(poll_interval),
+            Err(_) => {
+                if let Ok(mut sessions) = state.lock() {
+                    if let Some(proc) = sessions.get_mut(sid) {
+                        if proc.status == "running" {
+                            proc.status = "errored".to_string();
+                        }
+                    }
+                }
+                return None;
+            }
+        }
+    }
 }
 
 /// Stop a running agent process.
@@ -446,5 +462,64 @@ mod tests {
         let state = state_with(vec![]);
         let err = stop("nope", state).unwrap_err();
         assert!(err.contains("nope"), "error should mention the id: {err}");
+    }
+
+    // A still-running child (sleep 30) — does NOT wait for it, unlike
+    // make_exited_process. Used by the deadlock regression test below.
+    #[cfg(unix)]
+    fn make_running_process(name: &str) -> AgentProcess {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("sleep 30")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null())
+            .spawn()
+            .expect("spawn sleep 30");
+        AgentProcess {
+            name: name.into(),
+            model: "test-model".into(),
+            backend: AgentBackend::Ollama,
+            prompt: "hi".into(),
+            child,
+            status: "running".into(),
+        }
+    }
+
+    // Regression for the agent-panel deadlock: wait_for_exit must not hold the
+    // sessions lock across the blocking wait. With a running child, stop() (which
+    // needs the lock to kill the child) must succeed promptly while wait_for_exit
+    // is polling, and the waiter must then observe the exit and return. Before the
+    // fix the wait thread pinned the lock for the child's full lifetime and stop()
+    // hung indefinitely.
+    #[cfg(unix)]
+    #[test]
+    fn wait_for_exit_does_not_block_stop() {
+        use std::time::{Duration, Instant};
+
+        let state = state_with(vec![("s1".into(), make_running_process("a"))]);
+        let state_wait = state.clone();
+        let waiter = std::thread::spawn(move || wait_for_exit(&state_wait, "s1"));
+
+        // Let the waiter enter its poll loop.
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Must NOT block: pre-fix, the wait thread held the lock for the child's
+        // full 30s lifetime and this stop() would hang.
+        let start = Instant::now();
+        stop("s1", state.clone()).expect("stop should acquire the lock and kill the child");
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "stop() blocked — the sessions lock was held across wait()"
+        );
+
+        // The waiter observes the exit and returns within a bounded time.
+        let code = waiter.join().expect("waiter thread panicked");
+        // SIGKILL'd children have no exit code on unix.
+        assert!(code.is_none(), "killed child should have no exit code, got {code:?}");
+
+        // stop() set "stopped"; the waiter must not have clobbered it to "errored".
+        let sessions = list(state).unwrap();
+        assert_eq!(sessions[0].status, "stopped");
     }
 }
