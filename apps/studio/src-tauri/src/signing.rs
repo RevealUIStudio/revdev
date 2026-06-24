@@ -239,6 +239,42 @@ pub fn default_identity_path() -> Result<PathBuf, String> {
     Ok(dir.join("revealui-studio").join("studio-identity.json"))
 }
 
+/// Lock the identity file (which holds the Ed25519 signing private seed) to the
+/// current OS user only — strip inherited ACEs + grant owner on Windows, 0600
+/// on unix. Idempotent and fail-CLOSED: returns Err if the lock cannot be
+/// applied, so the caller can delete the file rather than leave an unprotected
+/// private key. Applied on BOTH the create AND the load path, so a file written
+/// by pre-#173 code (inherited %LOCALAPPDATA% ACL, never owner-locked) is
+/// re-locked on the next load.
+fn lock_identity_file(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Fail-closed (was `let _ =`): a chmod failure must not leave the seed
+        // group/other-readable.
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("chmod 0600 signing key: {e}"))?;
+    }
+    #[cfg(windows)]
+    {
+        // Default %LOCALAPPDATA% ACLs can be broader than owner-only; strip
+        // inherited ACEs and grant only the current user.
+        let user = std::env::var("USERNAME")
+            .map_err(|_| "cannot resolve %USERNAME% to ACL the signing key".to_string())?;
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/inheritance:r")
+            .arg("/grant:r")
+            .arg(format!("{user}:F"))
+            .status()
+            .map_err(|e| format!("icacls (lock signing key) failed to run: {e}"))?;
+        if !status.success() {
+            return Err("icacls (lock signing key) returned non-zero".to_string());
+        }
+    }
+    Ok(())
+}
+
 /// Load the identity from the default keystore, creating + persisting a fresh
 /// one (with a stable per-install agentId) on first run.
 pub fn load_or_create_identity() -> Result<StudioIdentity, String> {
@@ -248,6 +284,14 @@ pub fn load_or_create_identity() -> Result<StudioIdentity, String> {
 /// Keystore load/create against an explicit path (seam for tests).
 pub fn load_or_create_at(path: &Path) -> Result<StudioIdentity, String> {
     if path.exists() {
+        // Re-lock on EVERY load: a file written by pre-#173 code inherited the
+        // broader %LOCALAPPDATA% ACL (or a unix umask) and was never owner-
+        // locked. Fail-closed — never read/use a signing key we could not
+        // secure; delete it so the next run regenerates + re-provisions.
+        if let Err(e) = lock_identity_file(path) {
+            let _ = fs::remove_file(path);
+            return Err(format!("cannot secure existing signing key {}: {e}", path.display()));
+        }
         let data = fs::read_to_string(path).map_err(|e| format!("read identity: {e}"))?;
         let stored: StoredIdentity =
             serde_json::from_str(&data).map_err(|e| format!("parse identity: {e}"))?;
@@ -269,47 +313,17 @@ pub fn load_or_create_at(path: &Path) -> Result<StudioIdentity, String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("create identity dir: {e}"))?;
     }
-    fs::write(
-        path,
-        serde_json::to_string(&stored).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| format!("write identity: {e}"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    // Create the file EMPTY and lock it BEFORE writing the seed, so the private
+    // seed is never briefly on disk under inherited ACLs (TOCTOU). Fail-closed.
+    fs::write(path, b"").map_err(|e| format!("create identity file: {e}"))?;
+    if let Err(e) = lock_identity_file(path) {
+        let _ = fs::remove_file(path);
+        return Err(format!("cannot secure new signing key {}: {e}", path.display()));
     }
-    #[cfg(windows)]
-    {
-        // The seed IS the signing private key. Default %LOCALAPPDATA% ACLs can
-        // be broader than owner-only, so strip inherited ACEs and grant only the
-        // current user. Fail CLOSED — if we cannot lock it, delete the file and
-        // error rather than leave an unprotected private key on disk (which
-        // would nullify the whole signing model on Windows, the primary
-        // platform).
-        let user = std::env::var("USERNAME").map_err(|_| {
-            let _ = fs::remove_file(path);
-            "cannot resolve %USERNAME% to ACL the signing key".to_string()
-        })?;
-        let status = std::process::Command::new("icacls")
-            .arg(path)
-            .arg("/inheritance:r")
-            .arg("/grant:r")
-            .arg(format!("{user}:F"))
-            .status()
-            .map_err(|e| {
-                let _ = fs::remove_file(path);
-                format!("icacls (lock signing key) failed to run: {e}")
-            })?;
-        if !status.success() {
-            let _ = fs::remove_file(path);
-            return Err(
-                "icacls (lock signing key) returned non-zero; refusing to leave an unprotected \
-                 signing key on disk"
-                    .to_string(),
-            );
-        }
-    }
+    // The file is now owner-only; write the seed into it (truncate-in-place
+    // preserves the DACL/mode just set).
+    fs::write(path, serde_json::to_string(&stored).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("write identity: {e}"))?;
     Ok(identity)
 }
 
