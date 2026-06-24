@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { VercelDeployment, VercelProject } from '../types';
+import { markDegraded } from './degraded-mode';
 
 function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -122,18 +123,38 @@ export async function smtpSendTest(
 
 // ── Secrets ────────────────────────────────────────────────────────────────
 
+/**
+ * An obviously-fake secret of the requested length. Browser mode has no real
+ * crypto backend; the previous mocks (`'x'.repeat(n)`, `'a'.repeat(64)`)
+ * looked like real secrets and could be copied into a real env. This screams
+ * MOCK while keeping the length the UI expects.
+ */
+function mockSecret(label: string, length: number): string {
+  const marker = `MOCK_${label}_DO_NOT_USE_`;
+  return marker.repeat(Math.ceil(Math.max(length, marker.length) / marker.length)).slice(0, length);
+}
+
 export async function generateSecret(length: number): Promise<string> {
-  if (!isTauri()) return 'x'.repeat(length);
+  if (!isTauri()) {
+    markDegraded('Demo mode — generated secrets are fake placeholders, not real keys.');
+    return mockSecret('SECRET', length);
+  }
   return tauriInvoke<string>('generate_secret', { length });
 }
 
 export async function generateKek(): Promise<string> {
-  if (!isTauri()) return 'a'.repeat(64);
+  if (!isTauri()) {
+    markDegraded('Demo mode — generated secrets are fake placeholders, not real keys.');
+    return mockSecret('KEK', 64);
+  }
   return tauriInvoke<string>('generate_kek');
 }
 
 export async function generateRsaKeypair(): Promise<[string, string]> {
-  if (!isTauri()) return ['MOCK_PRIVATE_KEY_PEM', 'MOCK_PUBLIC_KEY_PEM'];
+  if (!isTauri()) {
+    markDegraded('Demo mode — generated secrets are fake placeholders, not real keys.');
+    return ['MOCK_PRIVATE_KEY_DO_NOT_USE', 'MOCK_PUBLIC_KEY_DO_NOT_USE'];
+  }
   return tauriInvoke<[string, string]>('generate_rsa_keypair');
 }
 
