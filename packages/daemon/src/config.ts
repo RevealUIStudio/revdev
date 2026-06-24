@@ -164,4 +164,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   maxInlineReadBytes: 786_432, // 768 KiB
   shutdownGracePeriodMs: 5_000, // 5 s
   trustedClientFingerprintPath: '/etc/revdev/trusted-client-fingerprint',
+  trustedAnchorRequireRootOwned: true,
 };
