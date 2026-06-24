@@ -221,7 +221,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 		for {
 			n, err := s.Read(buf)
 			if err != nil {
-				close(done)
+				closeDone()
 				return
 			}
 			data := buf[:n]
@@ -229,7 +229,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 			// Ctrl+] (0x1D) = detach
 			for _, b := range data {
 				if b == 0x1D {
-					close(done)
+					closeDone()
 					return
 				}
 			}
@@ -239,7 +239,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 				"data": string(data),
 			}
 			if err := conn.WriteJSON(msg); err != nil {
-				close(done)
+				closeDone()
 				return
 			}
 		}
