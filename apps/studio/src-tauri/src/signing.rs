@@ -412,7 +412,9 @@ mod tests {
         assert!(requires_signature("file.read"));
         assert!(requires_signature("git.commit"));
         assert!(requires_signature("project.open"));
-        assert!(!requires_signature("git.status"));
+        assert!(requires_signature("git.status"));
+        assert!(requires_signature("git.log"));
         assert!(!requires_signature("ping"));
+        assert!(!requires_signature("session.list"));
     }
 }
