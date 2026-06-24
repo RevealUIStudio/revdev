@@ -1,0 +1,62 @@
+/**
+ * Locks the signature-enforcement set against drift (zero-9P security review).
+ *
+ * Every file/git method that WRITES or returns file CONTENT must be in
+ * MUTATING_OR_CONTENT_METHODS so the dispatch loop requires a valid signature
+ * (-32003 otherwise). Adding a new content/mutation handler without adding it
+ * here would silently let an unsigned caller invoke it — this test fails the
+ * build in that case. The Rust client's `requires_signature` set
+ * (apps/studio/src-tauri/src/signing.rs) must be kept in lockstep with this
+ * list.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { MUTATING_OR_CONTENT_METHODS } from '../server.js';
+
+const SIGNED = [
+  'file.read',
+  'file.write',
+  'file.delete',
+  'file.stat',
+  'git.stageFile',
+  'git.unstageFile',
+  'git.discardFile',
+  'git.createBranch',
+  'git.switchBranch',
+  'git.deleteBranch',
+  'git.commit',
+  'git.push',
+  'git.pull',
+  'git.diffFile',
+  'git.diffContent',
+  'git.readBlobAtHead',
+  'git.readBlobAtIndex',
+];
+
+// Payload-free coordination reads (and setup) stay signature-OPTIONAL.
+const OPTIONAL = [
+  'project.open',
+  'git.status',
+  'git.listBranches',
+  'git.log',
+  'ping',
+  'session.list',
+];
+
+describe('signature-required method set (zero-9P)', () => {
+  for (const m of SIGNED) {
+    it(`requires a signature for "${m}"`, () => {
+      expect(MUTATING_OR_CONTENT_METHODS.has(m)).toBe(true);
+    });
+  }
+
+  for (const m of OPTIONAL) {
+    it(`does not require a signature for "${m}"`, () => {
+      expect(MUTATING_OR_CONTENT_METHODS.has(m)).toBe(false);
+    });
+  }
+
+  it('is EXACTLY the enumerated set (no silent additions)', () => {
+    expect([...MUTATING_OR_CONTENT_METHODS].sort()).toEqual([...SIGNED].sort());
+  });
+});
