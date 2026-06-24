@@ -66,6 +66,10 @@ const EXEMPT_METHODS = new Set([
   'session.update',
   'session.end',
   'session.list',
+  // session.attach is a Free-tier method (API_REFERENCE.md) — bind a socket
+  // to an existing identity without a license. It belongs with the rest of
+  // session.* here; omitting it made Free clients get -32001 on attach.
+  'session.attach',
 ]);
 
 const DAY_SECONDS = 86_400;

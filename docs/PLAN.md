@@ -1,7 +1,7 @@
 ---
 type: plan
 repo: revdev
-last-updated: 2026-06-11
+last-updated: 2026-06-23
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
@@ -27,7 +27,7 @@ staleness-status: FRESH
 What is true today (each item verified, not carried forward):
 
 - **test→main promotion is flowing.** Latest promotion [#97](https://github.com/RevealUIStudio/revdev/pull/97) merged 2026-06-10 (prior: #93, #86). The earlier "promotion blocked on the russh/libcrux CVE chain" state is resolved — `russh = "0.60"` is current in `apps/studio/src-tauri/Cargo.toml`.
-- **License toolchain is Ed25519 JWT only.** `scripts/issue-license.ts` emits RFC 7519 JWTs (`alg: EdDSA`); the daemon rejects all legacy formats (`RVUI.v2.*`, `RVUI-*`) with explicit reasons (`packages/daemon/src/license.ts`). The signing keypair **exists** in the vault at the canonical paths `revdev/license-signing-{private,public}-key` (consolidated 2026-06-10; legacy single-key paths deleted).
+- **License toolchain is Ed25519 JWT only.** `scripts/issue-license.ts` emits RFC 7519 JWTs (`alg: EdDSA`); the daemon rejects all legacy formats (`RVUI.v2.*`, `RVUI-*`) with explicit reasons (`packages/daemon/src/license.ts`). The signing keypair **exists** in the vault at the canonical paths `revdev/license-signing-{private,public}-key` (consolidated 2026-06-10; legacy single-key paths deleted). <!-- doclint:allow-legacy-format -->
 - **Daemon license lifecycle is production-shaped.** Expiry warnings (14d/7d/1d) + fail-closed start + `REVDEV_LICENSE_PUBLIC_KEY_FILE` support ([#88](https://github.com/RevealUIStudio/revdev/pull/88)); rotation script + weekly systemd timer ([#90](https://github.com/RevealUIStudio/revdev/pull/90)); signature verified before expiration check ([#94](https://github.com/RevealUIStudio/revdev/pull/94)).
 - **Per-RPC identity Phase 1 is shipped.** `agent_identity` / `agent_identity_keys` / `agent_identity_nonces` tables, DID bootstrap on `session.register`, and accept-if-present signature verification are in the daemon (`packages/daemon/src/server.ts`, `storage/schema.ts`, DID + crypto test suites). Phases 2–4 pending — see W2.
 - **RPC input validation is shipped** (former launch-plan task A1): every method has a Zod schema at `packages/daemon/src/validation/schemas.ts`.
@@ -59,7 +59,7 @@ Everything between today and the first commercial sale. Split agent-executable v
 |---|---|---|---|
 | H1 | Generate Tauri updater signing keypair | ✅ **DONE 2026-06-11** | Keypair generated in tmpfs (never on persistent disk) and vaulted at `revdev/tauri-signing-{private-key,private-key-password,public-key}`; public key embedded in `tauri.conf.json` → `plugins.updater.pubkey`; `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` repo secrets set. Re-running the generator ROTATES the key — existing installs would reject updates signed by a new key, so don't regenerate casually. Runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) §1. |
 | H2 | Generate license signing keypair (Ed25519) | ✅ **DONE 2026-06-10** | Canonical pair lives at `revdev/license-signing-{private,public}-key`; prod env carries it. Remaining tail: embed the public key in the Studio binary (resource or `tauri.conf.json`) and mirror to CI if integration tests need Pro+ gating. Runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md). |
-| H3 | Issue first customer licenses | **READY — awaiting first sale** | `pnpm exec tsx scripts/issue-license.ts --tier pro --customer "<name>" --days 365` (or `--perpetual`). Output is an Ed25519-signed JWT; customer sets it as `REVEALUI_LICENSE_KEY`. (The old `RVUI.v2.…` wording in the retired launch plan was wrong — the daemon rejects that format.) |
+| H3 | Issue first customer licenses | **READY — awaiting first sale** | `pnpm exec tsx scripts/issue-license.ts --tier pro --customer "<name>" --days 365` (or `--perpetual`). Output is an Ed25519-signed JWT; customer sets it as `REVEALUI_LICENSE_KEY`. (The old `RVUI.v2.…` wording in the retired launch plan was wrong — the daemon rejects that format.) | <!-- doclint:allow-legacy-format -->
 | H4 | Release endpoint for auto-update | **OPEN — P1** | Pick GitHub Releases (simplest) vs S3/CloudFront vs edge proxy; `tauri.conf.json` already points at `releases.revealui.com/studio/{{target}}/{{arch}}/latest.json`. |
 | H5 | CI secrets for signed builds | **PARTIAL — Tauri set done 2026-06-11** | `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` set (H1). Remaining: the Apple cert/notarization set (from H7) for macOS builds. Linux/Windows signed builds work today. |
 | H6 | Daemon service on dev machine | ✅ **DONE** | systemd-user unit installed + running (closed 2026-04-28 via [#27](https://github.com/RevealUIStudio/revdev/pull/27) + [#23](https://github.com/RevealUIStudio/revdev/pull/23)). |
@@ -139,6 +139,21 @@ The concrete delivery of **product exit criterion #1** ("messages injected autom
 - **Dependencies / sequencing.** Builds on W2 (signed identity must be *enforced*, not accept-if-present, before real-time directives are safe to trust) and rides W3's transport for the cross-machine case. **Same-machine real-time delivery over the local socket is the v1 target**; cross-machine inherits W3's server-mediated path.
 - **Open questions for the owner before execution.** (1) interrupt-an-active-turn vs deliver-to-inbox-flushed-at-the-next-tool-call — the harness side defines what "synchronous" means in practice; (2) whether owner-authority directives require human-in-the-loop confirmation before a peer acts on them; (3) flood control / rate-limiting between agents.
 - **Status: backlog**, owner triggers execution. Filed 2026-06-18 off the PR4 direction-race miss.
+
+### W8–W13 — UX + durability audit remediation (2026-06-23)
+
+Source of truth: [`audits/2026-06-23-ux-durability-audit.md`](./audits/2026-06-23-ux-durability-audit.md) — 182 confirmed defects (7 critical, 44 high) across Studio (React + Tauri Rust), Console (Go), the harness daemon, and protocol/bridge. The audit's "Map to existing plan" found most themes already have a home (Theme 1/2/5 + deploy-wizard highs → **W1**; signature/identity findings → **W2**; Neon dual-write findings → **W3**; ConfirmDialog/StatusDot primitives → **W4**; the Go proxy/TUI cluster → **W5**; MessageInbox + mail.broadcast atomicity → **W7**). The six workstreams below are the **net-new, previously-untracked** lanes the audit surfaced. Execution runs one branch + PR per ordered item against `test` (see the audit's "Execution task breakdown"); these workstreams track the cross-cutting capabilities those PRs build.
+
+| WS | Lane | Scope | Maps to audit | Status |
+|---|---|---|---|---|
+| W8 | Destructive-action confirmation | One reusable `ConfirmDialog` (with type-to-confirm variant) routed through every destructive action: vault delete, git discard-all, daemon stop/restart, snap/model delete, SSH bookmark delete, DB migrate/seed; separate "dismiss modal" from "commit state change" (SetupWizard). | Theme 3 (2 crit, 2 high, 4 med) | **OPEN** — item 5 (`feat/destructive-confirm`) |
+| W9 | Degraded/mock-mode visibility | One global "degraded mode" flag set wherever a fallback fires (`invoke()` MOCK_DATA, `deploy.ts`/`config.ts` non-Tauri short-circuits, console pricing-fetch failure) + one persistent shell banner; never emit realistic-looking secret values from mocks. | Theme 2 (1 crit, 2 high, 1 med) | **OPEN** — item 4 (`feat/degraded-mode-banner`) |
+| W10 | Tauri-backend hardening | The Rust supervision/lifecycle layer not called out under W1: agent-wait deadlock, kill-on-drop/orphans, tray-icon panic, poisoned platform Mutex, config non-atomic write, SSH channel-hang, `daemon_ctl` lifecycle (SIGKILL escalation / PID authority / stale-PID), prompt-corruption hand-rolled JSON. | Themes 5/6/10 (Rust) | **OPEN** — items 2, 6, 10 |
+| W11 | Error-contract sweep | Shared `httpRequest` helper (`res.ok` + 4xx/5xx/network split + guarded `json()`); mutation try/catch contract in hooks; PTY/SSH send+resize catch→onDisconnect; replace `void fn()` with `.catch`; map raw Go errors to actionable text. Durable enforcement: Biome lint banning bare `catch {}` + void-ed promises in `hooks/` + `lib/`. | Theme 4 + console twins | **OPEN** — item 8 (`refactor/error-contract`) |
+| W12 | Docs-accuracy CI gate | Beyond the one-time doc fix: CI tooling that fails on doc-vs-code drift. First piece shipped: `scripts/doc-lint-license-format.mjs` (fails on rejected `RVUI.v2.*`/`RVUI-*` license formats in tracked Markdown, with explicit allow-markers for rejection-documenting mentions). Extend to env-var coverage + emitted-string verification. | Theme 1 durability | **IN PROGRESS** — doc-lint landed with item 1 | <!-- doclint:allow-legacy-format -->
+| W13 | Accessibility | At-a-glance health invisible to assistive tech / ambiguous to colorblind users. Fix `StatusDot` once (`role="img"` + `aria-label` + non-color shape/icon cue); distinct text labels per status (resolve two-orange StepDeploy states); console per-session status text. | Theme 8 | **OPEN** — item 11 (`a11y/status-primitives`) |
+
+**Owner-gated items carried out of the audit** (do not action without sign-off): signature fail-open → reject posture (W2/item 9); deploy-wizard generated-secret at-rest storage location (item 7); known_hosts/TOFU strictness for the Studio SSH client (item 10); `total_sessions` historical backfill (data work, not a code fix); and the **separate removal** of `RvuiUpgradePanel.tsx` (POSTs real payment for the cancelled RevealCoin/RVC product — fix is deletion + entry-point removal, confirm mount point first).
 
 ---
 

@@ -258,9 +258,24 @@ export const schemas: Record<string, z.ZodType> = {
       eventType: z.string().max(128),
       payload: z
         .unknown()
-        .refine((v) => JSON.stringify(v).length <= MAX_PAYLOAD_SIZE, {
-          message: `Event payload exceeds ${MAX_PAYLOAD_SIZE} bytes`,
-        })
+        .refine(
+          (v) => {
+            // This predicate MUST NEVER throw. JSON.stringify throws on BigInt
+            // and circular references, and returns `undefined` for a function /
+            // symbol value (so `.length` then throws too). A throw here escapes
+            // safeParse and surfaces as an unhandled rejection in the per-socket
+            // handler — a trivially reachable, pre-auth remote DoS. Treat any
+            // un-stringifiable payload as invalid rather than letting it throw.
+            try {
+              return JSON.stringify(v).length <= MAX_PAYLOAD_SIZE;
+            } catch {
+              return false;
+            }
+          },
+          {
+            message: `Event payload must be JSON-serializable and at most ${MAX_PAYLOAD_SIZE} bytes`,
+          },
+        )
         .optional(),
       // Handler accepts agentId override; falls back to ctx.agentId.
       agentId: z.string().max(MAX_NAME_LENGTH).optional(),
