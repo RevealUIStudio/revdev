@@ -90,6 +90,16 @@ func (p *Proxy) listSessions() ([]SessionInfo, error) {
 	return sessions, nil
 }
 
+// short truncates an ID for display. It returns the whole string when shorter
+// than 8 chars so a short or empty session ID never panics with a
+// slice-bounds-out-of-range error (which would kill the SSH session).
+func short(id string) string {
+	if len(id) < 8 {
+		return id
+	}
+	return id[:8]
+}
+
 // spawnSession creates a new agent session via the API.
 func (p *Proxy) spawnSession(name string) (string, error) {
 	body := fmt.Sprintf(`{"name":"%s","cols":120,"rows":30}`, name)
