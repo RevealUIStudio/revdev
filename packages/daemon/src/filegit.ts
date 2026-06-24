@@ -36,20 +36,27 @@ import { runGit, type ShellResult } from './vcs.js';
 // ---------------------------------------------------------------------------
 
 /**
- * realpath-resolved absolute paths registered via `project.open`. Module-level
- * by design — the daemon is a singleton (mirrors pruneState in server.ts).
- * A handler rejects any repoPath whose realpath is not in this set.
+ * realpath-resolved absolute root → owning agentId. Module-level by design —
+ * the daemon is a singleton (mirrors pruneState in server.ts). A root is
+ * recorded under the VERIFIED signer that opened it (project.open is
+ * signature-required); a handler rejects any repoPath whose realpath is not
+ * registered OR is owned by a different agent (per-agent root scoping —
+ * agent A cannot read/mutate a root agent B opened).
  */
-const registeredRoots = new Set<string>();
+const registeredRoots = new Map<string, string>();
 
 /** @internal — test seam: clear the allowlist between test cases. */
 export function _clearRegisteredRootsForTest(): void {
   registeredRoots.clear();
 }
 
-/** @internal — test seam: register an already-realpath'd root directly. */
-export function _addRootForTest(realRoot: string): void {
-  registeredRoots.add(realRoot);
+/**
+ * @internal — test seam: register an already-realpath'd root directly under
+ * `agentId` (defaults to a sentinel for legacy path-resolution tests that do
+ * not exercise ownership).
+ */
+export function _addRootForTest(realRoot: string, agentId = '_test'): void {
+  registeredRoots.set(realRoot, agentId);
 }
 
 /** @internal — test seam: exercise the realpath descendant resolver. */
