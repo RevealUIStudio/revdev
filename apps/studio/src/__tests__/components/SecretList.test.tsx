@@ -43,13 +43,18 @@ describe('SecretList', () => {
     expect(onSelect).toHaveBeenCalledWith('stripe/secret_key');
   });
 
-  it('calls onDelete when delete button is clicked', () => {
+  it('does not call onDelete until the confirm dialog is confirmed', () => {
     const onDelete = vi.fn();
     render(
       <SecretList secrets={SECRETS} selectedPath={null} onSelect={vi.fn()} onDelete={onDelete} />,
     );
-    const deleteButton = screen.getByLabelText('Delete stripe/secret_key');
-    fireEvent.click(deleteButton);
+    // Clicking the trash icon opens the confirm dialog — it must NOT delete yet.
+    fireEvent.click(screen.getByLabelText('Delete stripe/secret_key'));
+    expect(onDelete).not.toHaveBeenCalled();
+
+    // Type-to-confirm uses the secret key name; confirm only fires after it matches.
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'secret_key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete secret' }));
     expect(onDelete).toHaveBeenCalledWith('stripe/secret_key');
   });
 

@@ -381,6 +381,40 @@ describe('inference.status validation', () => {
   });
 });
 
+describe('git option-injection rejection (zero-9P)', () => {
+  it('rejects a branch name starting with "-"', () => {
+    expect(validateParams('git.switchBranch', { repoPath: '/r', name: '--orphan' }).valid).toBe(
+      false,
+    );
+    expect(validateParams('git.createBranch', { repoPath: '/r', name: '-D' }).valid).toBe(false);
+    expect(validateParams('git.deleteBranch', { repoPath: '/r', name: '--force' }).valid).toBe(
+      false,
+    );
+  });
+
+  it('rejects a push/pull remote starting with "-" (--receive-pack / --upload-pack)', () => {
+    expect(
+      validateParams('git.push', {
+        repoPath: '/r',
+        remote: '--receive-pack=touch /tmp/x',
+        branch: 'main',
+      }).valid,
+    ).toBe(false);
+    expect(validateParams('git.pull', { repoPath: '/r', remote: '--upload-pack=evil' }).valid).toBe(
+      false,
+    );
+  });
+
+  it('accepts ordinary branch and remote names', () => {
+    expect(validateParams('git.switchBranch', { repoPath: '/r', name: 'feature/x' }).valid).toBe(
+      true,
+    );
+    expect(
+      validateParams('git.push', { repoPath: '/r', remote: 'origin', branch: 'main' }).valid,
+    ).toBe(true);
+  });
+});
+
 describe('No-schema methods (pass-through)', () => {
   it('ping passes through with empty payload', () => {
     expect(validateParams('ping', {}).valid).toBe(true);
@@ -388,5 +422,56 @@ describe('No-schema methods (pass-through)', () => {
 
   it('unknown method passes through (schemas only validate known methods)', () => {
     expect(validateParams('not.a.method', { foo: 'bar' }).valid).toBe(true);
+  });
+});
+
+describe('events.log payload DoS guard', () => {
+  it('accepts a small JSON-serializable payload', () => {
+    expect(validateParams('events.log', { eventType: 'note', payload: { ok: true } }).valid).toBe(
+      true,
+    );
+  });
+
+  it('accepts a missing (optional) payload', () => {
+    expect(validateParams('events.log', { eventType: 'note' }).valid).toBe(true);
+  });
+
+  // The pre-fix refine called JSON.stringify, which throws on a BigInt — that
+  // throw escaped safeParse and crashed the per-socket handler (pre-auth DoS).
+  // It must now be rejected cleanly without throwing.
+  it('rejects a BigInt payload without throwing (returns invalid)', () => {
+    let result: ReturnType<typeof validateParams>;
+    expect(() => {
+      result = validateParams('events.log', { eventType: 'note', payload: { n: 1n } });
+    }).not.toThrow();
+    // biome-ignore lint/style/noNonNullAssertion: assigned in the callback above
+    expect(result!.valid).toBe(false);
+  });
+
+  it('rejects a circular payload without throwing (returns invalid)', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    let result: ReturnType<typeof validateParams>;
+    expect(() => {
+      result = validateParams('events.log', { eventType: 'note', payload: circular });
+    }).not.toThrow();
+    // biome-ignore lint/style/noNonNullAssertion: assigned in the callback above
+    expect(result!.valid).toBe(false);
+  });
+
+  it('rejects a non-JSON (function) payload without throwing', () => {
+    // JSON.stringify returns undefined here, so the pre-fix `.length` also threw.
+    expect(() =>
+      validateParams('events.log', { eventType: 'note', payload: () => 'x' }),
+    ).not.toThrow();
+    expect(validateParams('events.log', { eventType: 'note', payload: () => 'x' }).valid).toBe(
+      false,
+    );
+  });
+
+  it('rejects an oversize payload', () => {
+    const huge = 'x'.repeat(200_000);
+    const result = validateParams('events.log', { eventType: 'note', payload: huge });
+    expect(result.valid).toBe(false);
   });
 });
