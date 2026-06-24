@@ -227,14 +227,14 @@ registerHandler('project.open', async (params, _db, ctx) => {
 // ---------------------------------------------------------------------------
 
 registerHandler('file.read', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), true);
   const buf = await readFile(target);
   return inlineContent(buf);
 });
 
 registerHandler('file.write', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), false);
   const content = str(params.content) ?? '';
   // Open with O_NOFOLLOW so a symlink swapped in at the FINAL component between
@@ -255,14 +255,14 @@ registerHandler('file.write', async (params, _db, ctx) => {
 });
 
 registerHandler('file.delete', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), true);
   await unlink(target);
   return { success: true };
 });
 
 registerHandler('file.stat', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), false);
   try {
     const s = await stat(target);
@@ -283,7 +283,7 @@ registerHandler('file.stat', async (params, _db, ctx) => {
 // ---------------------------------------------------------------------------
 
 registerHandler('git.status', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const r = await runGit(['status', '--porcelain=v1', '--branch'], repoReal);
   if (!r.ok) return { success: false, error: r.stderr || 'git status failed' };
   let branch: string | null = null;
@@ -305,7 +305,7 @@ registerHandler('git.status', async (params, _db, ctx) => {
 });
 
 registerHandler('git.diffFile', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   const args = ['diff'];
   if (params.staged === true) args.push('--cached');
@@ -318,14 +318,14 @@ registerHandler('git.diffFile', async (params, _db, ctx) => {
 registerHandler('git.diffContent', async (params, _db, ctx) => {
   // The working-tree ("after") content for a diff view. Read directly off
   // ext4 (untrimmed, full fidelity) rather than via `git show`.
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), true);
   const buf = await readFile(target);
   return inlineContent(buf);
 });
 
 registerHandler('git.readBlobAtHead', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   // NOTE: runGit trims trailing whitespace on stdout, so a blob's final
   // newline is not preserved here. Acceptable for the read-only "committed
@@ -337,7 +337,7 @@ registerHandler('git.readBlobAtHead', async (params, _db, ctx) => {
 });
 
 registerHandler('git.readBlobAtIndex', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   const r = await runGit(['show', `:${rel}`], repoReal);
   if (!r.ok) return { success: false, error: r.stderr || 'git show :index failed' };
@@ -345,7 +345,7 @@ registerHandler('git.readBlobAtIndex', async (params, _db, ctx) => {
 });
 
 registerHandler('git.listBranches', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const r = await runGit(['branch', '--format=%(refname:short)'], repoReal);
   if (!r.ok) return { success: false, error: r.stderr || 'git branch failed' };
   const branches = r.stdout.split('\n').filter(Boolean);
@@ -354,7 +354,7 @@ registerHandler('git.listBranches', async (params, _db, ctx) => {
 });
 
 registerHandler('git.log', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const limit = typeof params.limit === 'number' ? Math.max(1, Math.floor(params.limit)) : 50;
   // %x1f = ASCII unit separator, unambiguous against any commit subject text.
   // %aI = author date ISO-8601 (display); %at = author date as a unix timestamp
@@ -382,13 +382,13 @@ registerHandler('git.log', async (params, _db, ctx) => {
 // ---------------------------------------------------------------------------
 
 registerHandler('git.stageFile', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   return gitOutcome(await runGit(['add', '--', rel], repoReal), 'git add');
 });
 
 registerHandler('git.unstageFile', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   return gitOutcome(
     await runGit(['restore', '--staged', '--', rel], repoReal),
@@ -397,14 +397,14 @@ registerHandler('git.unstageFile', async (params, _db, ctx) => {
 });
 
 registerHandler('git.discardFile', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
   // Restore the working-tree copy from the index (discard unstaged edits).
   return gitOutcome(await runGit(['restore', '--', rel], repoReal), 'git restore');
 });
 
 registerHandler('git.createBranch', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const name = requireStr(params.name, 'name');
   // `--` so a name/base that slipped past validation can't be read as a flag
   // (defense in depth; schema's gitRefArg already rejects a leading '-').
@@ -415,20 +415,20 @@ registerHandler('git.createBranch', async (params, _db, ctx) => {
 });
 
 registerHandler('git.switchBranch', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const name = requireStr(params.name, 'name');
   return gitOutcome(await runGit(['switch', '--', name], repoReal), 'git switch');
 });
 
 registerHandler('git.deleteBranch', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const name = requireStr(params.name, 'name');
   const flag = params.force === true ? '-D' : '-d';
   return gitOutcome(await runGit(['branch', flag, '--', name], repoReal), 'git branch -d');
 });
 
 registerHandler('git.commit', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const message = requireStr(params.message, 'message');
   const commit = await runGit(['commit', '-m', message], repoReal);
   if (!commit.ok) return { success: false, error: commit.stderr || 'git commit failed' };
@@ -440,7 +440,7 @@ registerHandler('git.commit', async (params, _db, ctx) => {
 });
 
 registerHandler('git.push', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const args = ['push'];
   const remote = str(params.remote);
   const branch = str(params.branch);
@@ -450,7 +450,7 @@ registerHandler('git.push', async (params, _db, ctx) => {
 });
 
 registerHandler('git.pull', async (params, _db, ctx) => {
-  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'));
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const args = ['pull'];
   const remote = str(params.remote);
   const branch = str(params.branch);
