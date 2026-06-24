@@ -221,6 +221,83 @@ describe('Studio client-key signing (zero-9P P1)', () => {
     expect(res.error?.message).toContain('escapes project root');
   });
 
+  // ---- Signed-RPC attack matrix (the protections #164 added, now witnessed) ----
+  // Each forged/abused envelope must be rejected -32003 by verifyOrWarn before
+  // the handler runs. note.txt exists from the round-trip test above.
+
+  it('rejects a REPLAYED envelope (nonce reuse) with -32003', async () => {
+    const params = { repoPath: repo, filePath: 'note.txt' };
+    // One envelope, fixed nonce. First use must verify; the replay must fail.
+    const envelope = sign('file.read', params, did, fingerprint, kp.privateKeyPem);
+    const first = await rpcFrame(socketPath, 'file.read', params, envelope);
+    expect((first.result as { content: string }).content).toBe('zero-9P round trip');
+    const replay = await rpcFrame(socketPath, 'file.read', params, envelope);
+    expect(replay.error?.code).toBe(-32003);
+    expect(replay.result).toBeUndefined();
+  });
+
+  it('rejects a STALE-ts envelope (outside the ±60s window) with -32003', async () => {
+    const params = { repoPath: repo, filePath: 'note.txt' };
+    // Sign with a timestamp 120s in the past — correctly signed, just expired.
+    const stale = serializeEnvelope(
+      signEnvelope(
+        {
+          did,
+          kid: fingerprint,
+          nonce: generateNonce(),
+          ts: Math.floor(Date.now() / 1000) - 120,
+          method: 'file.read',
+          paramsHash: hashParams('file.read', params),
+        },
+        kp.privateKeyPem,
+      ),
+    );
+    const res = await rpcFrame(socketPath, 'file.read', params, stale);
+    expect(res.error?.code).toBe(-32003);
+  });
+
+  it('rejects a paramsHash-MISMATCH envelope (signed for other params) with -32003', async () => {
+    // Sign for one filePath, send the envelope on a request for another. The
+    // method matches, so this isolates the paramsHash binding.
+    const signedFor = { repoPath: repo, filePath: 'note.txt' };
+    const sentParams = { repoPath: repo, filePath: 'big.txt' };
+    const envelope = sign('file.read', signedFor, did, fingerprint, kp.privateKeyPem);
+    const res = await rpcFrame(socketPath, 'file.read', sentParams, envelope);
+    expect(res.error?.code).toBe(-32003);
+  });
+
+  it('rejects a method-SUBSTITUTION envelope (signed for a different method) with -32003', async () => {
+    // A valid envelope minted for file.read, replayed onto a file.delete frame.
+    // The signature binds the method, so the substitution is refused (and the
+    // file is NOT deleted).
+    const params = { repoPath: repo, filePath: 'note.txt' };
+    const readEnvelope = sign('file.read', params, did, fingerprint, kp.privateKeyPem);
+    const res = await rpcFrame(socketPath, 'file.delete', params, readEnvelope);
+    expect(res.error?.code).toBe(-32003);
+    expect(await readFile(join(repo, 'note.txt'), 'utf8')).toBe('zero-9P round trip');
+  });
+
+  it('rejects an over-long nonce (payload-field bound) with -32003', async () => {
+    // A correctly-signed envelope whose nonce breaks the .length(32) bound:
+    // SignaturePayloadSchema.safeParse fails in parseEnvelope → unverifiable.
+    const params = { repoPath: repo, filePath: 'note.txt' };
+    const fat = serializeEnvelope(
+      signEnvelope(
+        {
+          did,
+          kid: fingerprint,
+          nonce: 'a'.repeat(2048),
+          ts: Math.floor(Date.now() / 1000),
+          method: 'file.read',
+          paramsHash: hashParams('file.read', params),
+        },
+        kp.privateKeyPem,
+      ),
+    );
+    const res = await rpcFrame(socketPath, 'file.read', params, fat);
+    expect(res.error?.code).toBe(-32003);
+  });
+
   it('returns { tooLarge } instead of content above the inline read cap', async () => {
     // Default maxInlineReadBytes is 768 KiB; write past it and confirm the
     // daemon returns the size envelope rather than serializing the whole file.
