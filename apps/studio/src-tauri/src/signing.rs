@@ -334,6 +334,34 @@ mod tests {
     use ed25519_dalek::{Verifier, VerifyingKey};
     use serde_json::json;
 
+    #[cfg(unix)]
+    #[test]
+    fn load_relocks_a_world_readable_legacy_identity() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("revdev-seedacl-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("studio-identity.json");
+        let _ = std::fs::remove_file(&path);
+
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+
+        // Fresh create → owner-only (0600).
+        let created = load_or_create_at(&path).expect("create identity");
+        assert_eq!(mode(&path), 0o600, "a freshly created signing key must be 0600");
+
+        // Simulate a pre-#173 file: broaden to group/other-readable.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(mode(&path), 0o644);
+
+        // Load again → must RE-LOCK to 0600 without regenerating the identity.
+        let loaded = load_or_create_at(&path).expect("load identity");
+        assert_eq!(mode(&path), 0o600, "load must re-lock a legacy key to 0600");
+        assert_eq!(created.agent_id, loaded.agent_id, "re-lock must not regenerate the key");
+        assert_eq!(created.fingerprint, loaded.fingerprint);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // Vectors taken verbatim from the daemon's agent-identity-crypto.ts (the
     // cross-language contract). If these drift, the Rust client's signatures
     // will be rejected by the daemon — fail loudly here instead.
