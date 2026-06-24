@@ -172,10 +172,8 @@ describe('git config-exec hardening (zero-9P security)', () => {
     await git(repo, ['config', 'diff.external', script]);
     await git(repo, ['config', 'filter.evil.process', script]);
 
-    const open = await rpcFrame(socketPath, 'project.open', {
-      repoPath: repo,
-      actorAgentId: agentId,
-    });
+    // project.open is signature-REQUIRED now (records the root under the signer).
+    const open = await signedRpc('project.open', { repoPath: repo });
     expect(open.error).toBeDefined();
     expect(open.error?.message).toContain('exec-bearing');
 
@@ -192,10 +190,8 @@ describe('git config-exec hardening (zero-9P security)', () => {
     await git(repo, ['branch', 'feature']);
 
     // Open while the repo is clean (passes the exec-key scan).
-    const open = await rpcFrame(socketPath, 'project.open', {
-      repoPath: repo,
-      actorAgentId: agentId,
-    });
+    // project.open is signature-REQUIRED now (records the root under the signer).
+    const open = await signedRpc('project.open', { repoPath: repo });
     expect((open.result as { success: boolean }).success).toBe(true);
 
     // Now poison: a diff.external command + a post-checkout hook. These are the
