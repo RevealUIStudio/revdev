@@ -107,6 +107,27 @@ export interface DaemonConfig {
    * tune via REVDEV_DAEMON_SHUTDOWN_GRACE_MS for slower environments.
    */
   shutdownGracePeriodMs: number;
+  /**
+   * Path to the ROOT-OWNED trust anchor: a file listing the SHA-256
+   * fingerprint(s) of client public keys allowed to enroll a CLIENT-supplied
+   * identity (the Studio zero-9P model). One fingerprint per line; blank lines
+   * and `#` comments ignored.
+   *
+   * Why root-owned: the daemon runs as the WSL user, and the threat is a host
+   * process that `wsl.exe`-es in AS THAT SAME USER. Such a process could write
+   * any user-owned file, so a user-writable anchor is forgeable — it would let
+   * the attacker enroll its own key. Only a file the attacker cannot write
+   * (root:root, e.g. 0644) is a real anchor. The install-time setup writes it
+   * with sudo (see Studio daemon_ctl provisioning).
+   *
+   * Enrollment of a client-supplied key whose fingerprint is NOT listed here is
+   * rejected fail-closed (-32004). DAEMON-MINTED identities (headless hooks,
+   * no client key) never consult this file — their private key is generated
+   * in-process and never handed out, so they are not spoofable by a host
+   * process. Override the path via REVDEV_DAEMON_TRUSTED_CLIENT_FP (tests point
+   * it at a fixture).
+   */
+  trustedClientFingerprintPath: string;
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
