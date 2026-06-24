@@ -172,6 +172,12 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // a later signed mutation would be authorized against. (Cross-language
   // contract: signing.rs requires_signature() must mark project.open too.)
   'project.open',
+  // git metadata reads — signature-REQUIRED so they are scoped to the verified
+  // signer (no cross-agent branch/history/dirty-path leak via a spoofable
+  // actorAgentId). Cross-language contract: signing.rs must mark these too.
+  'git.status',
+  'git.listBranches',
+  'git.log',
 ]);
 
 // ---------------------------------------------------------------------------
