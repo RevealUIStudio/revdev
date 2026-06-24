@@ -82,15 +82,62 @@ mod wsl {
         std::env::var("REVDEV_WSL_DISTRO").unwrap_or_else(|_| "Ubuntu".to_string())
     }
 
-    /// Run `systemctl --user <args>` inside WSL and capture its output.
-    pub async fn systemctl(args: &[&str]) -> Result<std::process::Output, String> {
+    /// Run an arbitrary command inside WSL (`wsl.exe -d <distro> -e <args>`).
+    pub async fn run(args: &[&str]) -> Result<std::process::Output, String> {
         let distro = distro();
         let mut cmd = Command::new("wsl.exe");
-        cmd.args(["-d", &distro, "-e", "systemctl", "--user"])
-            .args(args);
+        cmd.args(["-d", &distro, "-e"]).args(args);
         cmd.output()
             .await
-            .map_err(|e| format!("wsl.exe systemctl failed: {e}"))
+            .map_err(|e| format!("wsl.exe failed: {e}"))
+    }
+
+    /// Run `systemctl --user <args>` inside WSL and capture its output.
+    pub async fn systemctl(args: &[&str]) -> Result<std::process::Output, String> {
+        let mut full = vec!["systemctl", "--user"];
+        full.extend_from_slice(args);
+        run(&full).await
+    }
+
+    /// Whether the WSL distro's systemd manager is up (the first-run gate).
+    /// `systemctl is-system-running` reports `running`/`degraded` when systemd
+    /// is active; `offline` or an error means systemd isn't enabled yet.
+    pub async fn is_system_running() -> bool {
+        match run(&["systemctl", "is-system-running"]).await {
+            Ok(out) => {
+                let s = String::from_utf8_lossy(&out.stdout);
+                matches!(s.trim(), "running" | "degraded")
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Ensure WSL systemd is enabled. If not, write `systemd=true` to
+    /// /etc/wsl.conf and return an ACTIONABLE error — enabling systemd needs a
+    /// one-time `wsl --shutdown` from Windows, so setup must stop here loudly
+    /// rather than silently no-op (ADR P4 gate).
+    pub async fn ensure_systemd() -> Result<(), String> {
+        if is_system_running().await {
+            return Ok(());
+        }
+        // Best-effort: append the [boot] systemd=true stanza (idempotent) using
+        // the WSL user's sudo. Either way we return an error — systemd only
+        // takes effect after a shutdown.
+        let _ = run(&[
+            "bash",
+            "-lc",
+            "grep -qs '^systemd=true' /etc/wsl.conf || \
+             printf '[boot]\\nsystemd=true\\n' | sudo tee -a /etc/wsl.conf >/dev/null",
+        ])
+        .await;
+        Err(
+            "WSL systemd is not enabled. `systemd=true` has been written to \
+             /etc/wsl.conf (if sudo allowed it); run `wsl --shutdown` from a \
+             Windows terminal, reopen WSL, then re-run setup. If the write was \
+             refused, add this to /etc/wsl.conf inside WSL manually:\n\n  \
+             [boot]\n  systemd=true"
+                .to_string(),
+        )
     }
 
     /// True when the daemon unit reports `active`.
@@ -119,6 +166,13 @@ pub struct DaemonStatus {
     pub running: bool,
     pub pid: Option<u32>,
     pub reachable: bool,
+    /// Whether the systemd-user manager that owns the daemon is available.
+    /// On Windows this is `systemctl is-system-running` inside WSL — `false`
+    /// means systemd-user isn't enabled yet (first-run setup required), which
+    /// the UI must surface DISTINCTLY from a merely-stopped daemon. Always
+    /// `true` on native Unix (the daemon runs as a local process, not gated by
+    /// a WSL systemd manager).
+    pub systemd_available: bool,
 }
 
 /// Check if the daemon is running and reachable.
@@ -135,6 +189,7 @@ pub async fn daemon_status() -> Result<DaemonStatus, String> {
         running: process_alive,
         pid,
         reachable,
+        systemd_available: true, // not gated by a WSL systemd manager on native Unix
     })
 }
 
@@ -142,8 +197,10 @@ pub async fn daemon_status() -> Result<DaemonStatus, String> {
 #[tauri::command]
 pub async fn daemon_status() -> Result<DaemonStatus, String> {
     // Liveness from systemd (NOT the ext4 PID file); reachability from a ping
-    // over the relay.
-    let running = wsl::is_active().await;
+    // over the relay. systemd_available lets the UI distinguish "needs first-run
+    // setup" from "stopped".
+    let systemd_available = wsl::is_system_running().await;
+    let running = systemd_available && wsl::is_active().await;
     let pid = wsl::main_pid().await;
     let reachable = crate::harness::rpc_call("ping", serde_json::json!({}))
         .await
@@ -153,6 +210,7 @@ pub async fn daemon_status() -> Result<DaemonStatus, String> {
         running,
         pid,
         reachable,
+        systemd_available,
     })
 }
 
@@ -282,6 +340,74 @@ pub async fn daemon_stop() -> Result<(), String> {
 }
 
 // ── Restart ───────────────────────────────────────────────────────────────────
+
+// ── First-run setup ───────────────────────────────────────────────────────────
+
+/// Provision the WSL side on Windows: assert systemd is enabled (writing the
+/// gate + failing with an actionable error if not), stage the bundled relay
+/// into `~/.local/bin`, and enable the daemon's systemd-user unit. Returns a
+/// human-readable summary. Idempotent.
+///
+/// NOTE: the daemon itself (a Node tsup bundle) is expected to already be
+/// present in WSL via packages/daemon/systemd/install.sh; embedding + staging
+/// the full daemon payload into the Windows installer is the remaining
+/// release-engineering step (tracked in the P4 PR).
+#[cfg(not(unix))]
+#[tauri::command]
+pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+
+    // Gate: stops here with actionable `wsl --shutdown` guidance if systemd-user
+    // isn't available yet.
+    wsl::ensure_systemd().await?;
+
+    // Resolve the payload dir holding the bundled Linux relay binary.
+    let payload = match std::env::var("REVDEV_SETUP_PAYLOAD") {
+        Ok(p) => std::path::PathBuf::from(p),
+        Err(_) => app
+            .path()
+            .resource_dir()
+            .map_err(|e| format!("cannot resolve resource dir: {e}"))?
+            .join("wsl"),
+    };
+    let payload_str = payload.to_string_lossy().to_string();
+
+    // Translate the Windows path to a WSL path so the relay can be copied in.
+    let wp = wsl::run(&["wslpath", "-a", &payload_str]).await?;
+    if !wp.status.success() {
+        return Err(format!(
+            "wslpath failed for {payload_str}: {}",
+            String::from_utf8_lossy(&wp.stderr).trim()
+        ));
+    }
+    let wsl_payload = String::from_utf8_lossy(&wp.stdout).trim().to_string();
+
+    let script = format!(
+        "set -e; \
+         mkdir -p \"$HOME/.local/bin\"; \
+         cp '{wsl_payload}/revdev-relay' \"$HOME/.local/bin/revdev-relay\"; \
+         chmod +x \"$HOME/.local/bin/revdev-relay\"; \
+         systemctl --user daemon-reload; \
+         systemctl --user enable --now {}",
+        wsl::DAEMON_UNIT
+    );
+    let out = wsl::run(&["bash", "-lc", &script]).await?;
+    if !out.status.success() {
+        return Err(format!(
+            "WSL setup failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok("RevDev relay installed and daemon enabled in WSL.".to_string())
+}
+
+/// Native Unix: the daemon runs as a local process; no WSL staging is needed.
+/// Register a systemd-user unit with packages/daemon/systemd/install.sh.
+#[cfg(unix)]
+#[tauri::command]
+pub async fn daemon_setup(_app: tauri::AppHandle) -> Result<String, String> {
+    Ok("No WSL setup required on this platform.".to_string())
+}
 
 /// Restart the daemon: stop then start. Both halves are platform-specific
 /// (direct process control on Unix; systemctl-in-WSL on Windows).
