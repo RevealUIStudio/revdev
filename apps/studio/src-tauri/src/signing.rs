@@ -53,6 +53,10 @@ pub fn requires_signature(method: &str) -> bool {
             | "git.diffContent"
             | "git.readBlobAtHead"
             | "git.readBlobAtIndex"
+            // Root registration is signature-required so the daemon records the
+            // root under the verified signer (per-agent root scoping). MUST
+            // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
+            | "project.open"
     )
 }
 
@@ -402,8 +406,8 @@ mod tests {
     fn requires_signature_matches_daemon_set() {
         assert!(requires_signature("file.read"));
         assert!(requires_signature("git.commit"));
+        assert!(requires_signature("project.open"));
         assert!(!requires_signature("git.status"));
-        assert!(!requires_signature("project.open"));
         assert!(!requires_signature("ping"));
     }
 }

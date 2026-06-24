@@ -31,17 +31,13 @@ const SIGNED = [
   'git.diffContent',
   'git.readBlobAtHead',
   'git.readBlobAtIndex',
+  // Root registration: signature-required so the root is recorded under the
+  // verified signer (per-agent root scoping), not a spoofable param.
+  'project.open',
 ];
 
-// Payload-free coordination reads (and setup) stay signature-OPTIONAL.
-const OPTIONAL = [
-  'project.open',
-  'git.status',
-  'git.listBranches',
-  'git.log',
-  'ping',
-  'session.list',
-];
+// Payload-free coordination reads stay signature-OPTIONAL.
+const OPTIONAL = ['git.status', 'git.listBranches', 'git.log', 'ping', 'session.list'];
 
 describe('signature-required method set (zero-9P)', () => {
   for (const m of SIGNED) {
