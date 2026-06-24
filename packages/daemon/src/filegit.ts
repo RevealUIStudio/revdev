@@ -375,13 +375,7 @@ registerHandler('file.stat', async (params, _db, ctx) => {
 // ---------------------------------------------------------------------------
 
 registerHandler('git.status', async (params, _db, ctx) => {
-  // Signature-OPTIONAL metadata read: accept the socket-bound identity OR a
-  // per-request actorAgentId (fresh-per-call clients). Still scoped to the
-  // owning agent — the strong boundary is the signed mutations + content reads.
-  const repoReal = await requireRoot(
-    requireStr(params.repoPath, 'repoPath'),
-    ctx.agentId ?? str(params.actorAgentId),
-  );
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const r = await runGit(['status', '--porcelain=v1', '--branch'], repoReal);
   if (!r.ok) return { success: false, error: r.stderr || 'git status failed' };
   let branch: string | null = null;
