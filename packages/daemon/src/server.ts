@@ -164,6 +164,12 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'git.diffContent',
   'git.readBlobAtHead',
   'git.readBlobAtIndex',
+  // Root registration. Signature-REQUIRED so the root is recorded under the
+  // VERIFIED signer's agentId (filegit per-agent root scoping) rather than a
+  // spoofable param — otherwise any unsigned caller could register a root that
+  // a later signed mutation would be authorized against. (Cross-language
+  // contract: signing.rs requires_signature() must mark project.open too.)
+  'project.open',
 ]);
 
 // ---------------------------------------------------------------------------
