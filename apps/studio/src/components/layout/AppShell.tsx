@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { StatusContext, useStatus } from '../../hooks/use-status';
 import type { Page } from '../../types';
+import DegradedBanner from './DegradedBanner';
 import Sidebar from './Sidebar';
 import StatusBar from './StatusBar';
 
