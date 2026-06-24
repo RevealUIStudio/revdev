@@ -1578,12 +1578,18 @@ export async function startDaemon(
           socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
         } catch (err) {
           trackRpcCall(req.method, 'error', Date.now() - startMs);
+          // A handler may carry an explicit numeric JSON-RPC code (e.g.
+          // UntrustedClientKeyError → -32004). Guard on `typeof === 'number'`
+          // so Node's string error codes (ENOENT, EACCES, …) don't leak into
+          // the JSON-RPC `code` field — those fall back to the generic -32000.
+          const rawCode = (err as { code?: unknown }).code;
+          const code = typeof rawCode === 'number' ? rawCode : -32000;
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
               id: req.id,
               error: {
-                code: -32000,
+                code,
                 message: err instanceof Error ? err.message : 'Internal error',
               },
             })}\n`,
