@@ -9,6 +9,7 @@ mod harness_watcher;
 mod inference;
 mod local_shell;
 mod platform;
+pub mod signing;
 mod spawner;
 mod ssh;
 mod state;

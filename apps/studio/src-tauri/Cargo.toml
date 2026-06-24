@@ -41,6 +41,10 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 thiserror = "2"
 rand = "0.9"
 hex = "0.4"
+# Ed25519 signing for the zero-9P daemon RPC envelope (ADR P1). bs58 = the
+# base58btc fingerprint encoding the daemon expects (Bitcoin alphabet).
+ed25519-dalek = "2"
+bs58 = "0.5"
 rsa = { version = "0.9", features = ["pem"] }
 lettre = { version = "0.11", features = ["tokio1-rustls-tls", "smtp-transport", "builder"], default-features = false }
 git2 = { version = "0.20", default-features = false, features = ["vendored-openssl", "vendored-libgit2"] }
