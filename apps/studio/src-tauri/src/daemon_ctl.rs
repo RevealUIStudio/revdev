@@ -349,32 +349,37 @@ pub async fn daemon_stop() -> Result<(), String> {
 #[cfg(any(not(unix), test))]
 const TRUST_ANCHOR_PATH: &str = "/etc/revdev/trusted-client-fingerprint";
 
-/// Validate a client signing fingerprint before it is shell-interpolated into
-/// the provisioning script. base58 (bs58) fingerprints are ASCII-alphanumeric;
-/// refuse anything else so a malformed identity file can never inject shell.
-/// Platform-independent + unit-tested on Linux even though the only caller is
-/// the not(unix) WSL `daemon_setup`.
+/// Validate the anchor components before they are shell-interpolated into the
+/// provisioning script: the agentId is [A-Za-z0-9._-] and the base58 (bs58)
+/// fingerprint is ASCII-alphanumeric — both non-empty, neither containing a
+/// `:` (the anchor delimiter) or any shell metacharacter, so a malformed
+/// identity file can never inject shell. Platform-independent + unit-tested on
+/// Linux even though the only caller is the not(unix) WSL `daemon_setup`.
 #[cfg(any(not(unix), test))]
-fn validate_client_fingerprint(fp: &str) -> Result<(), String> {
+fn validate_anchor_components(agent_id: &str, fp: &str) -> Result<(), String> {
+    let ok_agent =
+        !agent_id.is_empty() && agent_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !ok_agent {
+        return Err(format!("refusing to provision a malformed agentId: {agent_id:?}"));
+    }
     if fp.is_empty() || !fp.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(format!(
-            "refusing to provision a malformed client fingerprint: {fp:?}"
-        ));
+        return Err(format!("refusing to provision a malformed client fingerprint: {fp:?}"));
     }
     Ok(())
 }
 
-/// Build the sudo script that writes `fp` to the root-owned trust anchor. It
-/// OVERWRITES (not appends), so re-running setup after an identity rotation
-/// replaces the value rather than accumulating stale keys. Callers MUST
-/// `validate_client_fingerprint(fp)` first.
+/// Build the sudo script that writes `agentId:fingerprint` to the root-owned
+/// trust anchor. The agentId is bound (not just the key) so one trusted key
+/// cannot enroll under arbitrary agentIds (review B-3). It OVERWRITES (not
+/// appends), so re-running setup after a rotation replaces the value rather
+/// than accumulating stale keys. Callers MUST `validate_anchor_components` first.
 #[cfg(any(not(unix), test))]
-fn build_trust_anchor_provision_script(fp: &str) -> String {
+fn build_trust_anchor_provision_script(agent_id: &str, fp: &str) -> String {
     let path = TRUST_ANCHOR_PATH;
     format!(
         "set -e; \
          sudo mkdir -p /etc/revdev; \
-         printf '%s\\n' '{fp}' | sudo tee {path} >/dev/null; \
+         printf '%s\\n' '{agent_id}:{fp}' | sudo tee {path} >/dev/null; \
          sudo chmod 0644 {path}"
     )
 }
