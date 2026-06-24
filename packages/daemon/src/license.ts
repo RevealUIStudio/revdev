@@ -70,6 +70,34 @@ const EXEMPT_METHODS = new Set([
   // to an existing identity without a license. It belongs with the rest of
   // session.* here; omitting it made Free clients get -32001 on attach.
   'session.attach',
+  // Single-repo file + git I/O is FREE: RevDev is meant to be a usable daily
+  // driver and dogfood surface, so basic editing/committing of your own repo
+  // is never gated behind Pro. Only MULTI-AGENT COORDINATION stays Pro
+  // (agent.*, merge.*, mail.*, tasks.*, files.* reservations, memory.*,
+  // inference.*). Enumerated explicitly — NO wildcard — so a Pro method can
+  // never be exempted by accident; a CI test asserts each method below
+  // returns success on a free license and that the Pro methods still -32001.
+  'project.open',
+  'file.read',
+  'file.write',
+  'file.delete',
+  'file.stat',
+  'git.status',
+  'git.diffFile',
+  'git.diffContent',
+  'git.stageFile',
+  'git.unstageFile',
+  'git.discardFile',
+  'git.listBranches',
+  'git.createBranch',
+  'git.switchBranch',
+  'git.deleteBranch',
+  'git.log',
+  'git.commit',
+  'git.push',
+  'git.pull',
+  'git.readBlobAtHead',
+  'git.readBlobAtIndex',
 ]);
 
 const DAY_SECONDS = 86_400;
