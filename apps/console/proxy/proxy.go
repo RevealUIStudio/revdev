@@ -146,7 +146,7 @@ func (p *Proxy) pickSession(s ssh.Session, sessions []SessionInfo) (string, erro
 		fmt.Fprintf(s, "  \033[1mActive sessions:\033[0m\r\n")
 		for i, sess := range ptySessions {
 			fmt.Fprintf(s, "    \033[36m%d)\033[0m %s \033[90m(%s)\033[0m\r\n",
-				i+1, sess.Name, sess.ID[:8])
+				i+1, sess.Name, short(sess.ID))
 		}
 		fmt.Fprintf(s, "\r\n")
 	} else {
