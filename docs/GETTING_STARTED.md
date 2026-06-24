@@ -48,6 +48,10 @@ pnpm install
 # Build the daemon
 pnpm --filter @revdev/daemon build
 
+# Build the MCP bridge (needed for the "Using with an MCP-compatible AI
+# coding tool" step below — it produces packages/bridge/dist/index.js)
+pnpm --filter @revdev/bridge build
+
 # Symlink the binary
 mkdir -p ~/.local/bin
 ln -sf "$(pwd)/packages/daemon/dist/cli.js" ~/.local/bin/revdev-daemon
