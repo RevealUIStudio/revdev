@@ -408,17 +408,10 @@ pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
     // value rather than accumulating stale keys.
     let identity = crate::signing::load_or_create_identity()?;
     let fp = identity.fingerprint;
-    // Defense-in-depth: base58 fingerprints are alphanumeric. Refuse to shell-
-    // interpolate anything else (no injection via a malformed identity file).
-    if fp.is_empty() || !fp.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(format!("refusing to provision a malformed client fingerprint: {fp:?}"));
-    }
-    let provision = format!(
-        "set -e; \
-         sudo mkdir -p /etc/revdev; \
-         printf '%s\\n' '{fp}' | sudo tee /etc/revdev/trusted-client-fingerprint >/dev/null; \
-         sudo chmod 0644 /etc/revdev/trusted-client-fingerprint"
-    );
+    // Validation + script construction are platform-independent helpers (unit-
+    // tested on Linux CI); only the wsl::run execution below is Windows-only.
+    validate_client_fingerprint(&fp)?;
+    let provision = build_trust_anchor_provision_script(&fp);
     let pout = wsl::run(&["bash", "-lc", &provision]).await?;
     if !pout.status.success() {
         return Err(format!(
