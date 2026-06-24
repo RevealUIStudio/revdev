@@ -41,6 +41,7 @@ describe('guardRpcMethod', () => {
       'session.update',
       'session.end',
       'session.list',
+      'session.attach',
     ];
 
     for (const method of exemptMethods) {
