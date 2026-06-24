@@ -121,9 +121,16 @@ describe('daemon enrollment gate + per-agent root scoping', () => {
     repoB = await mkdtemp(join(tmpdir(), 'revdev-enroll-repoB-'));
     socketPath = join(dataDir, 'harness.sock');
     const anchor = join(dataDir, 'trusted-client-fingerprint');
-    // Anchor trusts A and B but NOT evil.
-    await writeFile(anchor, `${a.fingerprint}\n${b.fingerprint}\n`);
-    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
+    // Anchor trusts the (agentId, fingerprint) PAIRS of A and B but NOT evil.
+    await writeFile(anchor, `${a.agentId}:${a.fingerprint}\n${b.agentId}:${b.fingerprint}\n`);
+    daemon = await startDaemon({
+      socketPath,
+      dataDir,
+      trustedClientFingerprintPath: anchor,
+      // Fixture anchor in a tmpdir is not root-owned; disable the production
+      // ownership requirement via the programmatic config (not env).
+      trustedAnchorRequireRootOwned: false,
+    });
   });
 
   afterAll(async () => {
