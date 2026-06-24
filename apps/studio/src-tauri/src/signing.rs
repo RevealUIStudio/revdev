@@ -57,6 +57,11 @@ pub fn requires_signature(method: &str) -> bool {
             // root under the verified signer (per-agent root scoping). MUST
             // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
             | "project.open"
+            // git metadata reads — signature-required so they are scoped to the
+            // verified signer (no cross-agent branch/history/dirty-path leak).
+            | "git.status"
+            | "git.listBranches"
+            | "git.log"
     )
 }
 
