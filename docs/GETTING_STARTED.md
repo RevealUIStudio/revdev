@@ -165,7 +165,8 @@ This gives the tool access to agent coordination, file reservations, and task ma
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REVEALUI_LICENSE_KEY` | (none) | License key for Pro+ features |
+| `REVEALUI_LICENSE_KEY` | (none) | License key for Pro+ features — an `eyJ`-prefixed Ed25519 JWT |
+| `REVDEV_LICENSE_PUBLIC_KEY` | (none) | PEM Ed25519 public key the daemon verifies the license against. Required for activation — without it the daemon stays in Free mode |
 | `REVDEV_DAEMON_SOCKET` | `~/.local/share/revealui/harness.sock` | Socket path |
 | `REVDEV_DAEMON_DATA` | `~/.local/share/revealui` | Database directory |
 | `REVDEV_DAEMON_PID` | `~/.local/share/revealui/harness.pid` | PID file path |
