@@ -57,6 +57,11 @@ pub fn requires_signature(method: &str) -> bool {
             // root under the verified signer (per-agent root scoping). MUST
             // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
             | "project.open"
+            // git metadata reads — signature-required so they are scoped to the
+            // verified signer (no cross-agent branch/history/dirty-path leak).
+            | "git.status"
+            | "git.listBranches"
+            | "git.log"
     )
 }
 
@@ -274,6 +279,37 @@ pub fn load_or_create_at(path: &Path) -> Result<StudioIdentity, String> {
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
     }
+    #[cfg(windows)]
+    {
+        // The seed IS the signing private key. Default %LOCALAPPDATA% ACLs can
+        // be broader than owner-only, so strip inherited ACEs and grant only the
+        // current user. Fail CLOSED — if we cannot lock it, delete the file and
+        // error rather than leave an unprotected private key on disk (which
+        // would nullify the whole signing model on Windows, the primary
+        // platform).
+        let user = std::env::var("USERNAME").map_err(|_| {
+            let _ = fs::remove_file(path);
+            "cannot resolve %USERNAME% to ACL the signing key".to_string()
+        })?;
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/inheritance:r")
+            .arg("/grant:r")
+            .arg(format!("{user}:F"))
+            .status()
+            .map_err(|e| {
+                let _ = fs::remove_file(path);
+                format!("icacls (lock signing key) failed to run: {e}")
+            })?;
+        if !status.success() {
+            let _ = fs::remove_file(path);
+            return Err(
+                "icacls (lock signing key) returned non-zero; refusing to leave an unprotected \
+                 signing key on disk"
+                    .to_string(),
+            );
+        }
+    }
     Ok(identity)
 }
 
@@ -407,7 +443,9 @@ mod tests {
         assert!(requires_signature("file.read"));
         assert!(requires_signature("git.commit"));
         assert!(requires_signature("project.open"));
-        assert!(!requires_signature("git.status"));
+        assert!(requires_signature("git.status"));
+        assert!(requires_signature("git.log"));
         assert!(!requires_signature("ping"));
+        assert!(!requires_signature("session.list"));
     }
 }
