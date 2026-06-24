@@ -169,11 +169,16 @@ describe('daemon enrollment gate + per-agent root scoping', () => {
 
     // A's original key still works end-to-end (the takeover did not supersede).
     const openParams = { repoPath: repoA };
-    const open = await rpcFrame(socketPath, 'project.open', openParams, sign(a, 'project.open', openParams));
+    const open = await rpcFrame(
+      socketPath,
+      'project.open',
+      openParams,
+      sign(a, 'project.open', openParams),
+    );
     expect((open.result as { success: boolean }).success).toBe(true);
   });
 
-  it("blocks agent A from mutating a root agent B registered", async () => {
+  it('blocks agent A from mutating a root agent B registered', async () => {
     // B opens repoB (signed → recorded under agent-b).
     const openB = { repoPath: repoB };
     const ob = await rpcFrame(socketPath, 'project.open', openB, sign(b, 'project.open', openB));
