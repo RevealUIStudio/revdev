@@ -44,6 +44,21 @@ const safePath = z
     message: 'System paths not allowed',
   });
 
+/**
+ * A git ref / remote name argument (branch, remote). Must NOT start with '-':
+ * a leading dash is parsed by git as an option, so a value like
+ * `--receive-pack=…` / `--upload-pack=…` / `--orphan` would turn a branch or
+ * remote name into arbitrary git plumbing (option-injection, RCE-class on
+ * push/pull). The file/pathspec handlers neutralize this with `--`, but
+ * `git push`/`pull` don't accept `--` before the remote, so the leading-dash
+ * rejection is the load-bearing guard for those.
+ */
+const gitRefArg = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((s) => !s.startsWith('-'), { message: 'must not start with "-"' });
+
 // agentId must conform to the DID grammar (alphanumeric, _, -; 1-128 chars)
 // so it can be embedded in `did:revfleet:<agentId>:<fingerprint>`.
 // Pre-existing IDs that contained spaces, slashes, or colons are rejected
@@ -553,20 +568,18 @@ export const schemas: Record<string, z.ZodType> = {
   'git.createBranch': z
     .object({
       repoPath: safePath,
-      name: z.string().max(256),
-      baseBranch: z.string().max(256).optional(),
+      name: gitRefArg,
+      baseBranch: gitRefArg.optional(),
       actorAgentId,
     })
     .passthrough(),
 
-  'git.switchBranch': z
-    .object({ repoPath: safePath, name: z.string().max(256), actorAgentId })
-    .passthrough(),
+  'git.switchBranch': z.object({ repoPath: safePath, name: gitRefArg, actorAgentId }).passthrough(),
 
   'git.deleteBranch': z
     .object({
       repoPath: safePath,
-      name: z.string().max(256),
+      name: gitRefArg,
       force: z.boolean().optional(),
       actorAgentId,
     })
@@ -591,8 +604,8 @@ export const schemas: Record<string, z.ZodType> = {
   'git.push': z
     .object({
       repoPath: safePath,
-      remote: z.string().max(256).optional(),
-      branch: z.string().max(256).optional(),
+      remote: gitRefArg.optional(),
+      branch: gitRefArg.optional(),
       actorAgentId,
     })
     .passthrough(),
@@ -600,8 +613,8 @@ export const schemas: Record<string, z.ZodType> = {
   'git.pull': z
     .object({
       repoPath: safePath,
-      remote: z.string().max(256).optional(),
-      branch: z.string().max(256).optional(),
+      remote: gitRefArg.optional(),
+      branch: gitRefArg.optional(),
       actorAgentId,
     })
     .passthrough(),
