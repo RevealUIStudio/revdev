@@ -101,6 +101,7 @@ MCowBQYDK2VwAyEA...
 systemctl --user restart revdev-daemon
 ```
 
+<!-- doclint:allow-legacy-format:start — this section documents the REJECTED formats on purpose -->
 ### Old-format key (`RVUI-*` or `RVUI.v2.*`) rejected
 
 Both the v1 (`RVUI-pro-...`) and the dotted-v2 (`RVUI.v2.pro....`) formats
@@ -114,6 +115,7 @@ are rejected. The daemon writes this exact line to stderr (visible in
 Current keys are Ed25519-signed JWTs starting with `eyJ`. Contact
 support@revealui.com for a current key. (A non-legacy key that fails for
 another reason logs `[revdev] License validation failed: <reason>` instead.)
+<!-- doclint:allow-legacy-format:end -->>
 
 ### License key doesn't activate
 
