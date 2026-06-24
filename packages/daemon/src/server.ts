@@ -768,12 +768,16 @@ async function registerClientIdentity(
   const fingerprint = computeFingerprint(raw);
   const did = formatDid(agentId, fingerprint);
 
-  // Trust-anchor gate (fail-closed). Reject any client key whose fingerprint
-  // is not provisioned, BEFORE touching agent_identity_keys.
-  const anchorPath = getDaemonConfig().trustedClientFingerprintPath;
-  const trusted = await loadTrustedClientFingerprints(anchorPath);
-  if (!trusted.has(fingerprint)) {
-    throw new UntrustedClientKeyError(fingerprint, anchorPath);
+  // Trust-anchor gate (fail-closed). Reject unless THIS (agentId, fingerprint)
+  // pair is provisioned, BEFORE touching agent_identity_keys. Binding the
+  // agentId stops one trusted key from minting unlimited owning agents (B-3).
+  const cfg = getDaemonConfig();
+  const trusted = await loadTrustedClientEntries(
+    cfg.trustedClientFingerprintPath,
+    cfg.trustedAnchorRequireRootOwned,
+  );
+  if (!trusted.has(`${agentId}:${fingerprint}`)) {
+    throw new UntrustedClientKeyError(agentId, fingerprint, cfg.trustedClientFingerprintPath);
   }
 
   const existing = await db.query<{ fingerprint: string }>(
