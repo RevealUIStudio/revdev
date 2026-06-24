@@ -15,9 +15,10 @@
  *   `session.register` are rejected with -32002.
  */
 
-import { mkdir, readFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { lstat, mkdir, open as fsOpen, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { formatDid, parseDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
