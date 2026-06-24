@@ -147,4 +147,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   gitTimeoutMs: 60_000, // 60 s
   maxInlineReadBytes: 786_432, // 768 KiB
   shutdownGracePeriodMs: 5_000, // 5 s
+  trustedClientFingerprintPath: '/etc/revdev/trusted-client-fingerprint',
 };
