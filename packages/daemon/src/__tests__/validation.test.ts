@@ -393,9 +393,9 @@ describe('No-schema methods (pass-through)', () => {
 
 describe('events.log payload DoS guard', () => {
   it('accepts a small JSON-serializable payload', () => {
-    expect(
-      validateParams('events.log', { eventType: 'note', payload: { ok: true } }).valid,
-    ).toBe(true);
+    expect(validateParams('events.log', { eventType: 'note', payload: { ok: true } }).valid).toBe(
+      true,
+    );
   });
 
   it('accepts a missing (optional) payload', () => {
@@ -430,9 +430,9 @@ describe('events.log payload DoS guard', () => {
     expect(() =>
       validateParams('events.log', { eventType: 'note', payload: () => 'x' }),
     ).not.toThrow();
-    expect(
-      validateParams('events.log', { eventType: 'note', payload: () => 'x' }).valid,
-    ).toBe(false);
+    expect(validateParams('events.log', { eventType: 'note', payload: () => 'x' }).valid).toBe(
+      false,
+    );
   });
 
   it('rejects an oversize payload', () => {
