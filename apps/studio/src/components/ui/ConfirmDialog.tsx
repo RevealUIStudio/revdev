@@ -1,0 +1,118 @@
+import { type ReactNode, useId, useState } from 'react';
+import Modal from './Modal';
+
+interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  /** Explanation of what will happen. Keep it concrete and honest. */
+  body: ReactNode;
+  /** Optional list of the exact items that will be destroyed. */
+  affectedItems?: string[];
+  /** Label for the destructive confirm button (default "Delete"). */
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /**
+   * When set, the user must type this exact string before the confirm button
+   * enables. Use for the truly irreversible actions (vault secret delete, git
+   * discard-all, seeding a database with existing data).
+   */
+  typeToConfirm?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}
+
+/**
+ * A single reusable confirmation gate for destructive actions. Routes every
+ * irreversible click (delete a secret, discard working-tree edits, stop the
+ * daemon, remove a multi-GB model…) through one explicit, clearly-worded
+ * dialog instead of firing on a single hover-click. The optional
+ * `typeToConfirm` adds a type-the-name guard for the unrecoverable ones.
+ */
+export default function ConfirmDialog({
+  open,
+  title,
+  body,
+  affectedItems,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+  typeToConfirm,
+  onConfirm,
+  onClose,
+}: ConfirmDialogProps) {
+  const [typed, setTyped] = useState('');
+  const inputId = useId();
+
+  const needsTyping = typeToConfirm != null && typeToConfirm.length > 0;
+  const confirmDisabled = needsTyping && typed !== typeToConfirm;
+
+  function handleClose(): void {
+    setTyped('');
+    onClose();
+  }
+
+  function handleConfirm(): void {
+    if (confirmDisabled) return;
+    setTyped('');
+    onConfirm();
+  }
+
+  return (
+    <Modal
+      title={title}
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-300 hover:bg-neutral-800"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={confirmDisabled}
+            className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {confirmLabel}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm text-neutral-300">
+        <div>{body}</div>
+
+        {affectedItems && affectedItems.length > 0 && (
+          <ul className="max-h-40 list-inside list-disc overflow-y-auto rounded bg-neutral-900/60 p-2 font-mono text-xs text-neutral-400">
+            {affectedItems.map((item) => (
+              <li key={item} className="truncate">
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {needsTyping && (
+          <label htmlFor={inputId} className="block space-y-1">
+            <span className="text-xs text-neutral-400">
+              Type <span className="font-mono text-neutral-200">{typeToConfirm}</span> to confirm:
+            </span>
+            <input
+              id={inputId}
+              type="text"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              // biome-ignore lint/a11y/noAutofocus: focusing the gate input is the expected UX
+              autoFocus
+              className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1 font-mono text-sm text-neutral-100 outline-none focus:border-red-500"
+            />
+          </label>
+        )}
+      </div>
+    </Modal>
+  );
+}

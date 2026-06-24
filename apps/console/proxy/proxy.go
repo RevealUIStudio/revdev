@@ -90,6 +90,16 @@ func (p *Proxy) listSessions() ([]SessionInfo, error) {
 	return sessions, nil
 }
 
+// short truncates an ID for display. It returns the whole string when shorter
+// than 8 chars so a short or empty session ID never panics with a
+// slice-bounds-out-of-range error (which would kill the SSH session).
+func short(id string) string {
+	if len(id) < 8 {
+		return id
+	}
+	return id[:8]
+}
+
 // spawnSession creates a new agent session via the API.
 func (p *Proxy) spawnSession(name string) (string, error) {
 	body := fmt.Sprintf(`{"name":"%s","cols":120,"rows":30}`, name)
@@ -101,11 +111,21 @@ func (p *Proxy) spawnSession(name string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	// Check the status BEFORE decoding: an auth/server error returns an error
+	// body, not a session, and silently decoding it yields an empty SessionID
+	// that later panics at short()/slice sites or connects to ws/<empty>.
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("spawn failed: API returned %d", resp.StatusCode)
+	}
+
 	var result struct {
 		SessionID string `json:"sessionId"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("decode spawn response: %w", err)
+	}
+	if result.SessionID == "" {
+		return "", fmt.Errorf("spawn response contained an empty session id")
 	}
 	return result.SessionID, nil
 }
@@ -126,7 +146,7 @@ func (p *Proxy) pickSession(s ssh.Session, sessions []SessionInfo) (string, erro
 		fmt.Fprintf(s, "  \033[1mActive sessions:\033[0m\r\n")
 		for i, sess := range ptySessions {
 			fmt.Fprintf(s, "    \033[36m%d)\033[0m %s \033[90m(%s)\033[0m\r\n",
-				i+1, sess.Name, sess.ID[:8])
+				i+1, sess.Name, short(sess.ID))
 		}
 		fmt.Fprintf(s, "\r\n")
 	} else {
@@ -155,7 +175,7 @@ func (p *Proxy) pickSession(s ssh.Session, sessions []SessionInfo) (string, erro
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(s, "  \033[32mSession created: %s\033[0m\r\n\r\n", sessionID[:8])
+		fmt.Fprintf(s, "  \033[32mSession created: %s\033[0m\r\n\r\n", short(sessionID))
 		return sessionID, nil
 	default:
 		// Try to parse as session index
@@ -174,7 +194,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
 	wsURL = fmt.Sprintf("%s/api/terminal/ws/%s", wsURL, sessionID)
 
-	fmt.Fprintf(s, "  \033[90mConnecting to %s...\033[0m\r\n", sessionID[:8])
+	fmt.Fprintf(s, "  \033[90mConnecting to %s...\033[0m\r\n", short(sessionID))
 
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
@@ -186,6 +206,12 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 
 	var wg sync.WaitGroup
 	done := make(chan struct{})
+	// Multiple goroutines (SSH→WS reader, WS→SSH reader, resize forwarder) race
+	// to signal teardown. Closing `done` more than once panics, and a panic in a
+	// goroutine is unrecoverable — it crashes the whole process. Gate every close
+	// behind a sync.Once so teardown is idempotent from any path.
+	var closeOnce sync.Once
+	closeDone := func() { closeOnce.Do(func() { close(done) }) }
 
 	// SSH → WebSocket (user input)
 	wg.Add(1)
@@ -195,7 +221,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 		for {
 			n, err := s.Read(buf)
 			if err != nil {
-				close(done)
+				closeDone()
 				return
 			}
 			data := buf[:n]
@@ -203,7 +229,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 			// Ctrl+] (0x1D) = detach
 			for _, b := range data {
 				if b == 0x1D {
-					close(done)
+					closeDone()
 					return
 				}
 			}
@@ -213,7 +239,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 				"data": string(data),
 			}
 			if err := conn.WriteJSON(msg); err != nil {
-				close(done)
+				closeDone()
 				return
 			}
 		}
@@ -232,11 +258,7 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				select {
-				case <-done:
-				default:
-					close(done)
-				}
+				closeDone()
 				return
 			}
 
