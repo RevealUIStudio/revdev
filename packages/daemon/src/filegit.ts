@@ -442,11 +442,7 @@ registerHandler('git.readBlobAtIndex', async (params, _db, ctx) => {
 });
 
 registerHandler('git.listBranches', async (params, _db, ctx) => {
-  // Signature-OPTIONAL metadata read — see git.status.
-  const repoReal = await requireRoot(
-    requireStr(params.repoPath, 'repoPath'),
-    ctx.agentId ?? str(params.actorAgentId),
-  );
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const r = await runGit(['branch', '--format=%(refname:short)'], repoReal);
   if (!r.ok) return { success: false, error: r.stderr || 'git branch failed' };
   const branches = r.stdout.split('\n').filter(Boolean);
