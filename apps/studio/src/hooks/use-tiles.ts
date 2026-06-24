@@ -189,13 +189,17 @@ export function useTiles(): UseTilesReturn {
 
   const lowerQuery = query.toLowerCase();
 
+  // Merge default tiles with auto-detected browser profiles. Must be declared
+  // before recentTiles below, which reads it — a `const` is in the temporal
+  // dead zone until its declaration, so referencing it earlier throws
+  // `ReferenceError: Cannot access 'allTiles' before initialization` on every
+  // render and crashes the Tiles surface.
+  const allTiles = [...DEFAULT_TILES, ...detectedProfiles];
+
   // Resolve recent tile IDs to definitions (skip hidden ones)
   const recentTiles = prefs.recentTileIds
     .map((id) => allTiles.find((t) => t.id === id))
     .filter((t): t is TileDefinition => t != null && !prefs.hiddenTileIds.includes(t.id));
-
-  // Merge default tiles with auto-detected browser profiles
-  const allTiles = [...DEFAULT_TILES, ...detectedProfiles];
 
   const categories: CategoryWithTiles[] = CATEGORIES.map((cat) => {
     const allInCategory = allTiles.filter((t) => t.category === cat.id);

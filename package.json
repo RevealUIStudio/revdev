@@ -19,6 +19,7 @@
     "dev:studio": "pnpm --filter @revdev/studio dev",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "lint:docs": "node scripts/doc-lint-license-format.mjs",
     "test": "pnpm --filter @revdev/protocol build && pnpm --filter @revdev/daemon build && pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
     "typecheck": "pnpm --filter @revdev/protocol build && pnpm --filter @revdev/daemon build && pnpm -r --filter=!studio typecheck",
