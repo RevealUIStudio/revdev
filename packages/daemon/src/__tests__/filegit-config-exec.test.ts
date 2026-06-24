@@ -144,7 +144,10 @@ describe('git config-exec hardening (zero-9P security)', () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-cfgexec-'));
     socketPath = join(dataDir, 'harness.sock');
-    daemon = await startDaemon({ socketPath, dataDir });
+    // Provision this client's fingerprint into the trust anchor (fixture).
+    const anchor = join(dataDir, 'trusted-client-fingerprint');
+    await writeFile(anchor, `${fingerprint}\n`);
+    daemon = await startDaemon({ socketPath, dataDir, trustedClientFingerprintPath: anchor });
 
     const reg = await rpcFrame(socketPath, 'session.register', {
       agentId,
