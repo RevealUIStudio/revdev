@@ -115,7 +115,7 @@ are rejected. The daemon writes this exact line to stderr (visible in
 Current keys are Ed25519-signed JWTs starting with `eyJ`. Contact
 support@revealui.com for a current key. (A non-legacy key that fails for
 another reason logs `[revdev] License validation failed: <reason>` instead.)
-<!-- doclint:allow-legacy-format:end -->>
+<!-- doclint:allow-legacy-format:end -->
 
 ### License key doesn't activate
 
