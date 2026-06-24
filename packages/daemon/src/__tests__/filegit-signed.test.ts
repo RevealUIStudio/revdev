@@ -13,7 +13,7 @@
  * side): produce envelopes byte-compatible with what this test sends.
  */
 
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -174,5 +174,54 @@ describe('Studio client-key signing (zero-9P P1)', () => {
       sign('file.read', params, did, otherFp, other.privateKeyPem),
     );
     expect(res.error?.code).toBe(-32003);
+  });
+
+  it('rejects a signed read of a literal ../ traversal (validation barrier)', async () => {
+    // The cheap first barrier: the safePath schema rejects `..` before dispatch.
+    const params = { repoPath: repo, filePath: '../../../../etc/passwd' };
+    const res = await rpcFrame(
+      socketPath,
+      'file.read',
+      params,
+      sign('file.read', params, did, fingerprint, kp.privateKeyPem),
+    );
+    expect(res.error?.code).toBe(-32602); // Invalid params
+    expect(res.result).toBeUndefined();
+  });
+
+  it('rejects a signed read through a symlink escaping the root (realpath barrier)', async () => {
+    // A symlink passes `..` validation, so this exercises the realpath
+    // descendant check in the handler — a key-holder still cannot read outside
+    // the registered root.
+    const secret = join(dataDir, 'outside-secret.txt');
+    await writeFile(secret, 'TOP SECRET');
+    await symlink(secret, join(repo, 'link.txt'));
+    const params = { repoPath: repo, filePath: 'link.txt' };
+    const res = await rpcFrame(
+      socketPath,
+      'file.read',
+      params,
+      sign('file.read', params, did, fingerprint, kp.privateKeyPem),
+    );
+    expect(res.error?.code).toBe(-32000);
+    expect(res.error?.message).toContain('escapes project root');
+  });
+
+  it('returns { tooLarge } instead of content above the inline read cap', async () => {
+    // Default maxInlineReadBytes is 768 KiB; write past it and confirm the
+    // daemon returns the size envelope rather than serializing the whole file.
+    const big = 'a'.repeat(800_000);
+    await writeFile(join(repo, 'big.txt'), big);
+    const params = { repoPath: repo, filePath: 'big.txt' };
+    const res = await rpcFrame(
+      socketPath,
+      'file.read',
+      params,
+      sign('file.read', params, did, fingerprint, kp.privateKeyPem),
+    );
+    const result = res.result as { tooLarge?: boolean; bytes?: number; content?: string };
+    expect(result.tooLarge).toBe(true);
+    expect(result.bytes).toBe(800_000);
+    expect(result.content).toBeUndefined();
   });
 });
