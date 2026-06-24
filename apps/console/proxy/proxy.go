@@ -206,6 +206,12 @@ func (p *Proxy) bridge(s ssh.Session, sessionID string) error {
 
 	var wg sync.WaitGroup
 	done := make(chan struct{})
+	// Multiple goroutines (SSH→WS reader, WS→SSH reader, resize forwarder) race
+	// to signal teardown. Closing `done` more than once panics, and a panic in a
+	// goroutine is unrecoverable — it crashes the whole process. Gate every close
+	// behind a sync.Once so teardown is idempotent from any path.
+	var closeOnce sync.Once
+	closeDone := func() { closeOnce.Do(func() { close(done) }) }
 
 	// SSH → WebSocket (user input)
 	wg.Add(1)
