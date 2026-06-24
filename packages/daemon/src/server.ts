@@ -139,10 +139,11 @@ type VerificationResult = 'verified' | 'none' | 'invalid';
  * such a process from reading project files (or `~/.ssh`, `~/.age-identity`
  * via a traversal) or mutating the repo without Studio's per-install key.
  *
- * Payload-free coordination reads (`ping`, `session.*`, `git.status` /
- * `git.listBranches` / `git.log` name+metadata lists, `project.open`) stay
- * signature-OPTIONAL behind the `0600` boundary — they expose no file
- * content and registering a project root exfiltrates nothing on its own.
+ * Only payload-free, repo-agnostic coordination methods (`ping`, `session.*`)
+ * stay signature-OPTIONAL behind the `0600` boundary. The git metadata reads
+ * (`git.status` / `git.listBranches` / `git.log`) are signature-REQUIRED too:
+ * without it an unsigned caller reads another agent's branches / history /
+ * dirty paths cross-agent (review B-1).
  */
 export const MUTATING_OR_CONTENT_METHODS = new Set([
   // file surface — writes + content/metadata reads
