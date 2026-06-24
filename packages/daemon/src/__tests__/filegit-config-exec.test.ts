@@ -19,7 +19,7 @@
  */
 
 import { execFile as execFileCb } from 'node:child_process';
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -221,6 +221,77 @@ describe('git config-exec hardening (zero-9P security)', () => {
     const sw = await signedRpc('git.switchBranch', { repoPath: repo, name: 'feature' });
     expect((sw.result as { success: boolean }).success).toBe(true);
     expect(await exists(hookSentinel)).toBe(false);
+
+    await rm(repo, { recursive: true, force: true });
+  });
+
+  it('blocks file.write / file.delete into <root>/.git/** (closes the config-plant route)', async () => {
+    const repo = await initRepo('revdev-cfgexec-gitwrite-');
+    const open = await signedRpc('project.open', { repoPath: repo });
+    expect((open.result as { success: boolean }).success).toBe(true);
+
+    // A signed agent tries to plant a filter driver in .git/config via file.write.
+    const w = await signedRpc('file.write', {
+      repoPath: repo,
+      filePath: '.git/config',
+      content: '[filter "evil"]\n\tprocess = touch /tmp/revdev-should-not-run\n',
+    });
+    expect(w.result).toBeUndefined();
+    expect(w.error?.message ?? '').toContain('.git/');
+    // The real .git/config was NOT overwritten — still a valid repo config.
+    expect(await readFile(join(repo, '.git', 'config'), 'utf8')).not.toContain('filter "evil"');
+
+    // A nested .git/hooks write and a .git internal delete are blocked too.
+    const wHook = await signedRpc('file.write', {
+      repoPath: repo,
+      filePath: '.git/hooks/pre-commit',
+      content: '#!/bin/sh\n: > /tmp/revdev-should-not-run\n',
+    });
+    expect(wHook.error?.message ?? '').toContain('.git/');
+    const del = await signedRpc('file.delete', { repoPath: repo, filePath: '.git/HEAD' });
+    expect(del.error?.message ?? '').toContain('.git/');
+    expect(await exists(join(repo, '.git', 'HEAD'))).toBe(true);
+
+    // A normal in-tree write still works (the block is scoped to .git/).
+    const ok = await signedRpc('file.write', {
+      repoPath: repo,
+      filePath: 'note.txt',
+      content: 'hi',
+    });
+    expect((ok.result as { success: boolean }).success).toBe(true);
+
+    await rm(repo, { recursive: true, force: true });
+  });
+
+  it('refuses git.stageFile / git.switchBranch when a filter driver is planted post-open', async () => {
+    // The filter.* residual: a content filter cannot be -c-cleared per spawn, so
+    // the runtime backstop must REFUSE the op. Plant the filter via `git config`
+    // (a non-daemon route, since file.write into .git/ is now blocked above) and
+    // prove the clean/smudge driver never fires.
+    const repo = await initRepo('revdev-cfgexec-filter-');
+    await git(repo, ['branch', 'feature']);
+    const open = await signedRpc('project.open', { repoPath: repo });
+    expect((open.result as { success: boolean }).success).toBe(true);
+
+    const filterSentinel = join(repo, 'FILTER_SENTINEL');
+    const filterScript = join(repo, 'filter-payload.sh');
+    await writeFile(filterScript, `#!/bin/sh\n: > '${filterSentinel}'\ncat\n`, { mode: 0o755 });
+    await git(repo, ['config', 'filter.evil.clean', filterScript]);
+    await git(repo, ['config', 'filter.evil.smudge', filterScript]);
+    await writeFile(join(repo, '.gitattributes'), '* filter=evil\n');
+    await writeFile(join(repo, 'f.txt'), 'changed\n');
+
+    // git.stageFile (clean) must REFUSE and the filter must NOT fire.
+    const stage = await signedRpc('git.stageFile', { repoPath: repo, filePath: 'f.txt' });
+    expect(stage.result).toBeUndefined();
+    expect(stage.error?.message ?? '').toContain('filter');
+    expect(await exists(filterSentinel)).toBe(false);
+
+    // git.switchBranch (checkout → smudge) likewise refuses.
+    const sw = await signedRpc('git.switchBranch', { repoPath: repo, name: 'feature' });
+    expect(sw.result).toBeUndefined();
+    expect(sw.error?.message ?? '').toContain('filter');
+    expect(await exists(filterSentinel)).toBe(false);
 
     await rm(repo, { recursive: true, force: true });
   });
