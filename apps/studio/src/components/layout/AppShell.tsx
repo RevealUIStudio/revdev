@@ -45,6 +45,9 @@ export default function AppShell({ currentPage, onNavigate, children, padless }:
         </div>
 
         <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Persistent banner whenever the app is showing mock/degraded data */}
+          <DegradedBanner />
+
           {/* Mobile top bar with hamburger */}
           <div className="flex items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-3 py-2 md:hidden">
             <button
