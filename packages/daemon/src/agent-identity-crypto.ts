@@ -118,8 +118,19 @@ export function serializeEnvelope(envelope: SignatureEnvelope): EnvelopeString {
   return `${envelope.rawHeaderB64}.${envelope.rawPayloadB64}.${envelope.signature}`;
 }
 
+// DoS guard: the largest envelope SignatureEnvelopeSchema admits is its field
+// maxima base64url-expanded (header + payload + signature) plus the two `.`
+// separators — comfortably under 16 KiB. Reject anything larger BEFORE any
+// base64/JSON decode, so a multi-megabyte segment can't be expanded and parsed
+// just to be thrown out by the payload schema afterward. The envelope is
+// attacker-supplied and reaches this before the signature is ever checked.
+const MAX_ENVELOPE_CHARS = 16_384;
+
 export function parseEnvelope(envelopeString: EnvelopeString): SignatureEnvelope | null {
   try {
+    if (envelopeString.length > MAX_ENVELOPE_CHARS) {
+      return null;
+    }
     const parts = envelopeString.split('.');
     if (parts.length !== 3) {
       return null;
