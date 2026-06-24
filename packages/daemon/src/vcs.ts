@@ -144,12 +144,34 @@ export function runChild(
   });
 }
 
+/**
+ * Hardening flags prepended to EVERY git spawn. The daemon runs git against
+ * project repos as its own UID, so any command git would execute on its
+ * behalf is a shared-UID RCE past the traversal confinement. A command-line
+ * `-c` overrides repo/global config, so these are authoritative:
+ *   - core.hooksPath=/dev/null — don't run a repo's hooks (a hook an agent
+ *     writes into its own root would otherwise execute as the daemon).
+ *   - protocol.ext.allow=never — block the `ext::` transport (arbitrary cmd).
+ *   - core.fsmonitor= — disable the fsmonitor hook (runs a command).
+ *   - core.sshCommand=false — neutralize an attacker-set ssh command.
+ */
+const GIT_HARDENING = [
+  '-c',
+  'core.hooksPath=/dev/null',
+  '-c',
+  'protocol.ext.allow=never',
+  '-c',
+  'core.fsmonitor=',
+  '-c',
+  'core.sshCommand=false',
+];
+
 export function runGit(
   args: string[],
   cwd: string,
   opts?: Partial<RunChildOptions>,
 ): Promise<ShellResult> {
-  return runChild('git', args, { cwd, ...opts });
+  return runChild('git', [...GIT_HARDENING, ...args], { cwd, ...opts });
 }
 
 function str(v: unknown, fallback = ''): string {

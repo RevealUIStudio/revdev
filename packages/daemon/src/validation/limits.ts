@@ -15,6 +15,13 @@ export const MAX_BODY_LENGTH = 50_000;
 /** Maximum file path length */
 export const MAX_PATH_LENGTH = 4096;
 
+/**
+ * Maximum bytes accepted by `file.write` content. 768 KiB — symmetric with the
+ * daemon's `maxInlineReadBytes` read cap, so the write surface is bounded
+ * explicitly (clean -32602) rather than only by the 1 MiB inbound frame cap.
+ */
+export const MAX_FILE_WRITE_BYTES = 786_432;
+
 /** Maximum number of paths in a batch operation */
 export const MAX_PATHS_BATCH = 100;
 
