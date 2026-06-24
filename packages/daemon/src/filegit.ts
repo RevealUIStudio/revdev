@@ -218,7 +218,14 @@ registerHandler('project.open', async (params, _db, ctx) => {
     () => true,
     () => false,
   );
-  registeredRoots.add(real);
+  if (ctx.agentId === null) {
+    // Unreachable in practice: project.open is in MUTATING_OR_CONTENT_METHODS,
+    // so the dispatch signature gate binds ctx.agentId to the verified signer
+    // before this handler runs. Belt-and-suspenders so a future exemption
+    // change can never register an unowned (globally-usable) root.
+    throw new Error('project.open requires a verified signer identity');
+  }
+  registeredRoots.set(real, ctx.agentId);
   return { success: true, root: real, isGitRepo: isRepo };
 });
 
