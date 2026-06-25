@@ -896,6 +896,8 @@ registerHandler('session.end', async (params, db, ctx) => {
     ctx.agentId = null;
     ctx.agentName = null;
   }
+  // Evict all filesystem roots owned by this agent (B6 item 10).
+  notifyAgentEnded(target);
   // Best-effort dual-write — see GAP-154 §E.
   await syncSessionEnd({ sessionId: target, summary: exitSummary });
   return { ended: target };
