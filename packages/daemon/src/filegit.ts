@@ -28,6 +28,7 @@ import { constants as fsConstants } from 'node:fs';
 import { open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { onAgentEnded } from './eviction.js';
 import { getDaemonConfig, registerHandler } from './server.js';
 import { runGit, type ShellResult } from './vcs.js';
 
