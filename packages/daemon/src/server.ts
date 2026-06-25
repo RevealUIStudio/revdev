@@ -548,8 +548,6 @@ registerHandler('session.register', async (params, db, ctx) => {
   const backend = str(params.backend, str(params.env, 'unknown'));
   const env = `${backend}:${agentName}`;
   const pid = num(params.pid, 0) || null;
-  const forceRotate = params.forceRotate === true;
-
   if (supplied) {
     // UPSERT: insert or re-open existing row.
     await db.query(
@@ -594,7 +592,7 @@ registerHandler('session.register', async (params, db, ctx) => {
   const clientPublicKeyPem = strOrNull(params.publicKeyPem);
   const { did, publicKeyPem } = clientPublicKeyPem
     ? await registerClientIdentity(db, id, clientPublicKeyPem)
-    : await bootstrapAgentIdentity(db, id, forceRotate);
+    : await bootstrapAgentIdentity(db, id);
 
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
