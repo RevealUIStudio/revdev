@@ -68,6 +68,23 @@ export interface DaemonConfig {
    */
   gitTimeoutMs: number;
   /**
+   * Maximum size in UTF-8 bytes of file/blob CONTENT returned inline by a
+   * content-returning read (`file.read`, `git.diffContent`,
+   * `git.readBlobAtHead`, `git.readBlobAtIndex`). The inbound `maxLineBytes`
+   * cap only guards request frames; it does NOT bound a response the daemon
+   * writes back. Without this, a multi-MB file would be serialized into a
+   * single JSON-RPC response frame and shipped over the relay, blowing the
+   * client's reassembly buffer.
+   *
+   * Above the cap the handler returns `{ tooLarge: true, bytes }` instead of
+   * `content`; the editor falls back to a streamed / read-only view (P1/P2).
+   * Measured pre-serialize on the raw bytes (JSON escaping can roughly double
+   * the wire size, so this sits comfortably under `maxLineBytes`).
+   *
+   * 768 KiB default is generous for any source file an editor opens inline.
+   */
+  maxInlineReadBytes: number;
+  /**
    * Maximum wall-clock time (in ms) the daemon's `close()` waits for
    * in-flight RPC handlers to complete before tearing down PGlite and
    * the Unix socket. Pre-this-flag, `db.close()` raced with active
@@ -90,6 +107,43 @@ export interface DaemonConfig {
    * tune via REVDEV_DAEMON_SHUTDOWN_GRACE_MS for slower environments.
    */
   shutdownGracePeriodMs: number;
+  /**
+   * Path to the ROOT-OWNED trust anchor: a file listing the SHA-256
+   * fingerprint(s) of client public keys allowed to enroll a CLIENT-supplied
+   * identity (the Studio zero-9P model). One fingerprint per line; blank lines
+   * and `#` comments ignored.
+   *
+   * Why root-owned: the daemon runs as the WSL user, and the threat is a host
+   * process that `wsl.exe`-es in AS THAT SAME USER. Such a process could write
+   * any user-owned file, so a user-writable anchor is forgeable — it would let
+   * the attacker enroll its own key. Only a file the attacker cannot write
+   * (root:root, e.g. 0644) is a real anchor. The install-time setup writes it
+   * with sudo (see Studio daemon_ctl provisioning).
+   *
+   * Enrollment of a client-supplied key whose fingerprint is NOT listed here is
+   * rejected fail-closed (-32004). DAEMON-MINTED identities (headless hooks,
+   * no client key) never consult this file — their private key is generated
+   * in-process and never handed out, so they are not spoofable by a host
+   * process. Override the path via REVDEV_DAEMON_TRUSTED_CLIENT_FP (tests point
+   * it at a fixture).
+   *
+   * Each line is `agentId:fingerprint` — the agentId is bound, not just the
+   * key, so one trusted key cannot enroll under arbitrary agentIds (review B-3).
+   */
+  trustedClientFingerprintPath: string;
+  /**
+   * When true (production default), the trust anchor AND every ancestor
+   * directory must be root-owned, non-symlink, and not group/other-writable,
+   * and the file is opened O_NOFOLLOW (review B-2). This is what neutralizes a
+   * WSL-user attacker who points REVDEV_DAEMON_TRUSTED_CLIENT_FP at a file they
+   * control: their path is not root-owned, so it is rejected.
+   *
+   * DELIBERATELY not env-settable — only the programmatic startDaemon config
+   * can set it false (tests, which use a fixture anchor in a tmpdir). An
+   * attacker controls their --user unit's environment but cannot reach this
+   * field, so they cannot disable the ownership requirement.
+   */
+  trustedAnchorRequireRootOwned: boolean;
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
@@ -107,5 +161,8 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   pruneIntervalMs: 60 * 60 * 1000, // 1 hour
   maxLineBytes: 1_048_576, // 1 MiB
   gitTimeoutMs: 60_000, // 60 s
+  maxInlineReadBytes: 786_432, // 768 KiB
   shutdownGracePeriodMs: 5_000, // 5 s
+  trustedClientFingerprintPath: '/etc/revdev/trusted-client-fingerprint',
+  trustedAnchorRequireRootOwned: true,
 };

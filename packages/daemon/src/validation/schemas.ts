@@ -20,6 +20,7 @@ import { isValidAgentId } from '@revdev/protocol/did';
 import { z } from 'zod';
 import {
   MAX_BODY_LENGTH,
+  MAX_FILE_WRITE_BYTES,
   MAX_IDS_BATCH,
   MAX_MEMORY_LENGTH,
   MAX_NAME_LENGTH,
@@ -43,6 +44,21 @@ const safePath = z
   .refine((p) => !p.startsWith('/etc/') && !p.startsWith('/proc/') && !p.startsWith('/sys/'), {
     message: 'System paths not allowed',
   });
+
+/**
+ * A git ref / remote name argument (branch, remote). Must NOT start with '-':
+ * a leading dash is parsed by git as an option, so a value like
+ * `--receive-pack=…` / `--upload-pack=…` / `--orphan` would turn a branch or
+ * remote name into arbitrary git plumbing (option-injection, RCE-class on
+ * push/pull). The file/pathspec handlers neutralize this with `--`, but
+ * `git push`/`pull` don't accept `--` before the remote, so the leading-dash
+ * rejection is the load-bearing guard for those.
+ */
+const gitRefArg = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((s) => !s.startsWith('-'), { message: 'must not start with "-"' });
 
 // agentId must conform to the DID grammar (alphanumeric, _, -; 1-128 chars)
 // so it can be embedded in `did:revfleet:<agentId>:<fingerprint>`.
@@ -86,6 +102,10 @@ export const schemas: Record<string, z.ZodType> = {
       env: z.string().max(64).optional(),
       pid: z.number().int().nonnegative().optional(),
       forceRotate: z.boolean().optional(),
+      // Client-owned identity (Studio zero-9P): an SPKI PEM Ed25519 public
+      // key. When present the daemon registers only this public half and
+      // never mints a keypair. Bounded generously — a PEM is ~120 bytes.
+      publicKeyPem: z.string().max(4096).optional(),
       actorAgentId,
     })
     .passthrough(),
@@ -258,9 +278,24 @@ export const schemas: Record<string, z.ZodType> = {
       eventType: z.string().max(128),
       payload: z
         .unknown()
-        .refine((v) => JSON.stringify(v).length <= MAX_PAYLOAD_SIZE, {
-          message: `Event payload exceeds ${MAX_PAYLOAD_SIZE} bytes`,
-        })
+        .refine(
+          (v) => {
+            // This predicate MUST NEVER throw. JSON.stringify throws on BigInt
+            // and circular references, and returns `undefined` for a function /
+            // symbol value (so `.length` then throws too). A throw here escapes
+            // safeParse and surfaces as an unhandled rejection in the per-socket
+            // handler — a trivially reachable, pre-auth remote DoS. Treat any
+            // un-stringifiable payload as invalid rather than letting it throw.
+            try {
+              return JSON.stringify(v).length <= MAX_PAYLOAD_SIZE;
+            } catch {
+              return false;
+            }
+          },
+          {
+            message: `Event payload must be JSON-serializable and at most ${MAX_PAYLOAD_SIZE} bytes`,
+          },
+        )
         .optional(),
       // Handler accepts agentId override; falls back to ctx.agentId.
       agentId: z.string().max(MAX_NAME_LENGTH).optional(),
@@ -459,5 +494,142 @@ export const schemas: Record<string, z.ZodType> = {
       ciOutput: z.string().max(MAX_BODY_LENGTH).optional(),
       actorAgentId,
     })
+    .passthrough(),
+
+  // -- File surface (P0: daemon-owned ext4 I/O) -------------------------------
+  // `safePath` already rejects `..` traversal + system roots; the handler
+  // additionally realpath-checks every target is a descendant of a registered
+  // project root, so this is a first (cheap) line of defense, not the only one.
+  'project.open': z
+    .object({
+      repoPath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.read': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.write': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      // Bounded explicitly (symmetric with the read cap) rather than only by
+      // the inbound frame cap; MAX_BODY_LENGTH (50k) is too small for a source
+      // file, MAX_FILE_WRITE_BYTES (768 KiB) is the editor-write ceiling.
+      content: z.string().max(MAX_FILE_WRITE_BYTES),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.delete': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'file.stat': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      actorAgentId,
+    })
+    .passthrough(),
+
+  // -- Git surface (P0: daemon-owned, shells the git binary via vcs.ts) -------
+  'git.status': z.object({ repoPath: safePath, actorAgentId }).passthrough(),
+
+  'git.diffFile': z
+    .object({
+      repoPath: safePath,
+      filePath: safePath,
+      staged: z.boolean().optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.diffContent': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.stageFile': z.object({ repoPath: safePath, filePath: safePath, actorAgentId }).passthrough(),
+
+  'git.unstageFile': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.discardFile': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.listBranches': z.object({ repoPath: safePath, actorAgentId }).passthrough(),
+
+  'git.createBranch': z
+    .object({
+      repoPath: safePath,
+      name: gitRefArg,
+      baseBranch: gitRefArg.optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.switchBranch': z.object({ repoPath: safePath, name: gitRefArg, actorAgentId }).passthrough(),
+
+  'git.deleteBranch': z
+    .object({
+      repoPath: safePath,
+      name: gitRefArg,
+      force: z.boolean().optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.log': z
+    .object({
+      repoPath: safePath,
+      limit: z.number().int().min(1).max(1000).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.commit': z
+    .object({
+      repoPath: safePath,
+      message: z.string().min(1).max(MAX_BODY_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.push': z
+    .object({
+      repoPath: safePath,
+      remote: gitRefArg.optional(),
+      branch: gitRefArg.optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.pull': z
+    .object({
+      repoPath: safePath,
+      remote: gitRefArg.optional(),
+      branch: gitRefArg.optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'git.readBlobAtHead': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
+    .passthrough(),
+
+  'git.readBlobAtIndex': z
+    .object({ repoPath: safePath, filePath: safePath, actorAgentId })
     .passthrough(),
 };

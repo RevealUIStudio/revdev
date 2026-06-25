@@ -15,9 +15,10 @@
  *   `session.register` are rejected with -32002.
  */
 
-import { mkdir } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { open as fsOpen, lstat, mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { formatDid, parseDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
@@ -26,6 +27,7 @@ import {
   generateAgentKeypair,
   hashParams,
   parseEnvelope,
+  spkiPemToRaw,
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
@@ -117,6 +119,73 @@ const IDENTITY_EXEMPT = new Set([
   'inference.stop',
   'inference.chat',
   'inference.generate',
+]);
+
+/**
+ * Result of the per-request signature check (`verifyOrWarn`).
+ *   - 'verified': a well-formed Ed25519 envelope passed every check and
+ *     `ctx.agentId` is now bound to the signer.
+ *   - 'none': no `x-revdev-signature` was present.
+ *   - 'invalid': a signature was present but failed a check (parse, unknown
+ *     key, bad signature, stale ts, method/params mismatch, nonce replay).
+ */
+type VerificationResult = 'verified' | 'none' | 'invalid';
+
+/**
+ * Methods that MUST carry a verified Ed25519 signature — every mutation and
+ * every content-returning read. The `0600` socket alone stops a hostile
+ * non-owner WSL process, but ANY host process can `wsl.exe` in as the WSL
+ * user and reach the socket; the signature is the real barrier that keeps
+ * such a process from reading project files (or `~/.ssh`, `~/.age-identity`
+ * via a traversal) or mutating the repo without Studio's per-install key.
+ *
+ * Only payload-free, repo-agnostic coordination methods (`ping`, `session.*`)
+ * stay signature-OPTIONAL behind the `0600` boundary. The git metadata reads
+ * (`git.status` / `git.listBranches` / `git.log`) are signature-REQUIRED too:
+ * without it an unsigned caller reads another agent's branches / history /
+ * dirty paths cross-agent (review B-1).
+ */
+export const MUTATING_OR_CONTENT_METHODS = new Set([
+  // file surface — writes + content/metadata reads
+  'file.read',
+  'file.write',
+  'file.delete',
+  'file.stat',
+  // git mutations
+  'git.stageFile',
+  'git.unstageFile',
+  'git.discardFile',
+  'git.createBranch',
+  'git.switchBranch',
+  'git.deleteBranch',
+  'git.commit',
+  'git.push',
+  'git.pull',
+  // worktree mutations — `git worktree add/remove` shells out as the daemon UID,
+  // so they MUST be signed (binds ctx.agentId to the verified signer) and gated
+  // by requireRoot in filegit.ts. Their absence from this set was the B-WT
+  // blocker: an unsigned host process could session.register a bare identity and
+  // drive `git worktree add` as the daemon UID (filter.* base → RCE on checkout).
+  // Cross-language contract: signing.rs requires_signature() must mark these too.
+  'worktree.create',
+  'worktree.remove',
+  // git content-returning reads (diffFile/diffContent embed source lines)
+  'git.diffFile',
+  'git.diffContent',
+  'git.readBlobAtHead',
+  'git.readBlobAtIndex',
+  // Root registration. Signature-REQUIRED so the root is recorded under the
+  // VERIFIED signer's agentId (filegit per-agent root scoping) rather than a
+  // spoofable param — otherwise any unsigned caller could register a root that
+  // a later signed mutation would be authorized against. (Cross-language
+  // contract: signing.rs requires_signature() must mark project.open too.)
+  'project.open',
+  // git metadata reads — signature-REQUIRED so they are scoped to the verified
+  // signer (no cross-agent branch/history/dirty-path leak via a spoofable
+  // actorAgentId). Cross-language contract: signing.rs must mark these too.
+  'git.status',
+  'git.listBranches',
+  'git.log',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -231,6 +300,24 @@ export function getShutdownSignal(): AbortSignal | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Active daemon config — set at startDaemon so handlers registered in other
+// modules (e.g. filegit.ts) can read effective limits like
+// `maxInlineReadBytes` without threading `cfg` through the handler signature.
+// Null before the first startDaemon call.
+// ---------------------------------------------------------------------------
+
+let _daemonConfig: DaemonConfig | null = null;
+
+/**
+ * Returns the effective config of the running daemon. Falls back to
+ * DAEMON_DEFAULTS when called before startDaemon (e.g. a handler invoked in
+ * a unit test that never started a server) so callers never see `null`.
+ */
+export function getDaemonConfig(): DaemonConfig {
+  return _daemonConfig ?? DAEMON_DEFAULTS;
+}
+
+// ---------------------------------------------------------------------------
 // In-flight handler counter + shutdown gate.
 //
 // `_activeHandlerCount` is incremented before each `await handler()` and
@@ -325,7 +412,11 @@ function asStringArray(v: unknown): string[] {
 const SIG_TS_WINDOW_SECS = 60;
 const NONCE_SWEEP_WINDOW_MINUTES = 10;
 
-async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Promise<void> {
+async function verifyOrWarn(
+  req: RpcRequest,
+  db: PGlite,
+  ctx: SocketContext,
+): Promise<VerificationResult> {
   // Reset any prior signature binding on this socket before processing the
   // current request. Connection-level bindings (register/attach/param) are
   // restored from the pre-signature snapshot. Without this, a signed call
@@ -344,19 +435,19 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
   const envelopeStr = req['x-revdev-signature'];
   if (!envelopeStr) {
     log.debug('no signature', { method: req.method });
-    return;
+    return 'none';
   }
 
   const parsed = parseEnvelope(envelopeStr);
   if (!parsed) {
     log.warn('signature parse failed', { method: req.method });
-    return;
+    return 'invalid';
   }
 
   const didParsed = parseDid(parsed.payload.did);
   if (!didParsed) {
     log.warn('signature did unparseable', { did: parsed.payload.did });
-    return;
+    return 'invalid';
   }
 
   if (parsed.payload.kid !== didParsed.fingerprint) {
@@ -364,7 +455,7 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
       kid: parsed.payload.kid,
       fingerprint: didParsed.fingerprint,
     });
-    return;
+    return 'invalid';
   }
 
   const keyRow = await db.query<{ public_key_pem: string }>(
@@ -374,18 +465,18 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
   );
   if (keyRow.rows.length === 0) {
     log.warn('signature unknown key', { kid: parsed.payload.kid, agentId: didParsed.agentId });
-    return;
+    return 'invalid';
   }
 
   const publicKeyPem = keyRow.rows[0]?.public_key_pem;
   if (!publicKeyPem || !verifyEnvelope(parsed, publicKeyPem)) {
     log.warn('signature invalid', { kid: parsed.payload.kid });
-    return;
+    return 'invalid';
   }
 
   if (Math.abs(Date.now() / 1000 - parsed.payload.ts) > SIG_TS_WINDOW_SECS) {
     log.warn('signature ts outside window', { ts: parsed.payload.ts });
-    return;
+    return 'invalid';
   }
 
   if (parsed.payload.method !== req.method) {
@@ -393,12 +484,12 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
       payloadMethod: parsed.payload.method,
       reqMethod: req.method,
     });
-    return;
+    return 'invalid';
   }
 
   if (hashParams(req.method, req.params) !== parsed.payload.paramsHash) {
     log.warn('signature paramsHash mismatch', { method: req.method });
-    return;
+    return 'invalid';
   }
 
   try {
@@ -408,7 +499,7 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
     ]);
   } catch {
     log.warn('signature nonce replay', { nonce: parsed.payload.nonce, agentId: didParsed.agentId });
-    return;
+    return 'invalid';
   }
 
   // Snapshot the pre-signature connection identity so the NEXT request can
@@ -422,6 +513,7 @@ async function verifyOrWarn(req: RpcRequest, db: PGlite, ctx: SocketContext): Pr
   ctx.agentId = didParsed.agentId;
   ctx.boundVia = 'signature';
   ctx.verifiedSignature = { kid: parsed.payload.kid, nonce: parsed.payload.nonce };
+  return 'verified';
 }
 
 /** Accept either `paths: string[]` or `filePath: string` — normalize to array. */
@@ -490,10 +582,18 @@ registerHandler('session.register', async (params, db, ctx) => {
   // Phase 1 decision #5 ("dual-write failure: best-effort, don't fail RPC").
   await syncSessionRegister({ agentId: id, agentName, env, task: workDir, pid });
 
-  // Agent identity bootstrap: generate or reuse an Ed25519 keypair and
-  // persist it to the agent_identity + agent_identity_keys tables.
-  // Returns the DID and public key PEM to include in the response.
-  const { did, publicKeyPem } = await bootstrapAgentIdentity(db, id, forceRotate);
+  // Agent identity. Two ownership models:
+  //   - CLIENT-OWNED (Studio zero-9P): the caller supplies `publicKeyPem` and
+  //     keeps the private key in its own (Windows-local) vault. The daemon
+  //     registers only the public half and never holds a private key. This is
+  //     the real barrier behind the relay — a host process without the key
+  //     cannot sign a mutation/content read (see MUTATING_OR_CONTENT_METHODS).
+  //   - DAEMON-MINTED (headless hooks): no key supplied, so the daemon
+  //     generates the keypair and mirrors it to revvault, as before.
+  const clientPublicKeyPem = strOrNull(params.publicKeyPem);
+  const { did, publicKeyPem } = clientPublicKeyPem
+    ? await registerClientIdentity(db, id, clientPublicKeyPem)
+    : await bootstrapAgentIdentity(db, id, forceRotate);
 
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
@@ -566,6 +666,176 @@ async function bootstrapAgentIdentity(
   void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
 
   return { did, publicKeyPem: kp.publicKeyPem };
+}
+
+/** Thrown when a client (agentId, key) pair is not in the trust anchor. */
+class UntrustedClientKeyError extends Error {
+  /** JSON-RPC error code surfaced to the client (see dispatch catch). */
+  readonly code = -32004;
+  constructor(agentId: string, fingerprint: string, anchorPath: string) {
+    super(
+      `untrusted client identity: (agentId ${agentId}, fingerprint ${fingerprint}) is not in ` +
+        `the trust anchor ${anchorPath}. A client identity may only be enrolled for the ` +
+        `install-provisioned (agentId, key) pair. If this is a fresh install, run the Studio ` +
+        `daemon setup to provision it.`,
+    );
+    this.name = 'UntrustedClientKeyError';
+  }
+}
+
+/**
+ * Read the trust anchor and return the set of allowed `agentId:fingerprint`
+ * pairs. One `agentId:fingerprint` per line; blank lines and `#` comments are
+ * ignored. Binding the agentId — not just the fingerprint — stops a single
+ * trusted key from enrolling under arbitrary agentIds and becoming many owning
+ * agents, which would defeat per-agent root scoping (review B-3).
+ *
+ * A missing / unreadable / UNTRUSTED file yields an EMPTY set — enrollment then
+ * fails closed. When `requireRootOwned` (production, review B-2), the file AND
+ * every ancestor directory must be a root-owned, non-symlink entry with no
+ * group/other write bit, and the file is opened O_NOFOLLOW + fstat-checked — so
+ * a WSL-user attacker cannot point the daemon at a file they control, even via
+ * a systemd-user `Environment=REVDEV_DAEMON_TRUSTED_CLIENT_FP=...` override
+ * (their path is not root-owned, so it is rejected). The disable lives ONLY in
+ * the programmatic startDaemon config (tests), never in an env var an attacker
+ * could set on their own --user unit.
+ */
+async function loadTrustedClientEntries(
+  anchorPath: string,
+  requireRootOwned: boolean,
+): Promise<Set<string>> {
+  let text: string;
+  try {
+    text = requireRootOwned
+      ? await readRootOwnedFile(anchorPath)
+      : await readFile(anchorPath, 'utf8');
+  } catch (err) {
+    log.warn('trust anchor unreadable/untrusted — client-key enrollment fails closed', {
+      anchorPath,
+      requireRootOwned,
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return new Set();
+  }
+  const out = new Set<string>();
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+    const idx = trimmed.indexOf(':');
+    // Require a non-empty agentId AND fingerprint on either side of the colon.
+    if (idx <= 0 || idx >= trimmed.length - 1) continue;
+    out.add(`${trimmed.slice(0, idx)}:${trimmed.slice(idx + 1)}`);
+  }
+  return out;
+}
+
+/**
+ * Read a file that MUST be root-owned and tamper-resistant: every ancestor
+ * directory must be a root-owned, non-symlink directory with no group/other
+ * write bit, and the file itself is opened O_NOFOLLOW then fstat-checked
+ * (regular file, uid 0, not group/other-writable). Throws otherwise.
+ */
+async function readRootOwnedFile(filePath: string): Promise<string> {
+  let dir = dirname(resolve(filePath));
+  for (;;) {
+    const dstat = await lstat(dir);
+    if (dstat.isSymbolicLink()) throw new Error(`anchor ancestor is a symlink: ${dir}`);
+    if (!dstat.isDirectory()) throw new Error(`anchor ancestor is not a directory: ${dir}`);
+    if (dstat.uid !== 0)
+      throw new Error(`anchor ancestor not root-owned (uid ${dstat.uid}): ${dir}`);
+    if ((dstat.mode & 0o022) !== 0) throw new Error(`anchor ancestor group/other-writable: ${dir}`);
+    const parent = dirname(dir);
+    if (parent === dir) break; // reached the filesystem root
+    dir = parent;
+  }
+  const handle = await fsOpen(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    const fstat = await handle.stat();
+    if (!fstat.isFile()) throw new Error(`trust anchor is not a regular file: ${filePath}`);
+    if (fstat.uid !== 0)
+      throw new Error(`trust anchor not root-owned (uid ${fstat.uid}): ${filePath}`);
+    if ((fstat.mode & 0o022) !== 0)
+      throw new Error(`trust anchor group/other-writable: ${filePath}`);
+    return await handle.readFile('utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Register a CLIENT-supplied Ed25519 public key for an agent (Studio zero-9P
+ * model). The daemon derives the fingerprint + DID from the SPKI PEM and
+ * stores ONLY the public half in agent_identity / agent_identity_keys — no
+ * private key is generated or written to revvault. Idempotent: re-registering
+ * the same key is a no-op; a different key rotates (supersedes the prior one).
+ *
+ * SECURITY: the supplied key's fingerprint MUST appear in the root-owned trust
+ * anchor or enrollment is rejected (-32004). This closes the self-enrollment
+ * hole (any process reaching the 0600 socket could previously enroll its own
+ * key) AND the key-takeover hole (supplying a different key for an existing
+ * agentId previously SUPERSEDED the legitimate key). The check runs on every
+ * path — fresh insert, rotation, and the idempotent re-register — so an
+ * untrusted key can never enter agent_identity_keys.
+ */
+async function registerClientIdentity(
+  db: PGlite,
+  agentId: string,
+  publicKeyPem: string,
+): Promise<IdentityResult> {
+  const raw = spkiPemToRaw(publicKeyPem);
+  const fingerprint = computeFingerprint(raw);
+  const did = formatDid(agentId, fingerprint);
+
+  // Trust-anchor gate (fail-closed). Reject unless THIS (agentId, fingerprint)
+  // pair is provisioned, BEFORE touching agent_identity_keys. Binding the
+  // agentId stops one trusted key from minting unlimited owning agents (B-3).
+  const cfg = getDaemonConfig();
+  const trusted = await loadTrustedClientEntries(
+    cfg.trustedClientFingerprintPath,
+    cfg.trustedAnchorRequireRootOwned,
+  );
+  if (!trusted.has(`${agentId}:${fingerprint}`)) {
+    throw new UntrustedClientKeyError(agentId, fingerprint, cfg.trustedClientFingerprintPath);
+  }
+
+  const existing = await db.query<{ fingerprint: string }>(
+    `SELECT fingerprint FROM agent_identity WHERE agent_id = $1`,
+    [agentId],
+  );
+
+  if (existing.rows.length === 0) {
+    await db.query(
+      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
+       VALUES ($1, $2, $3, $4)`,
+      [agentId, did, fingerprint, publicKeyPem],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, publicKeyPem],
+    );
+  } else if (existing.rows[0]?.fingerprint !== fingerprint) {
+    // Rotated to a new client key: supersede the old, register the new.
+    await db.query(
+      `UPDATE agent_identity_keys SET superseded_at = NOW()
+       WHERE agent_id = $1 AND superseded_at IS NULL`,
+      [agentId],
+    );
+    await db.query(
+      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+       VALUES ($1, $2, $3)`,
+      [fingerprint, agentId, publicKeyPem],
+    );
+    await db.query(
+      `UPDATE agent_identity
+       SET did = $1, fingerprint = $2, public_key_pem = $3, last_seen_at = NOW()
+       WHERE agent_id = $4`,
+      [did, fingerprint, publicKeyPem, agentId],
+    );
+  }
+  // else: same fingerprint already registered — idempotent no-op.
+
+  return { did, publicKeyPem };
 }
 
 function persistIdentityToRevvault(
@@ -1120,6 +1390,9 @@ export async function startDaemon(
   config: Partial<DaemonConfig> = {},
 ): Promise<{ close: () => Promise<void>; _db: PGlite }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
+  // Publish the effective config so handlers in other modules (filegit.ts)
+  // can read limits like maxInlineReadBytes without a cfg parameter.
+  _daemonConfig = cfg;
 
   // Reset shutdown signal + closing gate for this daemon lifecycle.
   // _shutdownController is aborted in close(); _closing is set to true
@@ -1136,7 +1409,11 @@ export async function startDaemon(
 
   // Ensure data directory exists
   await mkdir(cfg.dataDir, { recursive: true });
-  await mkdir(dirname(cfg.socketPath), { recursive: true });
+  // Create the socket's parent dir with an explicit owner-only mode. Without
+  // `mode`, the dir inherits the umask; the socket itself is bound 0600 (see
+  // listen() below), but a world-traversable parent dir is an unnecessary
+  // weakening of the filesystem boundary that gates the Unix socket.
+  await mkdir(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });
 
   // Initialize PGlite and bring the schema to the latest version. A failed
   // or future-version migration throws MigrationError — the daemon refuses
@@ -1364,10 +1641,33 @@ export async function startDaemon(
           continue;
         }
 
-        // Signature gate (accept-if-present, P1). Attempts to bind ctx.agentId
-        // from a verified Ed25519 envelope. Never rejects the request — invalid
-        // or missing signatures fall through to the identity gate below.
-        await verifyOrWarn(req, db, ctx);
+        // Signature gate. Attempts to bind ctx.agentId from a verified Ed25519
+        // envelope. For coordination methods this is accept-if-present (invalid
+        // or missing signatures fall through to the identity gate below). For
+        // MUTATING_OR_CONTENT_METHODS the signature is REQUIRED — anything other
+        // than a fully-verified envelope is rejected with -32003 before the
+        // handler runs, mirroring the license-guard block above.
+        const verification = await verifyOrWarn(req, db, ctx);
+        if (MUTATING_OR_CONTENT_METHODS.has(req.method) && verification !== 'verified') {
+          socket.write(
+            `${JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              error: {
+                code: -32003,
+                message: 'Signature required',
+                data: {
+                  method: req.method,
+                  reason:
+                    verification === 'none'
+                      ? 'missing Ed25519 signature'
+                      : 'invalid Ed25519 signature',
+                },
+              },
+            })}\n`,
+          );
+          continue;
+        }
 
         // Identity gate: most coordination calls need a registered agent.
         // Fallback: accept `actorAgentId` in params (requireAgent will validate).
@@ -1414,12 +1714,18 @@ export async function startDaemon(
           socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
         } catch (err) {
           trackRpcCall(req.method, 'error', Date.now() - startMs);
+          // A handler may carry an explicit numeric JSON-RPC code (e.g.
+          // UntrustedClientKeyError → -32004). Guard on `typeof === 'number'`
+          // so Node's string error codes (ENOENT, EACCES, …) don't leak into
+          // the JSON-RPC `code` field — those fall back to the generic -32000.
+          const rawCode = (err as { code?: unknown }).code;
+          const code = typeof rawCode === 'number' ? rawCode : -32000;
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
               id: req.id,
               error: {
-                code: -32000,
+                code,
                 message: err instanceof Error ? err.message : 'Internal error',
               },
             })}\n`,

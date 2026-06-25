@@ -26,6 +26,13 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import './inference.js';
 import './vcs.js';
+// Register the file.* / git.* / project.open / worktree.* handler group. cli.js
+// is the PRODUCTION daemon entrypoint (systemd ExecStart → dist/cli.js); without
+// this side-effect import the entire zero-9P filegit surface — including the now
+// sign-gated worktree.create / worktree.remove (moved here from vcs.ts for the
+// B-WT fix) — is never registered on the shipped daemon, leaving the signature
+// barrier inert. index.ts already imports it; cli.ts had been missed.
+import './filegit.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { LicenseConfigError, LicenseExpiredError } from './license.js';
 import { startDaemon } from './server.js';
@@ -179,6 +186,8 @@ const config = {
     'REVDEV_DAEMON_SHUTDOWN_GRACE_MS',
     DAEMON_DEFAULTS.shutdownGracePeriodMs,
   ),
+  trustedClientFingerprintPath:
+    process.env.REVDEV_DAEMON_TRUSTED_CLIENT_FP ?? DAEMON_DEFAULTS.trustedClientFingerprintPath,
 };
 
 const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;

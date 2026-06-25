@@ -1,10 +1,15 @@
 /**
- * VCS handlers — git worktree management and merge-request tracking.
+ * VCS handlers — read-only worktree registry view + merge-request tracking,
+ * plus the shared `runGit` / `runChild` git-spawn helpers used across the daemon.
  *
- * Worktrees are real: we shell out to `git worktree add/remove` in the
- * agent's working directory. Merge requests are tracked in the
- * `merge_requests` table; actual PR creation is left to the client
- * (agents call `gh pr create` themselves and then update status here).
+ * The MUTATING worktree ops (`worktree.create` / `worktree.remove`) moved to
+ * filegit.ts so they sit behind the same `requireRoot` per-agent project-ownership
+ * check and Ed25519 signature barrier as `file.*` / `git.*` — they shell
+ * `git worktree add` as the daemon UID, a shared-UID RCE vector if left unsigned
+ * and unconfined (the B-WT fix). Only the read-only `worktree.list` registry view
+ * stays here. Merge requests are tracked in the `merge_requests` table; actual PR
+ * creation is left to the client (agents call `gh pr create` themselves and then
+ * update status here).
  *
  * Reliability: every git spawn is bounded by `DAEMON_DEFAULTS.gitTimeoutMs`
  * (default 60 s, env-overridable via REVDEV_DAEMON_GIT_TIMEOUT_MS) AND
@@ -18,6 +23,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { DAEMON_DEFAULTS } from './config.js';
 import { getShutdownSignal, registerHandler } from './server.js';
 
@@ -46,6 +53,12 @@ export interface RunChildOptions {
    * SIGTERM if any source aborts.
    */
   externalSignal?: AbortSignal;
+  /**
+   * Environment for the child. When omitted the child inherits the parent
+   * process environment (Node's default). `runGit` always supplies a hardened
+   * env (see `gitHardenedEnv`); only the generic test seam leaves it unset.
+   */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -90,6 +103,10 @@ export function runChild(
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       signal,
+      // Only override the environment when a caller supplies one (runGit does;
+      // the generic runChild test seam does not). Passing `undefined` here would
+      // make spawn use an EMPTY env on some Node versions, so branch on it.
+      ...(opts.env ? { env: opts.env } : {}),
     });
 
     let stdout = '';
@@ -144,12 +161,67 @@ export function runChild(
   });
 }
 
-function runGit(
+/**
+ * Hardening flags prepended to EVERY git spawn. The daemon runs git against
+ * project repos as its own UID, so any command git would execute on its
+ * behalf is a shared-UID RCE past the traversal confinement. A command-line
+ * `-c` overrides repo/global config, so these are authoritative:
+ *   - core.hooksPath=/dev/null — don't run a repo's hooks (a hook an agent
+ *     writes into its own root would otherwise execute as the daemon).
+ *   - protocol.ext.allow=never — block the `ext::` transport (arbitrary cmd).
+ *   - core.fsmonitor= — disable the fsmonitor hook (runs a command).
+ *   - core.sshCommand=false — neutralize an attacker-set ssh command.
+ *
+ * NOT here: `diff.external`. Forcing `-c diff.external=` (empty) does NOT make
+ * git fall back to the builtin diff — git tries to exec the empty string and
+ * fails the whole diff ("external diff died", exit 128). The non-breaking
+ * neutralizer is the per-command `--no-ext-diff`/`--no-textconv` flag, applied
+ * at the `git.diffFile` call site (filegit.ts). The config-set form of
+ * `diff.external`/`filter.*`/`*.textconv` is refused up front by the
+ * exec-key scan in `project.open`. See `gitHardenedEnv` for the env vectors.
+ */
+const GIT_HARDENING = [
+  '-c',
+  'core.hooksPath=/dev/null',
+  '-c',
+  'protocol.ext.allow=never',
+  '-c',
+  'core.fsmonitor=',
+  '-c',
+  'core.sshCommand=false',
+];
+
+/**
+ * Hardened environment for every daemon-spawned git. Closes the env-and-system
+ * config vectors a command-line `-c` cannot reach:
+ *   - GIT_CONFIG_NOSYSTEM=1 — ignore /etc/gitconfig (a system-level
+ *     diff.external/core.sshCommand would otherwise apply to every spawn).
+ *   - GIT_CONFIG_GLOBAL pinned to the DAEMON's own ~/.gitconfig — the only
+ *     trusted global, and immune to a $HOME-redirected global config. Pinning
+ *     (rather than nulling) preserves the daemon's commit identity.
+ *   - GIT_ATTR_NOSYSTEM=1 — ignore /etc/gitattributes, which can route a path
+ *     through a filter/textconv driver (arbitrary command) on diff/checkout.
+ *   - GIT_EXTERNAL_DIFF deleted — an inherited value would run on every diff.
+ */
+function gitHardenedEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  env.GIT_CONFIG_NOSYSTEM = '1';
+  env.GIT_CONFIG_GLOBAL = join(homedir(), '.gitconfig');
+  env.GIT_ATTR_NOSYSTEM = '1';
+  delete env.GIT_EXTERNAL_DIFF;
+  return env;
+}
+
+export function runGit(
   args: string[],
   cwd: string,
   opts?: Partial<RunChildOptions>,
 ): Promise<ShellResult> {
-  return runChild('git', args, { cwd, ...opts });
+  return runChild('git', [...GIT_HARDENING, ...args], {
+    cwd,
+    env: gitHardenedEnv(),
+    ...opts,
+  });
 }
 
 function str(v: unknown, fallback = ''): string {
@@ -160,46 +232,14 @@ function strOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
-async function agentWorkDir(
-  db: import('@electric-sql/pglite').PGlite,
-  agentId: string,
-): Promise<string> {
-  const r = await db.query<{ task: string }>(`SELECT task FROM agent_sessions WHERE id = $1`, [
-    agentId,
-  ]);
-  return r.rows[0]?.task || process.cwd();
-}
-
 // ---------------------------------------------------------------------------
-// worktree.*
+// worktree.* — read-only registry view
+//
+// The mutating worktree ops (`worktree.create` / `worktree.remove`) live in
+// filegit.ts behind requireRoot + the signature barrier (B-WT). This list view
+// only reads the daemon's own `worktrees` table, so it carries no exec or
+// path-traversal surface and stays here.
 // ---------------------------------------------------------------------------
-
-registerHandler('worktree.create', async (params, db, ctx) => {
-  if (!ctx.agentId) throw new Error('worktree.create: no registered session');
-  const branch = strOrNull(params.branch);
-  if (!branch) throw new Error('worktree.create: missing branch');
-  const baseBranch = str(params.baseBranch, 'main');
-  const cwd = await agentWorkDir(db, ctx.agentId);
-  // Derive worktree path as ../<repo>-<branch>
-  const worktreePath =
-    strOrNull(params.path) ?? `${cwd.replace(/\/+$/, '')}-${branch.replace(/\//g, '-')}`;
-
-  const result = await runGit(['worktree', 'add', '-b', branch, worktreePath, baseBranch], cwd);
-  if (!result.ok) {
-    return { success: false, error: result.stderr || 'git worktree add failed' };
-  }
-  await db.query(
-    `INSERT INTO worktrees (agent_id, branch, worktree_path, base_branch, status)
-     VALUES ($1, $2, $3, $4, 'active')
-     ON CONFLICT (agent_id) DO UPDATE SET
-       branch = EXCLUDED.branch,
-       worktree_path = EXCLUDED.worktree_path,
-       base_branch = EXCLUDED.base_branch,
-       status = 'active'`,
-    [ctx.agentId, branch, worktreePath, baseBranch],
-  );
-  return { success: true, branch, worktreePath, baseBranch };
-});
 
 registerHandler('worktree.list', async (params, db) => {
   const agentId = strOrNull(params.agentId);
@@ -208,33 +248,6 @@ registerHandler('worktree.list', async (params, db) => {
     : `SELECT * FROM worktrees WHERE status = 'active' ORDER BY created_at DESC`;
   const result = await db.query<Record<string, unknown>>(sql, agentId ? [agentId] : []);
   return { worktrees: result.rows };
-});
-
-registerHandler('worktree.remove', async (params, db, ctx) => {
-  if (!ctx.agentId) throw new Error('worktree.remove: no registered session');
-  const branch = strOrNull(params.branch);
-  if (!branch) throw new Error('worktree.remove: missing branch');
-
-  const row = await db.query<{ worktree_path: string }>(
-    `SELECT worktree_path FROM worktrees
-     WHERE agent_id = $1 AND branch = $2 AND status = 'active'`,
-    [ctx.agentId, branch],
-  );
-  const worktreePath = row.rows[0]?.worktree_path;
-  if (!worktreePath) {
-    return { success: false, error: `No active worktree for branch ${branch}` };
-  }
-  const cwd = await agentWorkDir(db, ctx.agentId);
-  const result = await runGit(['worktree', 'remove', worktreePath], cwd);
-  if (!result.ok) {
-    return { success: false, error: result.stderr || 'git worktree remove failed' };
-  }
-  await db.query(
-    `UPDATE worktrees SET status = 'removed'
-     WHERE agent_id = $1 AND branch = $2`,
-    [ctx.agentId, branch],
-  );
-  return { success: true, branch, worktreePath };
 });
 
 // ---------------------------------------------------------------------------

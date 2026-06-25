@@ -28,3 +28,9 @@
 # finding so wide-range pull_request gitleaks scans (e.g. test->main promotion sync PRs)
 # don't trip on it.
 0e06d76a51d3705228a49be6c928c6f59cfb2046:packages/daemon/src/__tests__/e2e-ipc.test.ts:generic-api-key:80
+
+# TROUBLESHOOTING.md — documentation example license key. The eyJ-prefixed
+# EdDSA-JWT example value for REVEALUI_LICENSE_KEY is shown so users recognize
+# the real format; it trips the default generic-api-key rule but is illustrative,
+# not an issued credential. (Audit item 1, 2026-06-24.)
+59dc05ae1bb76770159111480c681ea74936e735:docs/TROUBLESHOOTING.md:generic-api-key:97
