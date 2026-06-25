@@ -614,10 +614,7 @@ interface IdentityResult {
   publicKeyPem: string;
 }
 
-async function bootstrapAgentIdentity(
-  db: PGlite,
-  agentId: string,
-): Promise<IdentityResult> {
+async function bootstrapAgentIdentity(db: PGlite, agentId: string): Promise<IdentityResult> {
   const existing = await db.query<{ did: string; fingerprint: string; public_key_pem: string }>(
     `SELECT did, fingerprint, public_key_pem FROM agent_identity WHERE agent_id = $1`,
     [agentId],
