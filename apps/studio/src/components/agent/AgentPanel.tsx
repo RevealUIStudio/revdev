@@ -7,13 +7,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import ConfirmDialog from '../ui/ConfirmDialog';
 import AgentChat from './AgentChat';
 import FileReservations from './FileReservations';
 import MessageInbox from './MessageInbox';
 import SpawnerPanel from './SpawnerPanel';
 import TaskBoard from './TaskBoard';
-
-import ConfirmDialog from '../ui/ConfirmDialog';
 
 const AGENT_POLL_INTERVAL_MS = 30_000;
 
