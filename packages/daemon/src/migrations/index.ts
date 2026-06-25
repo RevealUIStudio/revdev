@@ -17,5 +17,6 @@
 
 import type { Migration } from '../storage/migrate.js';
 import { MIGRATION_0001 } from './0001-initial-schema.js';
+import { MIGRATION_0002 } from './0002-key-origin.js';
 
-export const MIGRATIONS: readonly Migration[] = [MIGRATION_0001];
+export const MIGRATIONS: readonly Migration[] = [MIGRATION_0001, MIGRATION_0002];
