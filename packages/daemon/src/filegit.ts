@@ -46,6 +46,20 @@ import { runGit, type ShellResult } from './vcs.js';
  */
 const registeredRoots = new Map<string, string>();
 
+/**
+ * Remove all roots owned by `agentId`. Called when the agent's session ends so
+ * terminated agents cannot inherit ownership of paths they opened.
+ */
+function evictRootsForAgent(agentId: string): void {
+  for (const [root, ownerId] of registeredRoots) {
+    if (ownerId === agentId) registeredRoots.delete(root);
+  }
+}
+
+// Register the eviction callback so server.ts can fire it on session.end and
+// harness.prune without a circular import (see eviction.ts).
+onAgentEnded(evictRootsForAgent);
+
 /** @internal — test seam: clear the allowlist between test cases. */
 export function _clearRegisteredRootsForTest(): void {
   registeredRoots.clear();
