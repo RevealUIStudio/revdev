@@ -31,6 +31,7 @@ import {
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
+import { notifyAgentEnded } from './eviction.js';
 import {
   guardRpcMethod,
   initLicenseGuard,
