@@ -13,6 +13,8 @@ import MessageInbox from './MessageInbox';
 import SpawnerPanel from './SpawnerPanel';
 import TaskBoard from './TaskBoard';
 
+import ConfirmDialog from '../ui/ConfirmDialog';
+
 const AGENT_POLL_INTERVAL_MS = 30_000;
 
 type RightTab = 'changes' | 'chat' | 'messages' | 'tasks' | 'reservations';
