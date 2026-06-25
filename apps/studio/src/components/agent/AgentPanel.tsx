@@ -308,6 +308,7 @@ export default function AgentPanel() {
 
   const [stagingAll, setStagingAll] = useState(false);
   const [discardingAll, setDiscardingAll] = useState(false);
+  const [confirmDiscardAll, setConfirmDiscardAll] = useState(false);
 
   // Tab state for right pane
   const [rightTab, setRightTab] = useState<RightTab>('changes');
