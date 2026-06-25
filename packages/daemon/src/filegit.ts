@@ -383,6 +383,19 @@ registerHandler('project.open', async (params, _db, ctx) => {
   // the daemon UID (e.g. exfil ~/.age-identity/keys.txt). Done BEFORE adding to
   // registeredRoots so a refused repo is never usable by file.*/git.*.
   if (isRepo) await assertNoExecConfig(real);
+  // Nested-root containment (B6 item 3): reject a root that is an ancestor or
+  // descendant of a different agent's owned root. A parent-root owner reaches
+  // a child root's files via within(); a child-root opener would inherit access
+  // to the parent agent's tree via requireRoot + within(). Both directions are
+  // rejected here before any registration occurs.
+  for (const [existingRoot, ownerId] of registeredRoots) {
+    if (ownerId === ctx.agentId) continue;
+    if (within(existingRoot, real) || within(real, existingRoot)) {
+      throw new Error(
+        `project root conflict: ${repoPathRaw} overlaps with a root owned by another agent`,
+      );
+    }
+  }
   registeredRoots.set(real, ctx.agentId);
   return { success: true, root: real, isGitRepo: isRepo };
 });
