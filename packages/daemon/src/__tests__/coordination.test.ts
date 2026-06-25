@@ -480,24 +480,24 @@ describe('agent identity bootstrap', () => {
     expect(r2.publicKeyPem).toBe(r1.publicKeyPem);
   });
 
-  it('forceRotate:true supersedes old key and issues a new one', async () => {
+  it('forceRotate param is silently ignored — re-register returns the same keypair', async () => {
+    // forceRotate was an unauthenticated key-rotation escape hatch removed in
+    // B6 item 0b. Passing it must not cause key supersession.
     const r1 = (await rpc(socketPath, 'session.register', {
-      agentId: 'identity-test-rotate',
+      agentId: 'identity-test-rotate-ignored',
       agentName: 'identity-tester',
       backend: 'test',
     })) as { did: string; publicKeyPem: string };
 
     const r2 = (await rpc(socketPath, 'session.register', {
-      agentId: 'identity-test-rotate',
+      agentId: 'identity-test-rotate-ignored',
       agentName: 'identity-tester',
       backend: 'test',
       forceRotate: true,
     })) as { did: string; publicKeyPem: string };
 
-    expect(r2.did).not.toBe(r1.did);
-    expect(r2.publicKeyPem).not.toBe(r1.publicKeyPem);
-    expect(r2.did.startsWith('did:revfleet:identity-test-rotate:')).toBe(true);
-    expect(r2.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+    expect(r2.did).toBe(r1.did);
+    expect(r2.publicKeyPem).toBe(r1.publicKeyPem);
   });
 
   it('register succeeds when revvault CLI is absent', async () => {
