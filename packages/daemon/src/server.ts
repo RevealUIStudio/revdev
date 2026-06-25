@@ -247,6 +247,8 @@ async function runPrune(
       RETURNING id`,
     [stale],
   );
+  // Evict filesystem roots for every stale-terminated agent (B6 item 10).
+  for (const { id } of aged.rows) notifyAgentEnded(id);
   const deleted = await db.query<{ id: string }>(
     `DELETE FROM agent_sessions
       WHERE ended_at IS NOT NULL
