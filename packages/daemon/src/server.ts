@@ -31,6 +31,7 @@ import {
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
+import { notifyAgentEnded } from './eviction.js';
 import {
   guardRpcMethod,
   initLicenseGuard,
@@ -246,6 +247,8 @@ async function runPrune(
       RETURNING id`,
     [stale],
   );
+  // Evict filesystem roots for every stale-terminated agent (B6 item 10).
+  for (const { id } of aged.rows) notifyAgentEnded(id);
   const deleted = await db.query<{ id: string }>(
     `DELETE FROM agent_sessions
       WHERE ended_at IS NOT NULL
@@ -547,8 +550,6 @@ registerHandler('session.register', async (params, db, ctx) => {
   const backend = str(params.backend, str(params.env, 'unknown'));
   const env = `${backend}:${agentName}`;
   const pid = num(params.pid, 0) || null;
-  const forceRotate = params.forceRotate === true;
-
   if (supplied) {
     // UPSERT: insert or re-open existing row.
     await db.query(
@@ -593,7 +594,7 @@ registerHandler('session.register', async (params, db, ctx) => {
   const clientPublicKeyPem = strOrNull(params.publicKeyPem);
   const { did, publicKeyPem } = clientPublicKeyPem
     ? await registerClientIdentity(db, id, clientPublicKeyPem)
-    : await bootstrapAgentIdentity(db, id, forceRotate);
+    : await bootstrapAgentIdentity(db, id);
 
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
@@ -613,55 +614,32 @@ interface IdentityResult {
   publicKeyPem: string;
 }
 
-async function bootstrapAgentIdentity(
-  db: PGlite,
-  agentId: string,
-  forceRotate: boolean,
-): Promise<IdentityResult> {
+async function bootstrapAgentIdentity(db: PGlite, agentId: string): Promise<IdentityResult> {
   const existing = await db.query<{ did: string; fingerprint: string; public_key_pem: string }>(
     `SELECT did, fingerprint, public_key_pem FROM agent_identity WHERE agent_id = $1`,
     [agentId],
   );
 
-  if (existing.rows.length > 0 && !forceRotate) {
+  if (existing.rows.length > 0) {
     const row = existing.rows[0] as { did: string; fingerprint: string; public_key_pem: string };
     return { did: row.did, publicKeyPem: row.public_key_pem };
   }
 
+  // First registration — generate a new keypair.
   const kp = generateAgentKeypair();
   const fingerprint = computeFingerprint(kp.publicKeyRaw);
   const did = formatDid(agentId, fingerprint);
 
-  if (existing.rows.length === 0) {
-    await db.query(
-      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
-       VALUES ($1, $2, $3, $4)`,
-      [agentId, did, fingerprint, kp.publicKeyPem],
-    );
-    await db.query(
-      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
-       VALUES ($1, $2, $3)`,
-      [fingerprint, agentId, kp.publicKeyPem],
-    );
-  } else {
-    await db.query(
-      `UPDATE agent_identity_keys
-       SET superseded_at = NOW()
-       WHERE agent_id = $1 AND superseded_at IS NULL`,
-      [agentId],
-    );
-    await db.query(
-      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
-       VALUES ($1, $2, $3)`,
-      [fingerprint, agentId, kp.publicKeyPem],
-    );
-    await db.query(
-      `UPDATE agent_identity
-       SET did = $1, fingerprint = $2, public_key_pem = $3, last_seen_at = NOW()
-       WHERE agent_id = $4`,
-      [did, fingerprint, kp.publicKeyPem, agentId],
-    );
-  }
+  await db.query(
+    `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
+     VALUES ($1, $2, $3, $4)`,
+    [agentId, did, fingerprint, kp.publicKeyPem],
+  );
+  await db.query(
+    `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+     VALUES ($1, $2, $3)`,
+    [fingerprint, agentId, kp.publicKeyPem],
+  );
 
   void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
 
@@ -917,6 +895,8 @@ registerHandler('session.end', async (params, db, ctx) => {
     ctx.agentId = null;
     ctx.agentName = null;
   }
+  // Evict all filesystem roots owned by this agent (B6 item 10).
+  notifyAgentEnded(target);
   // Best-effort dual-write — see GAP-154 §E.
   await syncSessionEnd({ sessionId: target, summary: exitSummary });
   return { ended: target };
