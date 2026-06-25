@@ -789,7 +789,7 @@ export default function AgentPanel() {
         open={confirmDiscardAll}
         title="Discard all changes?"
         body="This will permanently discard all unstaged changes in the working tree. Staged files are not affected."
-        affectedItems={gitState?.unstaged.map((f) => f.path)}
+        affectedItems={gitState?.unstaged.map((f: GitFileEntry) => f.path)}
         confirmLabel="Discard All"
         typeToConfirm="discard"
         onConfirm={() => {
