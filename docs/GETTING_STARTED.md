@@ -48,6 +48,10 @@ pnpm install
 # Build the daemon
 pnpm --filter @revdev/daemon build
 
+# Build the MCP bridge (needed for the "Using with an MCP-compatible AI
+# coding tool" step below — it produces packages/bridge/dist/index.js)
+pnpm --filter @revdev/bridge build
+
 # Symlink the binary
 mkdir -p ~/.local/bin
 ln -sf "$(pwd)/packages/daemon/dist/cli.js" ~/.local/bin/revdev-daemon
@@ -89,12 +93,19 @@ RevDev operates in **Free (degraded) mode** without a license. Free mode allows:
 To unlock Pro features (agent spawning, inference, merge pipeline, memory, coordination):
 
 1. Purchase a license at [revealui.com/pro](https://revealui.com/pro)
-2. You'll receive a license key starting with `RVUI.v2.`
-3. Set it as an environment variable:
+2. You'll receive a license key starting with `eyJ` — an Ed25519-signed JWT (RFC 7519, `alg: EdDSA`), a three-part `<header>.<payload>.<signature>` token.
+3. Set it, **and the vendor public key the daemon verifies it against**, as environment variables:
 
 ```bash
 # Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
-export REVEALUI_LICENSE_KEY="RVUI.v2.pro.0.your-signature-here"
+export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ0aWVyIjoicHJvIiwuLi59.<signature>"
+
+# Required to verify the license signature (PEM-encoded Ed25519 public key).
+# Self-host activation cannot succeed without this — the daemon stays in
+# Free mode with reason "REVDEV_LICENSE_PUBLIC_KEY not set" until it is set.
+export REVDEV_LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA...
+-----END PUBLIC KEY-----"
 ```
 
 4. Restart the daemon:
@@ -106,8 +117,10 @@ systemctl --user restart revdev-daemon
 5. Verify activation:
 
 ```bash
-journalctl --user -u revdev-daemon | grep license
-# Expected: "running with PRO license"
+journalctl --user -u revdev-daemon | grep "running with"
+# Expected: "[license] RevDev daemon running with PRO license"
+# If you instead see "running in FREE (degraded) mode", the key or the
+# public key is missing/invalid — see TROUBLESHOOTING.md › License Issues.
 ```
 
 ### License Tiers
@@ -156,7 +169,8 @@ This gives the tool access to agent coordination, file reservations, and task ma
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REVEALUI_LICENSE_KEY` | (none) | License key for Pro+ features |
+| `REVEALUI_LICENSE_KEY` | (none) | License key for Pro+ features — an `eyJ`-prefixed Ed25519 JWT |
+| `REVDEV_LICENSE_PUBLIC_KEY` | (none) | PEM Ed25519 public key the daemon verifies the license against. Required for activation — without it the daemon stays in Free mode |
 | `REVDEV_DAEMON_SOCKET` | `~/.local/share/revealui/harness.sock` | Socket path |
 | `REVDEV_DAEMON_DATA` | `~/.local/share/revealui` | Database directory |
 | `REVDEV_DAEMON_PID` | `~/.local/share/revealui/harness.pid` | PID file path |

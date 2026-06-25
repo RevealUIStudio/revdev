@@ -29,6 +29,7 @@ export { registerHandler, startDaemon } from './server.js';
 // Side-effect imports: register built-in handler groups.
 import './inference.js';
 import './vcs.js';
+import './filegit.js';
 
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 export { SCHEMA_SQL } from './storage/schema.js';

@@ -41,6 +41,7 @@ describe('guardRpcMethod', () => {
       'session.update',
       'session.end',
       'session.list',
+      'session.attach',
     ];
 
     for (const method of exemptMethods) {
@@ -122,6 +123,61 @@ describe('guardRpcMethod', () => {
       expect(guardRpcMethod('merge.request').allowed).toBe(true);
       expect(guardRpcMethod('merge.request').tier).toBe('enterprise');
     });
+  });
+
+  // ADR zero-9P P0: all single-repo file/git I/O is FREE; only multi-agent
+  // coordination stays Pro. This locks the boundary so a future EXEMPT_METHODS
+  // edit can't accidentally exempt a Pro method or re-gate a free one.
+  describe('file/git tier boundary (zero-9P P0)', () => {
+    const freeFileGitMethods = [
+      'project.open',
+      'file.read',
+      'file.write',
+      'file.delete',
+      'file.stat',
+      'git.status',
+      'git.diffFile',
+      'git.diffContent',
+      'git.stageFile',
+      'git.unstageFile',
+      'git.discardFile',
+      'git.listBranches',
+      'git.createBranch',
+      'git.switchBranch',
+      'git.deleteBranch',
+      'git.log',
+      'git.commit',
+      'git.push',
+      'git.pull',
+      'git.readBlobAtHead',
+      'git.readBlobAtIndex',
+    ];
+
+    for (const method of freeFileGitMethods) {
+      it(`allows "${method}" on free tier (not -32001)`, () => {
+        const result = guardRpcMethod(method);
+        expect(result.allowed).toBe(true);
+        expect(result.tier).toBe('free');
+      });
+    }
+
+    const proCoordinationMethods = [
+      'agent.spawn',
+      'merge.request',
+      'mail.send',
+      'tasks.create',
+      'files.reserve',
+      'memory.store',
+      'inference.status',
+    ];
+
+    for (const method of proCoordinationMethods) {
+      it(`still blocks Pro method "${method}" on free tier`, () => {
+        const result = guardRpcMethod(method);
+        expect(result.allowed).toBe(false);
+        expect(result.tier).toBe('free');
+      });
+    }
   });
 
   describe('invalid license keys', () => {
