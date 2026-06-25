@@ -785,6 +785,19 @@ export default function AgentPanel() {
           <FileReservations reservations={harness.reservations} agentId="studio" />
         ) : null}
       </div>
+      <ConfirmDialog
+        open={confirmDiscardAll}
+        title="Discard all changes?"
+        body="This will permanently discard all unstaged changes in the working tree. Staged files are not affected."
+        affectedItems={gitState?.unstaged.map((f) => f.path)}
+        confirmLabel="Discard All"
+        typeToConfirm="discard"
+        onConfirm={() => {
+          setConfirmDiscardAll(false);
+          void discardAll();
+        }}
+        onClose={() => setConfirmDiscardAll(false)}
+      />
     </div>
   );
 }
