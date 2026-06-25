@@ -615,52 +615,32 @@ interface IdentityResult {
 async function bootstrapAgentIdentity(
   db: PGlite,
   agentId: string,
-  forceRotate: boolean,
 ): Promise<IdentityResult> {
   const existing = await db.query<{ did: string; fingerprint: string; public_key_pem: string }>(
     `SELECT did, fingerprint, public_key_pem FROM agent_identity WHERE agent_id = $1`,
     [agentId],
   );
 
-  if (existing.rows.length > 0 && !forceRotate) {
+  if (existing.rows.length > 0) {
     const row = existing.rows[0] as { did: string; fingerprint: string; public_key_pem: string };
     return { did: row.did, publicKeyPem: row.public_key_pem };
   }
 
+  // First registration — generate a new keypair.
   const kp = generateAgentKeypair();
   const fingerprint = computeFingerprint(kp.publicKeyRaw);
   const did = formatDid(agentId, fingerprint);
 
-  if (existing.rows.length === 0) {
-    await db.query(
-      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
-       VALUES ($1, $2, $3, $4)`,
-      [agentId, did, fingerprint, kp.publicKeyPem],
-    );
-    await db.query(
-      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
-       VALUES ($1, $2, $3)`,
-      [fingerprint, agentId, kp.publicKeyPem],
-    );
-  } else {
-    await db.query(
-      `UPDATE agent_identity_keys
-       SET superseded_at = NOW()
-       WHERE agent_id = $1 AND superseded_at IS NULL`,
-      [agentId],
-    );
-    await db.query(
-      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
-       VALUES ($1, $2, $3)`,
-      [fingerprint, agentId, kp.publicKeyPem],
-    );
-    await db.query(
-      `UPDATE agent_identity
-       SET did = $1, fingerprint = $2, public_key_pem = $3, last_seen_at = NOW()
-       WHERE agent_id = $4`,
-      [did, fingerprint, kp.publicKeyPem, agentId],
-    );
-  }
+  await db.query(
+    `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
+     VALUES ($1, $2, $3, $4)`,
+    [agentId, did, fingerprint, kp.publicKeyPem],
+  );
+  await db.query(
+    `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+     VALUES ($1, $2, $3)`,
+    [fingerprint, agentId, kp.publicKeyPem],
+  );
 
   void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
 
