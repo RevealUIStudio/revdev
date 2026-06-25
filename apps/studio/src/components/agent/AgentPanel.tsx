@@ -617,7 +617,7 @@ export default function AgentPanel() {
               {(gitState?.unstaged.length ?? 0) > 0 ? (
                 <button
                   type="button"
-                  onClick={() => void discardAll()}
+                  onClick={() => setConfirmDiscardAll(true)}
                   disabled={discardingAll}
                   className="rounded px-2 py-1 text-[10px] text-neutral-500 transition-colors hover:bg-red-900/30 hover:text-red-400 disabled:opacity-40"
                 >
