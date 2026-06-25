@@ -30,6 +30,7 @@ export { registerHandler, startDaemon } from './server.js';
 import './inference.js';
 import './vcs.js';
 import './filegit.js';
+import './agent.js';
 
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 export { SCHEMA_SQL } from './storage/schema.js';
