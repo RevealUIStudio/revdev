@@ -39,6 +39,10 @@ const SIGNED = [
   'git.status',
   'git.listBranches',
   'git.log',
+  // worktree mutations: shell `git worktree add/remove` as the daemon UID, so
+  // signature-required (B-WT). Handlers live in filegit.ts behind requireRoot.
+  'worktree.create',
+  'worktree.remove',
 ];
 
 // Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.
