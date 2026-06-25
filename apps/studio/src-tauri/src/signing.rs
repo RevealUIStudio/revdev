@@ -62,6 +62,11 @@ pub fn requires_signature(method: &str) -> bool {
             | "git.status"
             | "git.listBranches"
             | "git.log"
+            // worktree mutations — `git worktree add/remove` shell out as the
+            // daemon UID, so they are signature-required (the B-WT fix). MUST
+            // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
+            | "worktree.create"
+            | "worktree.remove"
     )
 }
 
@@ -487,6 +492,8 @@ mod tests {
         assert!(requires_signature("project.open"));
         assert!(requires_signature("git.status"));
         assert!(requires_signature("git.log"));
+        assert!(requires_signature("worktree.create"));
+        assert!(requires_signature("worktree.remove"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
     }

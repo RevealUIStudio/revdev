@@ -161,6 +161,14 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'git.commit',
   'git.push',
   'git.pull',
+  // worktree mutations — `git worktree add/remove` shells out as the daemon UID,
+  // so they MUST be signed (binds ctx.agentId to the verified signer) and gated
+  // by requireRoot in filegit.ts. Their absence from this set was the B-WT
+  // blocker: an unsigned host process could session.register a bare identity and
+  // drive `git worktree add` as the daemon UID (filter.* base → RCE on checkout).
+  // Cross-language contract: signing.rs requires_signature() must mark these too.
+  'worktree.create',
+  'worktree.remove',
   // git content-returning reads (diffFile/diffContent embed source lines)
   'git.diffFile',
   'git.diffContent',
