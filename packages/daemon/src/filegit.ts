@@ -628,3 +628,108 @@ registerHandler('git.pull', async (params, _db, ctx) => {
   if (branch) args.push(branch);
   return gitOutcome(await runGit(args, repoReal), 'git pull');
 });
+
+// ---------------------------------------------------------------------------
+// worktree.* — mutations (moved here from vcs.ts for the B-WT fix)
+//
+// `git worktree add/remove` shells out as the daemon UID, so — exactly like the
+// git.* mutations above — these MUST sit behind the two barriers vcs.ts could
+// not provide:
+//   1. The dispatch signature gate (MUTATING_OR_CONTENT_METHODS / signing.rs::
+//      requires_signature) — binds ctx.agentId to the VERIFIED signer. In vcs.ts
+//      these were absent from the gate, so an UNSIGNED host process could
+//      session.register a bare identity and drive `git worktree add` as the
+//      daemon UID — the B-WT unsigned-RCE blocker.
+//   2. requireRoot(repoPath, ctx.agentId) — the base repo must have been
+//      project.open'd by THIS agent (project.open already ran assertNoExecConfig
+//      on it). The worktree path is daemon-derived (a deterministic sibling of
+//      the realpath'd root), NEVER the caller's free-form params.path, so it is
+//      attacker-uncontrollable. The legacy handler shelled into a DB-`task` cwd
+//      with a caller-supplied path — both dropped here.
+// worktree.list (read-only registry view) stays in vcs.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Reject an argument git would read as an option (leading '-'). `branch` and
+ * `baseBranch` reach `git worktree add` in option position (a `--` separator is
+ * not accepted before the new-branch/commit-ish there), so the value itself
+ * must be guarded — mirrors the leading-'-' intent of git.createBranch's `--`.
+ */
+function assertNotGitOption(value: string, name: string): void {
+  if (value.startsWith('-')) {
+    throw new Error(`invalid ${name}: must not start with '-' (option injection)`);
+  }
+}
+
+/**
+ * Deterministic, attacker-uncontrollable worktree path: a sibling of the
+ * realpath'd registered root named `<repo>-<branch>`, with branch slashes folded
+ * to dashes (no regex). Used by BOTH create and remove so the git target is
+ * identical and is never derived from caller input.
+ */
+function worktreePathFor(repoReal: string, branch: string): string {
+  return join(dirname(repoReal), `${basename(repoReal)}-${branch.split('/').join('-')}`);
+}
+
+registerHandler('worktree.create', async (params, db, ctx) => {
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
+  // requireRoot guarantees a non-null owner === ctx.agentId; re-assert for the
+  // type narrowing + belt-and-suspenders (mirrors project.open).
+  const agentId = ctx.agentId;
+  if (agentId === null) throw new Error('worktree.create requires a verified signer identity');
+  const branch = requireStr(params.branch, 'branch');
+  assertNotGitOption(branch, 'branch');
+  const baseBranch = str(params.baseBranch) ?? 'main';
+  assertNotGitOption(baseBranch, 'baseBranch');
+  // `git worktree add` checks out the new tree → runs a filter.<d>.smudge/process
+  // driver, which cannot be -c-cleared per spawn. Refuse a base repo carrying one
+  // (same backstop as git.switchBranch/git.stageFile).
+  await assertNoFilterDriver(repoReal);
+  const worktreePath = worktreePathFor(repoReal, branch);
+  const result = await runGit(
+    ['worktree', 'add', '-b', branch, worktreePath, baseBranch],
+    repoReal,
+  );
+  if (!result.ok) {
+    return { success: false, error: result.stderr || 'git worktree add failed' };
+  }
+  await db.query(
+    `INSERT INTO worktrees (agent_id, branch, worktree_path, base_branch, status)
+     VALUES ($1, $2, $3, $4, 'active')
+     ON CONFLICT (agent_id) DO UPDATE SET
+       branch = EXCLUDED.branch,
+       worktree_path = EXCLUDED.worktree_path,
+       base_branch = EXCLUDED.base_branch,
+       status = 'active'`,
+    [agentId, branch, worktreePath, baseBranch],
+  );
+  return { success: true, branch, worktreePath, baseBranch };
+});
+
+registerHandler('worktree.remove', async (params, db, ctx) => {
+  const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
+  const agentId = ctx.agentId;
+  if (agentId === null) throw new Error('worktree.remove requires a verified signer identity');
+  const branch = requireStr(params.branch, 'branch');
+  assertNotGitOption(branch, 'branch');
+  const row = await db.query<{ worktree_path: string }>(
+    `SELECT worktree_path FROM worktrees
+     WHERE agent_id = $1 AND branch = $2 AND status = 'active'`,
+    [agentId, branch],
+  );
+  if (!row.rows[0]?.worktree_path) {
+    return { success: false, error: `No active worktree for branch ${branch}` };
+  }
+  // Recompute the path from (realpath'd root, branch) rather than trust the
+  // stored string, so the git target stays attacker-uncontrollable.
+  const worktreePath = worktreePathFor(repoReal, branch);
+  const result = await runGit(['worktree', 'remove', worktreePath], repoReal);
+  if (!result.ok) {
+    return { success: false, error: result.stderr || 'git worktree remove failed' };
+  }
+  await db.query(`UPDATE worktrees SET status = 'removed' WHERE agent_id = $1 AND branch = $2`, [
+    agentId,
+    branch,
+  ]);
+  return { success: true, branch, worktreePath };
+});

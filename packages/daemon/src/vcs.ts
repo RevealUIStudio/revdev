@@ -1,10 +1,15 @@
 /**
- * VCS handlers — git worktree management and merge-request tracking.
+ * VCS handlers — read-only worktree registry view + merge-request tracking,
+ * plus the shared `runGit` / `runChild` git-spawn helpers used across the daemon.
  *
- * Worktrees are real: we shell out to `git worktree add/remove` in the
- * agent's working directory. Merge requests are tracked in the
- * `merge_requests` table; actual PR creation is left to the client
- * (agents call `gh pr create` themselves and then update status here).
+ * The MUTATING worktree ops (`worktree.create` / `worktree.remove`) moved to
+ * filegit.ts so they sit behind the same `requireRoot` per-agent project-ownership
+ * check and Ed25519 signature barrier as `file.*` / `git.*` — they shell
+ * `git worktree add` as the daemon UID, a shared-UID RCE vector if left unsigned
+ * and unconfined (the B-WT fix). Only the read-only `worktree.list` registry view
+ * stays here. Merge requests are tracked in the `merge_requests` table; actual PR
+ * creation is left to the client (agents call `gh pr create` themselves and then
+ * update status here).
  *
  * Reliability: every git spawn is bounded by `DAEMON_DEFAULTS.gitTimeoutMs`
  * (default 60 s, env-overridable via REVDEV_DAEMON_GIT_TIMEOUT_MS) AND
@@ -227,46 +232,14 @@ function strOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
-async function agentWorkDir(
-  db: import('@electric-sql/pglite').PGlite,
-  agentId: string,
-): Promise<string> {
-  const r = await db.query<{ task: string }>(`SELECT task FROM agent_sessions WHERE id = $1`, [
-    agentId,
-  ]);
-  return r.rows[0]?.task || process.cwd();
-}
-
 // ---------------------------------------------------------------------------
-// worktree.*
+// worktree.* — read-only registry view
+//
+// The mutating worktree ops (`worktree.create` / `worktree.remove`) live in
+// filegit.ts behind requireRoot + the signature barrier (B-WT). This list view
+// only reads the daemon's own `worktrees` table, so it carries no exec or
+// path-traversal surface and stays here.
 // ---------------------------------------------------------------------------
-
-registerHandler('worktree.create', async (params, db, ctx) => {
-  if (!ctx.agentId) throw new Error('worktree.create: no registered session');
-  const branch = strOrNull(params.branch);
-  if (!branch) throw new Error('worktree.create: missing branch');
-  const baseBranch = str(params.baseBranch, 'main');
-  const cwd = await agentWorkDir(db, ctx.agentId);
-  // Derive worktree path as ../<repo>-<branch>
-  const worktreePath =
-    strOrNull(params.path) ?? `${cwd.replace(/\/+$/, '')}-${branch.replace(/\//g, '-')}`;
-
-  const result = await runGit(['worktree', 'add', '-b', branch, worktreePath, baseBranch], cwd);
-  if (!result.ok) {
-    return { success: false, error: result.stderr || 'git worktree add failed' };
-  }
-  await db.query(
-    `INSERT INTO worktrees (agent_id, branch, worktree_path, base_branch, status)
-     VALUES ($1, $2, $3, $4, 'active')
-     ON CONFLICT (agent_id) DO UPDATE SET
-       branch = EXCLUDED.branch,
-       worktree_path = EXCLUDED.worktree_path,
-       base_branch = EXCLUDED.base_branch,
-       status = 'active'`,
-    [ctx.agentId, branch, worktreePath, baseBranch],
-  );
-  return { success: true, branch, worktreePath, baseBranch };
-});
 
 registerHandler('worktree.list', async (params, db) => {
   const agentId = strOrNull(params.agentId);
@@ -275,33 +248,6 @@ registerHandler('worktree.list', async (params, db) => {
     : `SELECT * FROM worktrees WHERE status = 'active' ORDER BY created_at DESC`;
   const result = await db.query<Record<string, unknown>>(sql, agentId ? [agentId] : []);
   return { worktrees: result.rows };
-});
-
-registerHandler('worktree.remove', async (params, db, ctx) => {
-  if (!ctx.agentId) throw new Error('worktree.remove: no registered session');
-  const branch = strOrNull(params.branch);
-  if (!branch) throw new Error('worktree.remove: missing branch');
-
-  const row = await db.query<{ worktree_path: string }>(
-    `SELECT worktree_path FROM worktrees
-     WHERE agent_id = $1 AND branch = $2 AND status = 'active'`,
-    [ctx.agentId, branch],
-  );
-  const worktreePath = row.rows[0]?.worktree_path;
-  if (!worktreePath) {
-    return { success: false, error: `No active worktree for branch ${branch}` };
-  }
-  const cwd = await agentWorkDir(db, ctx.agentId);
-  const result = await runGit(['worktree', 'remove', worktreePath], cwd);
-  if (!result.ok) {
-    return { success: false, error: result.stderr || 'git worktree remove failed' };
-  }
-  await db.query(
-    `UPDATE worktrees SET status = 'removed'
-     WHERE agent_id = $1 AND branch = $2`,
-    [ctx.agentId, branch],
-  );
-  return { success: true, branch, worktreePath };
 });
 
 // ---------------------------------------------------------------------------
