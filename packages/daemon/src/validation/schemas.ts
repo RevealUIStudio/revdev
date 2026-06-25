@@ -101,7 +101,6 @@ export const schemas: Record<string, z.ZodType> = {
       task: z.string().max(MAX_PATH_LENGTH).optional(),
       env: z.string().max(64).optional(),
       pid: z.number().int().nonnegative().optional(),
-      forceRotate: z.boolean().optional(),
       // Client-owned identity (Studio zero-9P): an SPKI PEM Ed25519 public
       // key. When present the daemon registers only this public half and
       // never mints a keypair. Bounded generously — a PEM is ~120 bytes.
