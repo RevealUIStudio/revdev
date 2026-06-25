@@ -89,6 +89,7 @@ export interface SocketContext {
    *   - null: unbound
    */
   boundVia: 'register' | 'attach' | 'param' | 'signature' | null;
+  keyOrigin: 'client' | 'daemon' | null;
   /** Set when a request was authenticated via a verified Ed25519 envelope. */
   verifiedSignature: { kid: string; nonce: string } | null;
   // Pre-signature snapshot — captured before signature overrides identity,
