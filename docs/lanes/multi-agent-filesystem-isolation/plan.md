@@ -1,9 +1,9 @@
 ---
 lane: multi-agent-filesystem-isolation
 repo: revdev
-status: proposed
+status: active
 created: 2026-06-24
-last-updated: 2026-06-24
+last-updated: 2026-06-25
 revision: 2 (folded adversarial-critic findings, verified against code)
 security-class: data-segregation / least-privilege
 adr: revdev/docs/decisions/2026-06-24-zero-9p-agent-isolation.md
