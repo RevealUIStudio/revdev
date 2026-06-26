@@ -1,5 +1,5 @@
 /**
- * Migration 0002 — agent process tables.
+ * Migration 0004 — agent process tables.
  *
  * Adds `agent_processes` (metadata + lifecycle for PTY-spawned processes)
  * and `agent_process_output` (poll-based output buffer for agent.output).
@@ -37,8 +37,8 @@ const SQL = `
     ON agent_process_output (process_id, seq);
 `;
 
-export const MIGRATION_0002: Migration = {
-  version: 2,
+export const MIGRATION_0004: Migration = {
+  version: 4,
   name: 'agent-processes',
   sql: SQL,
 };
