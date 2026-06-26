@@ -207,12 +207,13 @@ describe('two-agent coordination', () => {
     expect(bRes.conflicts[0]?.holder).toBe(alice);
   });
 
-  it('check surfaces reservation to any agent', async () => {
+  it('check surfaces whether a path is reserved by another agent', async () => {
     const check = (await rpc(socketPath, 'files.check', {
       actorAgentId: bob,
       paths: ['/tmp/shared/file.ts'],
-    })) as { reservations: Array<{ agent_id: string }> };
-    expect(check.reservations[0]?.agent_id).toBe(alice);
+    })) as { reservations: unknown[]; reservedByOther: boolean };
+    expect(check.reservedByOther).toBe(true);
+    expect(check.reservations).toHaveLength(0);
   });
 
   it('only the claiming agent can complete a task', async () => {

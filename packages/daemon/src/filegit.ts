@@ -28,7 +28,8 @@ import { constants as fsConstants } from 'node:fs';
 import { open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { onAgentEnded } from './eviction.js';
+import type { PGlite } from '@electric-sql/pglite';
+import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { getDaemonConfig, registerHandler } from './server.js';
 import { runGit, type ShellResult } from './vcs.js';
 
@@ -36,24 +37,51 @@ import { runGit, type ShellResult } from './vcs.js';
 // Registered project roots
 // ---------------------------------------------------------------------------
 
+interface RootEntry {
+  real: string;
+  agentId: string;
+  dev: bigint;
+  ino: bigint;
+  /** agentIds granted read/write access by the owner via project.grant. */
+  grants: Set<string>;
+}
+
 /**
- * realpath-resolved absolute root → owning agentId. Module-level by design —
- * the daemon is a singleton (mirrors pruneState in server.ts). A root is
+ * Inode-keyed root map: `"${dev}:${ino}"` → RootEntry. Module-level by design
+ * — the daemon is a singleton (mirrors pruneState in server.ts). A root is
  * recorded under the VERIFIED signer that opened it (project.open is
  * signature-required); a handler rejects any repoPath whose realpath is not
  * registered OR is owned by a different agent (per-agent root scoping —
  * agent A cannot read/mutate a root agent B opened).
+ *
+ * Keyed by inode (dev+ino) rather than realpath: the inode uniquely identifies
+ * the directory regardless of rename or bind-mount, so an ownership binding
+ * cannot be circumvented by racing a rename against the `realpath` check.
  */
-const registeredRoots = new Map<string, string>();
+const registeredRoots = new Map<string, RootEntry>();
+
+/** Derive the canonical map key for a stat result. */
+function inodeKey(dev: bigint, ino: bigint): string {
+  return `${dev}:${ino}`;
+}
 
 /**
- * Remove all roots owned by `agentId`. Called when the agent's session ends so
+ * Remove all roots owned by `agentId` from both the in-memory map and the
+ * persisted `project_roots` table. Called when the agent's session ends so
  * terminated agents cannot inherit ownership of paths they opened.
  */
-function evictRootsForAgent(agentId: string): void {
-  for (const [root, ownerId] of registeredRoots) {
-    if (ownerId === agentId) registeredRoots.delete(root);
+function evictRootsForAgent(agentId: string, db: PGlite): void {
+  for (const [key, entry] of registeredRoots) {
+    if (entry.agentId === agentId) {
+      registeredRoots.delete(key);
+    } else {
+      // Cascade: strip the evicted agent from any root's grants so terminated
+      // agents cannot retain cross-agent access after their session ends.
+      entry.grants.delete(agentId);
+    }
   }
+  // Best-effort persist — the in-memory state is already clean.
+  db.query(`DELETE FROM project_roots WHERE agent_id = $1`, [agentId]).catch(() => {});
 }
 
 // Register the eviction callback so server.ts can fire it on session.end and
@@ -68,11 +96,66 @@ export function _clearRegisteredRootsForTest(): void {
 /**
  * @internal — test seam: register an already-realpath'd root directly under
  * `agentId` (defaults to a sentinel for legacy path-resolution tests that do
- * not exercise ownership).
+ * not exercise ownership). Stat-resolves the real inode so the map key matches
+ * what requireRoot would compute at runtime.
  */
-export function _addRootForTest(realRoot: string, agentId = '_test'): void {
-  registeredRoots.set(realRoot, agentId);
+export async function _addRootForTest(realRoot: string, agentId = '_test'): Promise<void> {
+  const s = await stat(realRoot);
+  const dev = BigInt(s.dev);
+  const ino = BigInt(s.ino);
+  registeredRoots.set(inodeKey(dev, ino), { real: realRoot, agentId, dev, ino, grants: new Set() });
 }
+
+/**
+ * Restore persisted project-root ownership from PGlite on daemon startup.
+ * Only restores roots whose owning agent still has an active (not-ended)
+ * session — orphaned rows (agent crashed, daemon restarted) are skipped and
+ * deleted so a restart cannot land-grab roots from sessions that no longer
+ * exist.
+ */
+export async function restoreProjectRoots(db: PGlite): Promise<void> {
+  // Collect orphaned rows (agent session ended or gone).
+  const orphans = await db.query<{ dev: string; ino: string }>(
+    `SELECT pr.dev, pr.ino
+     FROM project_roots pr
+     LEFT JOIN agent_sessions s ON s.id = pr.agent_id AND s.ended_at IS NULL
+     WHERE s.id IS NULL`,
+  );
+  if (orphans.rows.length > 0) {
+    // Delete them in bulk — orphaned bindings from crashed sessions must not
+    // survive a restart (D3: no restart land-grab).
+    for (const row of orphans.rows) {
+      await db.query(`DELETE FROM project_roots WHERE dev = $1 AND ino = $2`, [row.dev, row.ino]);
+    }
+  }
+
+  // Restore surviving rows into the in-memory map.
+  const rows = await db.query<{
+    dev: string;
+    ino: string;
+    real_path: string;
+    agent_id: string;
+  }>(
+    `SELECT pr.dev, pr.ino, pr.real_path, pr.agent_id
+     FROM project_roots pr
+     INNER JOIN agent_sessions s ON s.id = pr.agent_id AND s.ended_at IS NULL`,
+  );
+  for (const row of rows.rows) {
+    const dev = BigInt(row.dev);
+    const ino = BigInt(row.ino);
+    registeredRoots.set(inodeKey(dev, ino), {
+      real: row.real_path,
+      agentId: row.agent_id,
+      dev,
+      ino,
+      grants: new Set(), // grants are in-memory only; agents re-grant on reconnect
+    });
+  }
+}
+
+// Register the startup hook so server.ts can restore persisted roots on
+// startDaemon without a circular import (see eviction.ts).
+onDaemonStarted(restoreProjectRoots);
 
 /** @internal — test seam: exercise the realpath descendant resolver. */
 export function _resolveInRootForTest(
@@ -137,11 +220,24 @@ async function requireRoot(repoPathRaw: string, callerAgentId: string | null): P
   } catch {
     throw new Error(`project root does not exist: ${repoPathRaw}`);
   }
-  const owner = registeredRoots.get(real);
-  if (owner === undefined || callerAgentId === null || owner !== callerAgentId) {
+  let s: Awaited<ReturnType<typeof stat>>;
+  try {
+    s = await stat(real);
+  } catch {
+    throw new Error(`project root does not exist: ${repoPathRaw}`);
+  }
+  const key = inodeKey(BigInt(s.dev), BigInt(s.ino));
+  const entry = registeredRoots.get(key);
+  // `entry.real !== real` guards against inode reuse: if a temp directory is
+  // deleted and the kernel reuses its inode for a new directory at a different
+  // path, the stored entry's real path won't match the caller's resolved path —
+  // we reject rather than authorizing the new path under the old entry.
+  const isOwner = callerAgentId !== null && entry !== undefined && entry.agentId === callerAgentId;
+  const isGrantee = callerAgentId && entry?.grants.has(callerAgentId);
+  if (entry === undefined || entry.real !== real || (!isOwner && !isGrantee)) {
     throw new Error(`project root not registered: ${repoPathRaw} (call project.open first)`);
   }
-  return real;
+  return entry.real;
 }
 
 /**
@@ -355,7 +451,7 @@ function gitOutcome(r: ShellResult, what: string): Record<string, unknown> {
 // project.*
 // ---------------------------------------------------------------------------
 
-registerHandler('project.open', async (params, _db, ctx) => {
+registerHandler('project.open', async (params, db, ctx) => {
   const repoPathRaw = requireStr(params.repoPath, 'repoPath');
   const expanded = expandTilde(repoPathRaw);
   let real: string;
@@ -377,27 +473,106 @@ registerHandler('project.open', async (params, _db, ctx) => {
     // change can never register an unowned (globally-usable) root.
     throw new Error('project.open requires a verified signer identity');
   }
+  // D2: daemon-minted identities may never own filesystem roots. Root ownership
+  // requires a client-owned, per-request-signed identity so the isolation
+  // guarantee rests on cryptographic proof rather than socket trust alone.
+  const originRow = await db.query<{ key_origin: string }>(
+    `SELECT key_origin FROM agent_identity WHERE agent_id = $1`,
+    [ctx.agentId],
+  );
+  if (originRow.rows[0]?.key_origin === 'daemon') {
+    throw new Error(
+      'project.open: daemon-minted identities may not own filesystem roots — use a client-owned (Studio) identity',
+    );
+  }
   // Refuse to register a git repo whose config carries an exec-bearing key.
   // project.open is the trust boundary for a third-party repo: without this a
   // routine `git.diffFile`/`git.stageFile`/checkout would run attacker code as
   // the daemon UID (e.g. exfil ~/.age-identity/keys.txt). Done BEFORE adding to
   // registeredRoots so a refused repo is never usable by file.*/git.*.
   if (isRepo) await assertNoExecConfig(real);
+  // Stat to get the canonical inode key.
+  const s = await stat(real);
+  const dev = BigInt(s.dev);
+  const ino = BigInt(s.ino);
+  const key = inodeKey(dev, ino);
   // Nested-root containment (B6 item 3): reject a root that is an ancestor or
   // descendant of a different agent's owned root. A parent-root owner reaches
   // a child root's files via within(); a child-root opener would inherit access
   // to the parent agent's tree via requireRoot + within(). Both directions are
   // rejected here before any registration occurs.
-  for (const [existingRoot, ownerId] of registeredRoots) {
-    if (ownerId === ctx.agentId) continue;
-    if (within(existingRoot, real) || within(real, existingRoot)) {
+  for (const [, entry] of registeredRoots) {
+    if (entry.agentId === ctx.agentId) continue;
+    if (within(entry.real, real) || within(real, entry.real)) {
       throw new Error(
         `project root conflict: ${repoPathRaw} overlaps with a root owned by another agent`,
       );
     }
   }
-  registeredRoots.set(real, ctx.agentId);
+  registeredRoots.set(key, { real, agentId: ctx.agentId, dev, ino, grants: new Set() });
+  // Persist to project_roots (D3): UNIQUE(dev,ino) — same agent re-opening is
+  // a no-op update; a different agent would have been rejected above, so the
+  // conflict update is safe.
+  await db.query(
+    `INSERT INTO project_roots (dev, ino, real_path, agent_id)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (dev, ino) DO UPDATE SET real_path = EXCLUDED.real_path, agent_id = EXCLUDED.agent_id, registered_at = NOW()`,
+    [dev, ino, real, ctx.agentId],
+  );
   return { success: true, root: real, isGitRepo: isRepo };
+});
+
+/**
+ * Look up a root entry and verify the caller is the OWNER (not merely a
+ * grantee). Used by project.grant / project.revoke so only the opener can
+ * mutate the grant list.
+ */
+async function requireOwnerEntry(
+  repoPathRaw: string,
+  callerAgentId: string | null,
+): Promise<RootEntry> {
+  const expanded = expandTilde(repoPathRaw);
+  let real: string;
+  try {
+    real = await realpath(expanded);
+  } catch {
+    throw new Error(`project root does not exist: ${repoPathRaw}`);
+  }
+  let s: Awaited<ReturnType<typeof stat>>;
+  try {
+    s = await stat(real);
+  } catch {
+    throw new Error(`project root does not exist: ${repoPathRaw}`);
+  }
+  const key = inodeKey(BigInt(s.dev), BigInt(s.ino));
+  const entry = registeredRoots.get(key);
+  if (
+    entry === undefined ||
+    entry.real !== real ||
+    callerAgentId === null ||
+    entry.agentId !== callerAgentId
+  ) {
+    throw new Error(
+      `project root not owned by caller: ${repoPathRaw} (only the owner may grant/revoke access)`,
+    );
+  }
+  return entry;
+}
+
+registerHandler('project.grant', async (params, _db, ctx) => {
+  const repoPathRaw = requireStr(params.repoPath, 'repoPath');
+  const granteeAgentId = requireStr(params.granteeAgentId, 'granteeAgentId');
+  const entry = await requireOwnerEntry(repoPathRaw, ctx.agentId);
+  entry.grants.add(granteeAgentId);
+  return { granted: granteeAgentId, root: entry.real };
+});
+
+registerHandler('project.revoke', async (params, _db, ctx) => {
+  const repoPathRaw = requireStr(params.repoPath, 'repoPath');
+  const granteeAgentId = requireStr(params.granteeAgentId, 'granteeAgentId');
+  const entry = await requireOwnerEntry(repoPathRaw, ctx.agentId);
+  entry.grants.delete(granteeAgentId);
+  return { revoked: granteeAgentId, root: entry.real };
 });
 
 // ---------------------------------------------------------------------------
