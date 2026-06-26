@@ -55,6 +55,7 @@ export const RPC_METHODS = {
   'agent.stop': 'agent.stop',
   'agent.input': 'agent.input',
   'agent.resize': 'agent.resize',
+  'agent.output': 'agent.output',
 
   // Inference management
   'inference.status': 'inference.status',
