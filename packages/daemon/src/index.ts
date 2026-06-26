@@ -31,6 +31,9 @@ import './inference.js';
 import './vcs.js';
 import './filegit.js';
 import './agent.js';
+// PTY-backed agent.spawn/stop/input/resize/output — overwrites the stubs
+// in agent.js with real implementations. Must follow agent.js in import order.
+import './spawn.js';
 
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 export { SCHEMA_SQL } from './storage/schema.js';

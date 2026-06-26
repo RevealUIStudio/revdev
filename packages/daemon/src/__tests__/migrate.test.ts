@@ -54,20 +54,20 @@ describe('migrate()', () => {
   });
 
   it(
-    'applies the baseline on a fresh database and records version 1',
+    'applies all migrations on a fresh database and records every version',
     async () => {
       db = new PGlite();
       const result = await migrate(db);
 
-      expect(result.applied).toEqual([1]);
-      expect(result.current).toBe(1);
+      expect(result.applied).toEqual(MIGRATIONS.map((m) => m.version));
+      expect(result.current).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
       expect(await tableExists(db, 'agent_sessions')).toBe(true);
       expect(await tableExists(db, 'agent_identity_nonces')).toBe(true);
 
       const rows = await db.query<{ version: number; name: string }>(
         'SELECT version, name FROM schema_version ORDER BY version',
       );
-      expect(rows.rows).toEqual([{ version: 1, name: 'initial-schema' }]);
+      expect(rows.rows).toEqual(MIGRATIONS.map((m) => ({ version: m.version, name: m.name })));
     },
     DB_TEST_TIMEOUT,
   );
@@ -80,7 +80,7 @@ describe('migrate()', () => {
       const second = await migrate(db);
 
       expect(second.applied).toEqual([]);
-      expect(second.current).toBe(1);
+      expect(second.current).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
     },
     DB_TEST_TIMEOUT,
   );
@@ -95,7 +95,7 @@ describe('migrate()', () => {
 
       const result = await migrate(db);
 
-      expect(result.applied).toEqual([1]);
+      expect(result.applied).toEqual(MIGRATIONS.map((m) => m.version));
       const session = await db.query<{ id: string }>('SELECT id FROM agent_sessions');
       expect(session.rows).toEqual([{ id: 'pre-existing' }]);
     },
@@ -106,7 +106,7 @@ describe('migrate()', () => {
     'applies only pending migrations, in order',
     async () => {
       db = new PGlite();
-      await migrate(db); // at version 1
+      await migrate(db, [BASELINE]); // at version 1
 
       const registry: Migration[] = [
         BASELINE,
@@ -127,7 +127,7 @@ describe('migrate()', () => {
     'rolls back a failed migration and leaves schema_version untouched',
     async () => {
       db = new PGlite();
-      await migrate(db);
+      await migrate(db, [BASELINE]);
 
       const broken: Migration = {
         version: 2,
@@ -198,13 +198,13 @@ describe('migrationStatus()', () => {
 
       const before = await migrationStatus(db);
       expect(before.current).toBe(0);
-      expect(before.latest).toBe(1);
-      expect(before.pending).toEqual([{ version: 1, name: 'initial-schema' }]);
+      expect(before.latest).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
+      expect(before.pending).toEqual(MIGRATIONS.map((m) => ({ version: m.version, name: m.name })));
 
       await migrate(db);
 
       const after = await migrationStatus(db);
-      expect(after.current).toBe(1);
+      expect(after.current).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
       expect(after.pending).toEqual([]);
     },
     DB_TEST_TIMEOUT,
@@ -222,7 +222,7 @@ describe('startDaemon() migration wiring', () => {
         const rows = await d._db.query<{ version: number }>(
           'SELECT version FROM schema_version ORDER BY version',
         );
-        expect(rows.rows).toEqual([{ version: 1 }]);
+        expect(rows.rows).toEqual(MIGRATIONS.map((m) => ({ version: m.version })));
       } finally {
         await d.close();
         await rm(dir, { recursive: true, force: true });
