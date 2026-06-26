@@ -33,6 +33,10 @@ import './vcs.js';
 // B-WT fix) — is never registered on the shipped daemon, leaving the signature
 // barrier inert. index.ts already imports it; cli.ts had been missed.
 import './filegit.js';
+import './agent.js';
+// Register PTY-backed agent.spawn/stop/input/resize/output handlers.
+// Must come AFTER ./agent.js (stubs) so the real implementations overwrite them.
+import './spawn.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { LicenseConfigError, LicenseExpiredError } from './license.js';
 import { startDaemon } from './server.js';

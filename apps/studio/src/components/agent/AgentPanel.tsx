@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import ConfirmDialog from '../ui/ConfirmDialog';
 import AgentChat from './AgentChat';
 import FileReservations from './FileReservations';
 import MessageInbox from './MessageInbox';
@@ -306,6 +307,7 @@ export default function AgentPanel() {
 
   const [stagingAll, setStagingAll] = useState(false);
   const [discardingAll, setDiscardingAll] = useState(false);
+  const [confirmDiscardAll, setConfirmDiscardAll] = useState(false);
 
   // Tab state for right pane
   const [rightTab, setRightTab] = useState<RightTab>('changes');
@@ -614,7 +616,7 @@ export default function AgentPanel() {
               {(gitState?.unstaged.length ?? 0) > 0 ? (
                 <button
                   type="button"
-                  onClick={() => void discardAll()}
+                  onClick={() => setConfirmDiscardAll(true)}
                   disabled={discardingAll}
                   className="rounded px-2 py-1 text-[10px] text-neutral-500 transition-colors hover:bg-red-900/30 hover:text-red-400 disabled:opacity-40"
                 >
@@ -782,6 +784,19 @@ export default function AgentPanel() {
           <FileReservations reservations={harness.reservations} agentId="studio" />
         ) : null}
       </div>
+      <ConfirmDialog
+        open={confirmDiscardAll}
+        title="Discard all changes?"
+        body="This will permanently discard all unstaged changes in the working tree. Staged files are not affected."
+        affectedItems={gitState?.unstaged.map((f: GitFileEntry) => f.path)}
+        confirmLabel="Discard All"
+        typeToConfirm="discard"
+        onConfirm={() => {
+          setConfirmDiscardAll(false);
+          void discardAll();
+        }}
+        onClose={() => setConfirmDiscardAll(false)}
+      />
     </div>
   );
 }

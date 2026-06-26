@@ -1,14 +1,14 @@
 ---
 lane: multi-agent-filesystem-isolation
 repo: revdev
-status: proposed
+status: complete
 created: 2026-06-24
-last-updated: 2026-06-24
+last-updated: 2026-06-26
 revision: 2 (folded adversarial-critic findings, verified against code)
 security-class: data-segregation / least-privilege
 adr: revdev/docs/decisions/2026-06-24-zero-9p-agent-isolation.md
 depends-on: zero-9P P0–P5 (#162/#164/#166/#167/#168/#169) — lands AFTER, does not block the train
-blocks: Pro multi-agent tier GA (selling "run N agents concurrently")
+blocks: CLEARED — Pro multi-agent tier GA gate satisfied (PR #188 merged 2026-06-26)
 tracking-issue: TBD
 ---
 
@@ -66,25 +66,26 @@ cannot read/write/commit in repos it did not open, and cannot escalate to other 
 > security*. Do **NOT** fold a partial into #162; ship the slice as a unit. Items **0/0b/3/HG** are the
 > revision-2 additions without which v1 was theater.
 
-| # | Item | Soundness | Cost |
-|---|------|-----------|------|
-| **0** | **Identity binding** — agentId unspoofable (self-certifying or daemon-minted) | **MUST (foundational)** | M |
-| **0b** | **Authenticated registration/rotation** — rotate/supersede only via current key | **MUST (foundational)** | M |
-| 1 | Per-agent root map keyed by verified agentId + `requireRoot(caller)` | **MUST** | M |
-| 2 | `project.open` → signature-required, self-registers under caller only | **MUST (load-bearing)** | M |
-| 3 | **Nested-root containment** — authorize against the most-specific owning root | **MUST** | M |
-| 4 | Default-deny on unowned/unknown roots | **MUST** | S |
-| 5 | Minimal signed, owner-only `project.grant`/`revoke` | **MUST (gate); rich stages** | M |
-| 6 | Scope coordination methods returning content/root-paths (signed + caller-filtered) | **MUST** | M |
-| 7 | Boundary **unconditional** — never Pro-gated | **MUST** | S |
-| **HG** | **git hook/config neutralization** on all git handlers | **MUST (shipped on #162)** | S |
-| 8 | **No `actorAgentId`** in any authz/root-scoped decision | **MUST** | S |
-| 9 | Inode-aware canonical key `(dev,ino)`; atomic first-open claim | **MUST** | M |
-| 10 | Ownership/grant **eviction** on agent end/prune; agentId not reusable | **MUST** | S |
-| 11 | Persistence policy for the root map (or restart re-auth) | **MUST** | S |
-| 12 | Adversarial CI suite | **MUST** | M |
-| 13 | ADR amendment | **MUST (doc — shipped: 2026-06-24-zero-9p-agent-isolation.md)** | S |
-| — | OS-level per-agent sandboxing; hardlink-file inode residue | out of scope — Layer B (§10) | L |
+| # | Item | Soundness | Cost | Status |
+|---|------|-----------|------|--------|
+| **0** | **Identity binding** — agentId unspoofable (self-certifying or daemon-minted) | **MUST (foundational)** | M | **DONE** (PR #187) |
+| **0b** | **Authenticated registration/rotation** — rotate/supersede only via current key | **MUST (foundational)** | M | **DONE** (PR #187) |
+| 1 | Per-agent root map keyed by verified agentId + `requireRoot(caller)` | **MUST** | M | **DONE** (PR #187) |
+| 2 | `project.open` → signature-required, self-registers under caller only | **MUST (load-bearing)** | M | **DONE** (A6) |
+| 3 | **Nested-root containment** — authorize against the most-specific owning root | **MUST** | M | **DONE** (PR #187, A4, A6) |
+| 4 | Default-deny on unowned/unknown roots | **MUST** | S | **DONE** (PR #187) |
+| 5 | Minimal signed, owner-only `project.grant`/`revoke` | **MUST (gate); rich stages** | M | **DONE** (A7) |
+| 6 | Scope coordination methods returning content/root-paths (signed + caller-filtered) | **MUST** | M | **DONE** (A4) |
+| 7 | Boundary **unconditional** — never Pro-gated | **MUST** | S | **DONE** (design; file isolation unconditional) |
+| **HG** | **git hook/config neutralization** on all git handlers | **MUST (shipped on #162)** | S | **DONE** |
+| 8 | **No `actorAgentId`** in any authz/root-scoped decision | **MUST** | S | **DONE** (A4) |
+| 9 | Inode-aware canonical key `(dev,ino)`; atomic first-open claim | **MUST** | M | **DONE** (A6) |
+| 10 | Ownership/grant **eviction** on agent end/prune; agentId not reusable | **MUST** | S | **DONE** (A6) |
+| 11 | Persistence policy for the root map (or restart re-auth) | **MUST** | S | **DONE** (A6 D3) |
+| 12 | Adversarial CI suite | **MUST** | M | **DONE** (A8) |
+| 13 | ADR amendment | **MUST (doc — shipped: 2026-06-24-zero-9p-agent-isolation.md)** | S | **DONE** (ADR) |
+| — | OS-level per-agent sandboxing; hardlink-file inode residue | out of scope — Layer B (§10) | L | deferred |
+| — | **D1: self-certifying principal + alias layer** | next-lane target (recorded in ADR) | L | **NEXT LANE** |
 
 ## 5. Design
 
