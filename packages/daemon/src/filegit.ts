@@ -24,11 +24,11 @@
  * traversal nor a symlink can escape to `~/.ssh`, `~/.age-identity`, etc.
  */
 
-import type { PGlite } from '@electric-sql/pglite';
 import { constants as fsConstants } from 'node:fs';
 import { open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import type { PGlite } from '@electric-sql/pglite';
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { getDaemonConfig, registerHandler } from './server.js';
 import { runGit, type ShellResult } from './vcs.js';
@@ -125,10 +125,7 @@ export async function restoreProjectRoots(db: PGlite): Promise<void> {
     // Delete them in bulk — orphaned bindings from crashed sessions must not
     // survive a restart (D3: no restart land-grab).
     for (const row of orphans.rows) {
-      await db.query(`DELETE FROM project_roots WHERE dev = $1 AND ino = $2`, [
-        row.dev,
-        row.ino,
-      ]);
+      await db.query(`DELETE FROM project_roots WHERE dev = $1 AND ino = $2`, [row.dev, row.ino]);
     }
   }
 
@@ -236,8 +233,7 @@ async function requireRoot(repoPathRaw: string, callerAgentId: string | null): P
   // path, the stored entry's real path won't match the caller's resolved path —
   // we reject rather than authorizing the new path under the old entry.
   const isOwner = callerAgentId !== null && entry !== undefined && entry.agentId === callerAgentId;
-  const isGrantee =
-    callerAgentId !== null && entry !== undefined && entry.grants.has(callerAgentId);
+  const isGrantee = callerAgentId && entry?.grants.has(callerAgentId);
   if (entry === undefined || entry.real !== real || (!isOwner && !isGrantee)) {
     throw new Error(`project root not registered: ${repoPathRaw} (call project.open first)`);
   }

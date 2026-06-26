@@ -1392,7 +1392,7 @@ registerHandler('harness.health', async (_params, db) => {
   // Mismatches indicate anchor mis-provisioning (the residual D1 risk). The
   // check is best-effort — if the anchor is unavailable we skip it rather
   // than mark the daemon unhealthy.
-  let anchorInconsistencies: string[] = [];
+  const anchorInconsistencies: string[] = [];
   try {
     const cfg = getDaemonConfig();
     const trusted = await loadTrustedClientEntries(
