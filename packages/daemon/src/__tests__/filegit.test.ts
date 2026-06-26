@@ -28,7 +28,7 @@ describe('filegit path containment', () => {
     // realpath so macOS /var -> /private/var symlink doesn't break `within`.
     root = await realpath(await mkdtemp(join(tmpdir(), 'revdev-root-')));
     outside = await realpath(await mkdtemp(join(tmpdir(), 'revdev-out-')));
-    _addRootForTest(root);
+    await _addRootForTest(root);
   });
 
   afterEach(() => {

@@ -207,12 +207,13 @@ describe('two-agent coordination', () => {
     expect(bRes.conflicts[0]?.holder).toBe(alice);
   });
 
-  it('check surfaces reservation to any agent', async () => {
+  it('check surfaces whether a path is reserved by another agent', async () => {
     const check = (await rpc(socketPath, 'files.check', {
       actorAgentId: bob,
       paths: ['/tmp/shared/file.ts'],
-    })) as { reservations: Array<{ agent_id: string }> };
-    expect(check.reservations[0]?.agent_id).toBe(alice);
+    })) as { reservations: unknown[]; reservedByOther: boolean };
+    expect(check.reservedByOther).toBe(true);
+    expect(check.reservations).toHaveLength(0);
   });
 
   it('only the claiming agent can complete a task', async () => {
@@ -480,24 +481,24 @@ describe('agent identity bootstrap', () => {
     expect(r2.publicKeyPem).toBe(r1.publicKeyPem);
   });
 
-  it('forceRotate:true supersedes old key and issues a new one', async () => {
+  it('forceRotate param is silently ignored — re-register returns the same keypair', async () => {
+    // forceRotate was an unauthenticated key-rotation escape hatch removed in
+    // B6 item 0b. Passing it must not cause key supersession.
     const r1 = (await rpc(socketPath, 'session.register', {
-      agentId: 'identity-test-rotate',
+      agentId: 'identity-test-rotate-ignored',
       agentName: 'identity-tester',
       backend: 'test',
     })) as { did: string; publicKeyPem: string };
 
     const r2 = (await rpc(socketPath, 'session.register', {
-      agentId: 'identity-test-rotate',
+      agentId: 'identity-test-rotate-ignored',
       agentName: 'identity-tester',
       backend: 'test',
       forceRotate: true,
     })) as { did: string; publicKeyPem: string };
 
-    expect(r2.did).not.toBe(r1.did);
-    expect(r2.publicKeyPem).not.toBe(r1.publicKeyPem);
-    expect(r2.did.startsWith('did:revfleet:identity-test-rotate:')).toBe(true);
-    expect(r2.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+    expect(r2.did).toBe(r1.did);
+    expect(r2.publicKeyPem).toBe(r1.publicKeyPem);
   });
 
   it('register succeeds when revvault CLI is absent', async () => {
