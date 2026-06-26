@@ -495,6 +495,59 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  // -- Agent process spawning (P4) -------------------------------------------
+  // P4-IDENTITY TODO: once the B6 identity lane ships signature gating, add
+  // all five agent.* methods to MUTATING_OR_CONTENT_METHODS in server.ts and
+  // to requires_signature() in signing.rs. The grant model (spawned-agent DID
+  // + project.grant) is deferred to that lane.
+  'agent.spawn': z
+    .object({
+      command: z.string().min(1).max(MAX_PATH_LENGTH),
+      args: z.array(z.string().max(MAX_PATH_LENGTH)).max(128).optional(),
+      cwd: z.string().max(MAX_PATH_LENGTH).optional(),
+      cols: z.number().int().min(1).max(1000).optional(),
+      rows: z.number().int().min(1).max(500).optional(),
+      // Caller-supplied env overrides (merged onto a minimal safe baseline).
+      // Values must be strings; non-string values are dropped by the handler.
+      env: z.record(z.string(), z.string()).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'agent.stop': z
+    .object({
+      processId: z.string().min(1),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'agent.input': z
+    .object({
+      processId: z.string().min(1),
+      data: z.string().max(MAX_BODY_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'agent.resize': z
+    .object({
+      processId: z.string().min(1),
+      cols: z.number().int().min(1).max(1000),
+      rows: z.number().int().min(1).max(500),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'agent.output': z
+    .object({
+      processId: z.string().min(1),
+      // Exclusive lower-bound on the output row PK (numeric string); omit = from start.
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(1000).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
   // -- File surface (P0: daemon-owned ext4 I/O) -------------------------------
   // `safePath` already rejects `..` traversal + system roots; the handler
   // additionally realpath-checks every target is a descendant of a registered
