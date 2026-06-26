@@ -54,20 +54,20 @@ describe('migrate()', () => {
   });
 
   it(
-    'applies all migrations on a fresh database and records every version',
+    'applies the baseline on a fresh database and records version 1',
     async () => {
       db = new PGlite();
-      const result = await migrate(db);
+      const result = await migrate(db, [BASELINE]);
 
-      expect(result.applied).toEqual(MIGRATIONS.map((m) => m.version));
-      expect(result.current).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
+      expect(result.applied).toEqual([1]);
+      expect(result.current).toBe(1);
       expect(await tableExists(db, 'agent_sessions')).toBe(true);
       expect(await tableExists(db, 'agent_identity_nonces')).toBe(true);
 
       const rows = await db.query<{ version: number; name: string }>(
         'SELECT version, name FROM schema_version ORDER BY version',
       );
-      expect(rows.rows).toEqual(MIGRATIONS.map((m) => ({ version: m.version, name: m.name })));
+      expect(rows.rows).toEqual([{ version: 1, name: 'initial-schema' }]);
     },
     DB_TEST_TIMEOUT,
   );
@@ -76,11 +76,11 @@ describe('migrate()', () => {
     'is a no-op when already at the latest version',
     async () => {
       db = new PGlite();
-      await migrate(db);
-      const second = await migrate(db);
+      await migrate(db, [BASELINE]);
+      const second = await migrate(db, [BASELINE]);
 
       expect(second.applied).toEqual([]);
-      expect(second.current).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
+      expect(second.current).toBe(1);
     },
     DB_TEST_TIMEOUT,
   );
@@ -93,9 +93,9 @@ describe('migrate()', () => {
       await db.exec(SCHEMA_SQL);
       await db.query(`INSERT INTO agent_sessions (id) VALUES ('pre-existing')`);
 
-      const result = await migrate(db);
+      const result = await migrate(db, [BASELINE]);
 
-      expect(result.applied).toEqual(MIGRATIONS.map((m) => m.version));
+      expect(result.applied).toEqual([1]);
       const session = await db.query<{ id: string }>('SELECT id FROM agent_sessions');
       expect(session.rows).toEqual([{ id: 'pre-existing' }]);
     },
@@ -196,15 +196,15 @@ describe('migrationStatus()', () => {
     async () => {
       db = new PGlite();
 
-      const before = await migrationStatus(db);
+      const before = await migrationStatus(db, [BASELINE]);
       expect(before.current).toBe(0);
-      expect(before.latest).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
-      expect(before.pending).toEqual(MIGRATIONS.map((m) => ({ version: m.version, name: m.name })));
+      expect(before.latest).toBe(1);
+      expect(before.pending).toEqual([{ version: 1, name: 'initial-schema' }]);
 
-      await migrate(db);
+      await migrate(db, [BASELINE]);
 
-      const after = await migrationStatus(db);
-      expect(after.current).toBe(MIGRATIONS[MIGRATIONS.length - 1]!.version);
+      const after = await migrationStatus(db, [BASELINE]);
+      expect(after.current).toBe(1);
       expect(after.pending).toEqual([]);
     },
     DB_TEST_TIMEOUT,
