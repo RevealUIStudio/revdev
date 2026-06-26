@@ -188,6 +188,10 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'git.status',
   'git.listBranches',
   'git.log',
+  // Key rotation: signature-required so the rotation is proved by current-key
+  // possession (paramsHash covers newPublicKeyPem, binding the new key).
+  // Cross-language contract: signing.rs requires_signature() must mark this too.
+  'identity.rotate',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -845,22 +849,11 @@ async function registerClientIdentity(
       [fingerprint, agentId, publicKeyPem],
     );
   } else if (existing.rows[0]?.fingerprint !== fingerprint) {
-    // Rotated to a new client key: supersede the old, register the new.
-    await db.query(
-      `UPDATE agent_identity_keys SET superseded_at = NOW()
-       WHERE agent_id = $1 AND superseded_at IS NULL`,
-      [agentId],
-    );
-    await db.query(
-      `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
-       VALUES ($1, $2, $3)`,
-      [fingerprint, agentId, publicKeyPem],
-    );
-    await db.query(
-      `UPDATE agent_identity
-       SET did = $1, fingerprint = $2, public_key_pem = $3, key_origin = 'client', last_seen_at = NOW()
-       WHERE agent_id = $4`,
-      [did, fingerprint, publicKeyPem, agentId],
+    // Key rotation must go through identity.rotate (requires a per-request
+    // signature from the current key as proof-of-possession). Reaching here
+    // means a different key was supplied without that signed rotate call.
+    throw new Error(
+      `identity ${agentId} is already enrolled with a different key — use identity.rotate to change keys`,
     );
   }
   // else: same fingerprint already registered — idempotent no-op.
@@ -981,6 +974,51 @@ registerHandler('session.update', async (params, db, ctx) => {
     await syncSessionUpdate({ sessionId: target, task });
   }
   return { updated: target };
+});
+
+// -- Identity ---------------------------------------------------------------
+
+registerHandler('identity.rotate', async (params, db, ctx) => {
+  // Require a per-request signature from the CURRENT key (proof-of-possession).
+  // requireVerifiedAgent throws -32003 for unsigned or daemon-minted callers.
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+
+  const newPublicKeyPem = strOrNull(params.newPublicKeyPem);
+  if (!newPublicKeyPem) throw new Error('identity.rotate: missing newPublicKeyPem');
+
+  const raw = spkiPemToRaw(newPublicKeyPem);
+  const newFingerprint = computeFingerprint(raw);
+  const newDid = formatDid(agentId, newFingerprint);
+
+  // Trust-anchor gate — the new key must be provisioned before replacing the old one.
+  const cfg = getDaemonConfig();
+  const trusted = await loadTrustedClientEntries(
+    cfg.trustedClientFingerprintPath,
+    cfg.trustedAnchorRequireRootOwned,
+  );
+  if (!trusted.has(`${agentId}:${newFingerprint}`)) {
+    throw new UntrustedClientKeyError(agentId, newFingerprint, cfg.trustedClientFingerprintPath);
+  }
+
+  // Supersede the old active key and register the new one.
+  await db.query(
+    `UPDATE agent_identity_keys SET superseded_at = NOW()
+     WHERE agent_id = $1 AND superseded_at IS NULL`,
+    [agentId],
+  );
+  await db.query(
+    `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+     VALUES ($1, $2, $3)`,
+    [newFingerprint, agentId, newPublicKeyPem],
+  );
+  await db.query(
+    `UPDATE agent_identity
+     SET did = $1, fingerprint = $2, public_key_pem = $3, key_origin = 'client', last_seen_at = NOW()
+     WHERE agent_id = $4`,
+    [newDid, newFingerprint, newPublicKeyPem, agentId],
+  );
+
+  return { did: newDid, publicKeyPem: newPublicKeyPem };
 });
 
 // -- Mail -------------------------------------------------------------------

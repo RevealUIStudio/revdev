@@ -43,6 +43,8 @@ const SIGNED = [
   // signature-required (B-WT). Handlers live in filegit.ts behind requireRoot.
   'worktree.create',
   'worktree.remove',
+  // Key rotation: PoP — signed by the current key, paramsHash binds new key.
+  'identity.rotate',
 ];
 
 // Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.
