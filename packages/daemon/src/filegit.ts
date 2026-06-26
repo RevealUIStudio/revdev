@@ -42,6 +42,8 @@ interface RootEntry {
   agentId: string;
   dev: bigint;
   ino: bigint;
+  /** agentIds granted read/write access by the owner via project.grant. */
+  grants: Set<string>;
 }
 
 /**
@@ -70,7 +72,13 @@ function inodeKey(dev: bigint, ino: bigint): string {
  */
 function evictRootsForAgent(agentId: string, db: PGlite): void {
   for (const [key, entry] of registeredRoots) {
-    if (entry.agentId === agentId) registeredRoots.delete(key);
+    if (entry.agentId === agentId) {
+      registeredRoots.delete(key);
+    } else {
+      // Cascade: strip the evicted agent from any root's grants so terminated
+      // agents cannot retain cross-agent access after their session ends.
+      entry.grants.delete(agentId);
+    }
   }
   // Best-effort persist — the in-memory state is already clean.
   db.query(`DELETE FROM project_roots WHERE agent_id = $1`, [agentId]).catch(() => {});
@@ -95,7 +103,7 @@ export async function _addRootForTest(realRoot: string, agentId = '_test'): Prom
   const s = await stat(realRoot);
   const dev = BigInt(s.dev);
   const ino = BigInt(s.ino);
-  registeredRoots.set(inodeKey(dev, ino), { real: realRoot, agentId, dev, ino });
+  registeredRoots.set(inodeKey(dev, ino), { real: realRoot, agentId, dev, ino, grants: new Set() });
 }
 
 /**
@@ -143,6 +151,7 @@ export async function restoreProjectRoots(db: PGlite): Promise<void> {
       agentId: row.agent_id,
       dev,
       ino,
+      grants: new Set(), // grants are in-memory only; agents re-grant on reconnect
     });
   }
 }
@@ -226,12 +235,10 @@ async function requireRoot(repoPathRaw: string, callerAgentId: string | null): P
   // deleted and the kernel reuses its inode for a new directory at a different
   // path, the stored entry's real path won't match the caller's resolved path —
   // we reject rather than authorizing the new path under the old entry.
-  if (
-    entry === undefined ||
-    callerAgentId === null ||
-    entry.agentId !== callerAgentId ||
-    entry.real !== real
-  ) {
+  const isOwner = callerAgentId !== null && entry !== undefined && entry.agentId === callerAgentId;
+  const isGrantee =
+    callerAgentId !== null && entry !== undefined && entry.grants.has(callerAgentId);
+  if (entry === undefined || entry.real !== real || (!isOwner && !isGrantee)) {
     throw new Error(`project root not registered: ${repoPathRaw} (call project.open first)`);
   }
   return entry.real;
@@ -506,7 +513,7 @@ registerHandler('project.open', async (params, db, ctx) => {
       );
     }
   }
-  registeredRoots.set(key, { real, agentId: ctx.agentId, dev, ino });
+  registeredRoots.set(key, { real, agentId: ctx.agentId, dev, ino, grants: new Set() });
   // Persist to project_roots (D3): UNIQUE(dev,ino) — same agent re-opening is
   // a no-op update; a different agent would have been rejected above, so the
   // conflict update is safe.
@@ -517,6 +524,59 @@ registerHandler('project.open', async (params, db, ctx) => {
     [dev, ino, real, ctx.agentId],
   );
   return { success: true, root: real, isGitRepo: isRepo };
+});
+
+/**
+ * Look up a root entry and verify the caller is the OWNER (not merely a
+ * grantee). Used by project.grant / project.revoke so only the opener can
+ * mutate the grant list.
+ */
+async function requireOwnerEntry(
+  repoPathRaw: string,
+  callerAgentId: string | null,
+): Promise<RootEntry> {
+  const expanded = expandTilde(repoPathRaw);
+  let real: string;
+  try {
+    real = await realpath(expanded);
+  } catch {
+    throw new Error(`project root does not exist: ${repoPathRaw}`);
+  }
+  let s: Awaited<ReturnType<typeof stat>>;
+  try {
+    s = await stat(real);
+  } catch {
+    throw new Error(`project root does not exist: ${repoPathRaw}`);
+  }
+  const key = inodeKey(BigInt(s.dev), BigInt(s.ino));
+  const entry = registeredRoots.get(key);
+  if (
+    entry === undefined ||
+    entry.real !== real ||
+    callerAgentId === null ||
+    entry.agentId !== callerAgentId
+  ) {
+    throw new Error(
+      `project root not owned by caller: ${repoPathRaw} (only the owner may grant/revoke access)`,
+    );
+  }
+  return entry;
+}
+
+registerHandler('project.grant', async (params, _db, ctx) => {
+  const repoPathRaw = requireStr(params.repoPath, 'repoPath');
+  const granteeAgentId = requireStr(params.granteeAgentId, 'granteeAgentId');
+  const entry = await requireOwnerEntry(repoPathRaw, ctx.agentId);
+  entry.grants.add(granteeAgentId);
+  return { granted: granteeAgentId, root: entry.real };
+});
+
+registerHandler('project.revoke', async (params, _db, ctx) => {
+  const repoPathRaw = requireStr(params.repoPath, 'repoPath');
+  const granteeAgentId = requireStr(params.granteeAgentId, 'granteeAgentId');
+  const entry = await requireOwnerEntry(repoPathRaw, ctx.agentId);
+  entry.grants.delete(granteeAgentId);
+  return { revoked: granteeAgentId, root: entry.real };
 });
 
 // ---------------------------------------------------------------------------
