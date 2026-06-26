@@ -1,14 +1,14 @@
 ---
 lane: multi-agent-filesystem-isolation
 repo: revdev
-status: active
+status: complete
 created: 2026-06-24
-last-updated: 2026-06-25
+last-updated: 2026-06-26
 revision: 2 (folded adversarial-critic findings, verified against code)
 security-class: data-segregation / least-privilege
 adr: revdev/docs/decisions/2026-06-24-zero-9p-agent-isolation.md
 depends-on: zero-9P P0–P5 (#162/#164/#166/#167/#168/#169) — lands AFTER, does not block the train
-blocks: Pro multi-agent tier GA (selling "run N agents concurrently")
+blocks: CLEARED — Pro multi-agent tier GA gate satisfied (PR #188 merged 2026-06-26)
 tracking-issue: TBD
 ---
 
