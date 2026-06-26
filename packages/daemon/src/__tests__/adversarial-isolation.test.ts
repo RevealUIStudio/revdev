@@ -115,7 +115,7 @@ describe('adversarial agent isolation (B6 §6)', () => {
 
   /** Sign a request for the given agent. */
   function signFor(
-    agentId: string,
+    _agentId: string,
     did: string,
     fp: string,
     kp: ReturnType<typeof generateAgentKeypair>,
@@ -147,7 +147,7 @@ describe('adversarial agent isolation (B6 §6)', () => {
   const rpcC = (method: string, params: Record<string, unknown>) =>
     rpcFrame(socketPath, method, params, signC(method, params));
   /** Unsigned RPC (coordination methods). */
-  const rpcUnsigned = (method: string, params: Record<string, unknown>) =>
+  const _rpcUnsigned = (method: string, params: Record<string, unknown>) =>
     rpcFrame(socketPath, method, params);
 
   /** Initialize a minimal git repo. */
@@ -173,10 +173,7 @@ describe('adversarial agent isolation (B6 §6)', () => {
   }
 
   /** Register an agent and return its session id. */
-  async function registerAgent(
-    agentId: string,
-    publicKeyPem: string,
-  ): Promise<void> {
+  async function registerAgent(agentId: string, publicKeyPem: string): Promise<void> {
     const r = await rpcFrame(socketPath, 'session.register', {
       agentId,
       agentName: agentId,
@@ -191,10 +188,7 @@ describe('adversarial agent isolation (B6 §6)', () => {
     socketPath = join(dataDir, 'harness.sock');
     // Provision all three agents in the trust anchor.
     anchor = join(dataDir, 'trusted-client-fingerprint');
-    await writeFile(
-      anchor,
-      `${agentIdA}:${fpA}\n${agentIdB}:${fpB}\n${agentIdC}:${fpC}\n`,
-    );
+    await writeFile(anchor, `${agentIdA}:${fpA}\n${agentIdB}:${fpB}\n${agentIdC}:${fpC}\n`);
     // Pro license: project.grant/revoke, identity.rotate, mail.*, memory.* are
     // Pro-gated. License OFF tests (§6.g) are covered by the §6.a/§6.d cases
     // above which use no Pro-gated surface.
@@ -437,9 +431,7 @@ describe('adversarial agent isolation (B6 §6)', () => {
       expect(bInbox.error).toBeUndefined();
       const bMsgs = (bInbox.result as { messages?: unknown[] }).messages ?? [];
       // None of B's messages should have subject "A secret".
-      const leaked = bMsgs.filter(
-        (m) => (m as Record<string, unknown>).subject === 'A secret',
-      );
+      const leaked = bMsgs.filter((m) => (m as Record<string, unknown>).subject === 'A secret');
       expect(leaked).toHaveLength(0);
     });
 
@@ -467,9 +459,7 @@ describe('adversarial agent isolation (B6 §6)', () => {
       if (r.result !== undefined) {
         const tasks = (r.result as { tasks?: unknown[] }).tasks ?? [];
         // If tasks returned, ensure none are "owned" by A (B can't see A's owned tasks).
-        const aTasks = tasks.filter(
-          (t) => (t as Record<string, unknown>).owner === agentIdA,
-        );
+        const aTasks = tasks.filter((t) => (t as Record<string, unknown>).owner === agentIdA);
         expect(aTasks).toHaveLength(0);
       }
     });
