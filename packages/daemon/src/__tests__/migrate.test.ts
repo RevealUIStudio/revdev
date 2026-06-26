@@ -57,7 +57,7 @@ describe('migrate()', () => {
     'applies the baseline on a fresh database and records version 1',
     async () => {
       db = new PGlite();
-      const result = await migrate(db);
+      const result = await migrate(db, [BASELINE]);
 
       expect(result.applied).toEqual([1]);
       expect(result.current).toBe(1);
@@ -76,8 +76,8 @@ describe('migrate()', () => {
     'is a no-op when already at the latest version',
     async () => {
       db = new PGlite();
-      await migrate(db);
-      const second = await migrate(db);
+      await migrate(db, [BASELINE]);
+      const second = await migrate(db, [BASELINE]);
 
       expect(second.applied).toEqual([]);
       expect(second.current).toBe(1);
@@ -93,7 +93,7 @@ describe('migrate()', () => {
       await db.exec(SCHEMA_SQL);
       await db.query(`INSERT INTO agent_sessions (id) VALUES ('pre-existing')`);
 
-      const result = await migrate(db);
+      const result = await migrate(db, [BASELINE]);
 
       expect(result.applied).toEqual([1]);
       const session = await db.query<{ id: string }>('SELECT id FROM agent_sessions');
@@ -106,7 +106,7 @@ describe('migrate()', () => {
     'applies only pending migrations, in order',
     async () => {
       db = new PGlite();
-      await migrate(db); // at version 1
+      await migrate(db, [BASELINE]); // at version 1
 
       const registry: Migration[] = [
         BASELINE,
@@ -127,7 +127,7 @@ describe('migrate()', () => {
     'rolls back a failed migration and leaves schema_version untouched',
     async () => {
       db = new PGlite();
-      await migrate(db);
+      await migrate(db, [BASELINE]);
 
       const broken: Migration = {
         version: 2,
@@ -196,14 +196,14 @@ describe('migrationStatus()', () => {
     async () => {
       db = new PGlite();
 
-      const before = await migrationStatus(db);
+      const before = await migrationStatus(db, [BASELINE]);
       expect(before.current).toBe(0);
       expect(before.latest).toBe(1);
       expect(before.pending).toEqual([{ version: 1, name: 'initial-schema' }]);
 
-      await migrate(db);
+      await migrate(db, [BASELINE]);
 
-      const after = await migrationStatus(db);
+      const after = await migrationStatus(db, [BASELINE]);
       expect(after.current).toBe(1);
       expect(after.pending).toEqual([]);
     },
@@ -222,7 +222,7 @@ describe('startDaemon() migration wiring', () => {
         const rows = await d._db.query<{ version: number }>(
           'SELECT version FROM schema_version ORDER BY version',
         );
-        expect(rows.rows).toEqual([{ version: 1 }]);
+        expect(rows.rows).toEqual(MIGRATIONS.map((m) => ({ version: m.version })));
       } finally {
         await d.close();
         await rm(dir, { recursive: true, force: true });

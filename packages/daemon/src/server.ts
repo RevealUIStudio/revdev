@@ -382,18 +382,69 @@ export function _setClosingForTest(closing: boolean): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function requireAgent(ctx: SocketContext, params?: Record<string, unknown>): string {
-  if (ctx.agentId) return ctx.agentId;
-  // Fallback: accept `actorAgentId` in params for fresh-per-call clients
-  // (e.g. Studio's Tauri bridge). The daemon does not authenticate — this
-  // is local-trust; remote callers go through the HTTP gateway with auth.
-  const actor = params ? strOrNull(params.actorAgentId) : null;
-  if (actor) {
-    ctx.agentId = actor;
-    ctx.boundVia = 'param';
-    return actor;
+/** Build an Error carrying the JSON-RPC -32003 "Signature required" code so the
+ *  dispatch catch surfaces it verbatim (mirrors UntrustedClientKeyError). */
+function signatureRequired(message: string): Error {
+  const e = new Error(message) as Error & { code: number };
+  e.code = -32003;
+  return e;
+}
+
+/**
+ * Resolve the VERIFIED security principal for a self-scoped coordination method
+ * (B6 item 8). Replaces the old `requireAgent`, whose unsigned `actorAgentId`
+ * fallback let agent B name agent A and read/act as them (the mail.inbox /
+ * memory.query cross-agent leaks).
+ *
+ * Admissible principals:
+ *   - A per-request Ed25519 signature (`boundVia==='signature'`). This is the
+ *     ONLY admissible principal for a CLIENT-owned identity — the daemon does
+ *     not hold its private key, so a valid signature is proof of possession.
+ *   - A register/attach/param bind to a DAEMON-MINTED identity. The daemon
+ *     mints + holds that key, so for the free/headless tier the `0600` socket
+ *     bind is the trust boundary (such identities may never own filesystem
+ *     roots — D2). `key_origin` is read AUTHORITATIVELY from `agent_identity`,
+ *     never inferred from the call, so an attacker cannot upgrade a
+ *     client-owned identity to daemon-trust by omitting `publicKeyPem`.
+ *
+ * Throws -32003 when no admissible principal is present. (A call with no
+ * identity at all is already rejected -32002 by the dispatch identity gate
+ * before any handler runs.)
+ */
+async function requireVerifiedAgent(
+  ctx: SocketContext,
+  db: PGlite,
+  params?: Record<string, unknown>,
+): Promise<string> {
+  // A per-request signature is always admissible (key-proven possession).
+  if (ctx.boundVia === 'signature' && ctx.agentId) return ctx.agentId;
+
+  // Otherwise resolve the bound or param-named identity and trust the bind
+  // ONLY when that identity is daemon-minted.
+  const bound = ctx.agentId ?? (params ? strOrNull(params.actorAgentId) : null);
+  if (!bound) {
+    throw signatureRequired('no verified identity: sign the request or session.register first');
   }
-  throw new Error('Not registered: call session.register or pass actorAgentId');
+  const origin = await db.query<{ key_origin: string }>(
+    `SELECT key_origin FROM agent_identity WHERE agent_id = $1`,
+    [bound],
+  );
+  // Unknown identity (no row yet) → treat as daemon-tier; it owns no data, so
+  // there is nothing to leak, and this preserves the legacy actorAgentId bind
+  // for fresh hook clients.
+  const keyOrigin = origin.rows[0]?.key_origin ?? 'daemon';
+  if (keyOrigin !== 'daemon') {
+    throw signatureRequired(
+      `client-owned identity ${bound} requires a signed request for this method`,
+    );
+  }
+  // Daemon-minted: materialize the bind so the rest of the handler sees it.
+  if (!ctx.agentId) {
+    ctx.agentId = bound;
+    ctx.boundVia = 'param';
+  }
+  ctx.keyOrigin = 'daemon';
+  return bound;
 }
 
 function str(v: unknown, fallback = ''): string {
@@ -784,8 +835,8 @@ async function registerClientIdentity(
 
   if (existing.rows.length === 0) {
     await db.query(
-      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem, key_origin)
+       VALUES ($1, $2, $3, $4, 'client')`,
       [agentId, did, fingerprint, publicKeyPem],
     );
     await db.query(
@@ -807,7 +858,7 @@ async function registerClientIdentity(
     );
     await db.query(
       `UPDATE agent_identity
-       SET did = $1, fingerprint = $2, public_key_pem = $3, last_seen_at = NOW()
+       SET did = $1, fingerprint = $2, public_key_pem = $3, key_origin = 'client', last_seen_at = NOW()
        WHERE agent_id = $4`,
       [did, fingerprint, publicKeyPem, agentId],
     );
@@ -935,7 +986,7 @@ registerHandler('session.update', async (params, db, ctx) => {
 // -- Mail -------------------------------------------------------------------
 
 registerHandler('mail.send', async (params, db, ctx) => {
-  const from = requireAgent(ctx, params);
+  const from = await requireVerifiedAgent(ctx, db, params);
   const to = strOrNull(params.to) ?? strOrNull(params.toAgent);
   if (!to) throw new Error('mail.send: missing "to" (or "toAgent")');
   const subject = str(params.subject);
@@ -952,8 +1003,9 @@ registerHandler('mail.send', async (params, db, ctx) => {
 });
 
 registerHandler('mail.inbox', async (params, db, ctx) => {
-  // Explicit agentId param wins (for debugging / admin). Otherwise use caller.
-  const agentId = strOrNull(params.agentId) ?? requireAgent(ctx, params);
+  // B6 item 6: the principal is the VERIFIED caller only — the prior
+  // agentId-param override let any caller read another agent's inbox.
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const unreadOnly = params.unreadOnly !== false; // default true
 
   const sql = unreadOnly
@@ -966,7 +1018,7 @@ registerHandler('mail.inbox', async (params, db, ctx) => {
 });
 
 registerHandler('mail.broadcast', async (params, db, ctx) => {
-  const from = requireAgent(ctx, params);
+  const from = await requireVerifiedAgent(ctx, db, params);
   const subject = str(params.subject);
   const body = str(params.body);
 
@@ -992,7 +1044,7 @@ registerHandler('mail.broadcast', async (params, db, ctx) => {
 });
 
 registerHandler('mail.markRead', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   // Accept number[] or string[] (JSON numbers or numeric strings).
   const raw = Array.isArray(params.messageIds) ? params.messageIds : [];
   const ids = raw
@@ -1022,7 +1074,7 @@ registerHandler('mail.markRead', async (params, db, ctx) => {
 // -- File reservations ------------------------------------------------------
 
 registerHandler('files.reserve', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const paths = normalizePaths(params);
   if (paths.length === 0) throw new Error('files.reserve: missing paths');
   const reason = str(params.reason);
@@ -1071,20 +1123,25 @@ registerHandler('files.reserve', async (params, db, ctx) => {
   };
 });
 
-registerHandler('files.check', async (params, db) => {
+registerHandler('files.check', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const paths = normalizePaths(params);
-  if (paths.length === 0) return { reservations: [] };
+  if (paths.length === 0) return { reservations: [], reservedByOther: false };
   const result = await db.query<Record<string, unknown>>(
     `SELECT file_path, agent_id, reserved_at, expires_at, reason
      FROM file_reservations
      WHERE file_path = ANY($1::text[]) AND expires_at > NOW()`,
     [paths],
   );
-  return { reservations: result.rows };
+  // B6 item 6: surface only the caller's OWN reservations in full; collapse
+  // others to a boolean so B cannot learn who/why A reserved a path.
+  const own = result.rows.filter((r) => r.agent_id === agentId);
+  const reservedByOther = result.rows.some((r) => r.agent_id !== agentId);
+  return { reservations: own, reservedByOther };
 });
 
 registerHandler('files.release', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const paths = normalizePaths(params);
 
   // If no paths given, release all of this agent's reservations.
@@ -1105,14 +1162,15 @@ registerHandler('files.release', async (params, db, ctx) => {
   return { released: r.affectedRows ?? 0 };
 });
 
-registerHandler('files.list', async (params, db) => {
-  const agentId = strOrNull(params.agentId);
-  const sql = agentId
-    ? `SELECT * FROM file_reservations WHERE expires_at > NOW() AND agent_id = $1
-       ORDER BY reserved_at DESC`
-    : `SELECT * FROM file_reservations WHERE expires_at > NOW()
-       ORDER BY reserved_at DESC`;
-  const result = await db.query<Record<string, unknown>>(sql, agentId ? [agentId] : []);
+registerHandler('files.list', async (params, db, ctx) => {
+  // B6 item 6: scope to the verified caller's own reservations. Cross-agent
+  // enumeration was a side channel (which paths another agent is working on).
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const result = await db.query<Record<string, unknown>>(
+    `SELECT * FROM file_reservations WHERE expires_at > NOW() AND agent_id = $1
+     ORDER BY reserved_at DESC`,
+    [agentId],
+  );
   return { reservations: result.rows };
 });
 
@@ -1146,9 +1204,9 @@ registerHandler('tasks.create', async (params, db) => {
   return { taskId: id, id };
 });
 
-registerHandler('tasks.list', async (params, db) => {
+registerHandler('tasks.list', async (params, db, ctx) => {
   const status = strOrNull(params.status);
-  const owner = strOrNull(params.owner);
+  const ownerParam = strOrNull(params.owner);
 
   const where: string[] = [];
   const vals: unknown[] = [];
@@ -1157,9 +1215,16 @@ registerHandler('tasks.list', async (params, db) => {
     where.push(`status = $${i++}`);
     vals.push(status);
   }
-  if (owner) {
+  // B6 item 6: the open/unclaimed pool is globally visible (a coordination
+  // feature), but filtering by a SPECIFIC owner's claimed tasks must be the
+  // caller themselves — else B enumerates A's task assignments.
+  if (ownerParam) {
+    const verified = await requireVerifiedAgent(ctx, db, params);
+    if (ownerParam !== verified) {
+      throw signatureRequired('tasks.list owner filter is restricted to the calling agent');
+    }
     where.push(`owner = $${i++}`);
-    vals.push(owner);
+    vals.push(ownerParam);
   }
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const result = await db.query<Record<string, unknown>>(
@@ -1170,7 +1235,7 @@ registerHandler('tasks.list', async (params, db) => {
 });
 
 registerHandler('tasks.claim', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const taskId = strOrNull(params.taskId);
   if (!taskId) throw new Error('tasks.claim: missing taskId');
 
@@ -1199,7 +1264,7 @@ registerHandler('tasks.claim', async (params, db, ctx) => {
 });
 
 registerHandler('tasks.complete', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const taskId = strOrNull(params.taskId);
   if (!taskId) throw new Error('tasks.complete: missing taskId');
   const summary = strOrNull(params.summary);
@@ -1227,7 +1292,7 @@ registerHandler('tasks.complete', async (params, db, ctx) => {
 });
 
 registerHandler('tasks.release', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const taskId = strOrNull(params.taskId);
   if (!taskId) throw new Error('tasks.release: missing taskId');
 
@@ -1315,7 +1380,7 @@ registerHandler('harness.prune', async (params, db) => {
 // -- Memory -----------------------------------------------------------------
 
 registerHandler('memory.store', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const memoryType = str(params.memoryType);
   const content = str(params.content);
   const metadataInput =
@@ -1331,7 +1396,7 @@ registerHandler('memory.store', async (params, db, ctx) => {
 });
 
 registerHandler('memory.query', async (params, db, ctx) => {
-  const agentId = requireAgent(ctx, params);
+  const agentId = await requireVerifiedAgent(ctx, db, params);
   const memoryType = strOrNull(params.memoryType);
   const query = strOrNull(params.query);
   const tags = asStringArray(params.tags);
@@ -1504,6 +1569,7 @@ export async function startDaemon(
       agentId: null,
       agentName: null,
       boundVia: null,
+      keyOrigin: null,
       verifiedSignature: null,
       preSignatureAgentId: null,
       preSignatureAgentName: null,
@@ -1651,7 +1717,8 @@ export async function startDaemon(
         }
 
         // Identity gate: most coordination calls need a registered agent.
-        // Fallback: accept `actorAgentId` in params (requireAgent will validate).
+        // Fallback: accept `actorAgentId` in params; requireVerifiedAgent
+        // enforces the verified principal (signature, or daemon-minted bind).
         if (
           !IDENTITY_EXEMPT.has(req.method) &&
           !ctx.agentId &&
