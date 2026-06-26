@@ -31,7 +31,7 @@ import {
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
-import { notifyAgentEnded } from './eviction.js';
+import { notifyAgentEnded, notifyDaemonStarted } from './eviction.js';
 import {
   guardRpcMethod,
   initLicenseGuard,
@@ -253,7 +253,7 @@ async function runPrune(
     [stale],
   );
   // Evict filesystem roots for every stale-terminated agent (B6 item 10).
-  for (const { id } of aged.rows) notifyAgentEnded(id);
+  for (const { id } of aged.rows) notifyAgentEnded(id, db);
   const deleted = await db.query<{ id: string }>(
     `DELETE FROM agent_sessions
       WHERE ended_at IS NOT NULL
@@ -941,7 +941,7 @@ registerHandler('session.end', async (params, db, ctx) => {
     ctx.agentName = null;
   }
   // Evict all filesystem roots owned by this agent (B6 item 10).
-  notifyAgentEnded(target);
+  notifyAgentEnded(target, db);
   // Best-effort dual-write — see GAP-154 §E.
   await syncSessionEnd({ sessionId: target, summary: exitSummary });
   return { ended: target };
@@ -1382,6 +1382,34 @@ registerHandler('harness.health', async (_params, db) => {
   const tasks = await db.query<{ count: string }>(
     `SELECT COUNT(*)::text as count FROM tasks WHERE status = 'open'`,
   );
+  // D1 interim anchor-consistency assertion: every client-owned identity row
+  // must have its (agent_id, fingerprint) pair in the loaded trust anchor.
+  // Mismatches indicate anchor mis-provisioning (the residual D1 risk). The
+  // check is best-effort — if the anchor is unavailable we skip it rather
+  // than mark the daemon unhealthy.
+  let anchorInconsistencies: string[] = [];
+  try {
+    const cfg = getDaemonConfig();
+    const trusted = await loadTrustedClientEntries(
+      cfg.trustedClientFingerprintPath,
+      cfg.trustedAnchorRequireRootOwned,
+    );
+    const clientIds = await db.query<{ agent_id: string; fingerprint: string }>(
+      `SELECT agent_id, fingerprint FROM agent_identity WHERE key_origin = 'client'`,
+    );
+    for (const row of clientIds.rows) {
+      if (!trusted.has(`${row.agent_id}:${row.fingerprint}`)) {
+        anchorInconsistencies.push(row.agent_id);
+        log.warn('anchor-consistency: identity not in trust anchor', {
+          agentId: row.agent_id,
+          fingerprint: row.fingerprint,
+        });
+      }
+    }
+  } catch {
+    /* anchor unavailable — skip; don't fail health check */
+  }
+
   return {
     status: 'healthy',
     activeSessions: Number(sessions.rows[0]?.count ?? 0),
@@ -1397,6 +1425,10 @@ registerHandler('harness.health', async (_params, db) => {
     // returning empty means "no peers" or "no fleet visibility".
     neonSyncActive: isNeonSyncActive(),
     identitySignatureMode: 'accept-if-present' as const,
+    // D1 interim: list of client-owned agent_ids whose fingerprint is absent
+    // from the trust anchor. Should be empty on a correctly provisioned
+    // install; non-empty is a loud warning, not a daemon failure.
+    anchorInconsistencies,
   };
 });
 
@@ -1509,6 +1541,10 @@ export async function startDaemon(
     version: migration.current,
     applied: migration.applied.length > 0 ? migration.applied : 'none',
   });
+
+  // Run startup hooks (e.g. restoreProjectRoots in filegit.ts). Runs after
+  // migration so all tables exist before hooks query them.
+  await notifyDaemonStarted(db);
 
   // Initialize observability (metrics + health checks)
   initObservability(db);
