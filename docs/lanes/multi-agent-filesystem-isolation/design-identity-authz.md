@@ -74,3 +74,20 @@ Headless-hook compat (D2): coordination methods becoming signature-required woul
 1. **Anchor mis-provisioning** survives in the interim (D1 staging) — mitigated by anchor-lint + `harness.health`, eliminated by the staged self-certifying lane.
 2. **Daemon-minted coordination** rests on the socket + register bind, not per-request crypto — free-tier boundary; disclosed in the ADR; cannot touch file isolation (D2 forbids root ownership).
 3. **Layer A is the RPC chokepoint only** — moot against direct ext4 access (the daemon UID). Layer B is the durable wall; the SOC attestation must not overclaim Layer A.
+
+---
+
+## Progress log
+
+### 2026-06-25 — A4 DONE + verified (commit `54dfaf9`; scaffolding `2b461c9`; design `82c343e`)
+- **A4 (verified-principal coordination sweep)** shipped: `requireVerifiedAgent` replaces the spoofable `requireAgent`/`actorAgentId` fallback across all self-scoped coordination handlers. Closes the `mail.inbox` + `memory.query` content leaks and the `mail.send`/`tasks.*` sender-spoof family for client-owned identities; `files.check`→`reservedByOther`, `files.list`/`tasks.list` owner-filter caller-scoped (item 6). `key_origin` column (migration 0002) distinguishes client-owned (must sign) vs daemon-minted (socket-bound). Source-assertion CI guard `verified-principal-guard.test.ts`.
+- **KEY DEVIATION from deliverable-3 — follow this for A5/A7 too:** coordination methods are NOT added to the dispatch signature gate (`MUTATING_OR_CONTENT_METHODS`) — that would force signatures and break daemon-minted headless hooks + every existing coordination test. The verified-principal check runs **in-handler** (`requireVerifiedAgent`), admitting either a per-request signature OR a daemon-minted bind (`key_origin` read authoritatively from `agent_identity`). TS↔Rust signed-set stays the file/git set (lockstep + drift test unchanged).
+- **Follow-up flagged:** client-owned Studio must now SIGN its coordination calls (it can — `verifyOrWarn` honors a signature on any method). If Studio uses unsigned `actorAgentId` for coordination today, that's a required client-side change; record in the ADR.
+- **Verified:** daemon typecheck clean; `migrate`+`verified-principal-guard` 24/24; integration suite 107/107. NOTE: the full daemon vitest run **flakes under parallelism** (24 daemons starting at once → startup timeouts). Run `vitest run --no-file-parallelism` (or per-file) to verify — every file passes in isolation.
+
+### Remaining (serialized — A5 → A6 → A7 → A8; same-file collisions forbid parallelizing)
+- **A5** — `identity.rotate` PoP (sign rotation with the current key, `paramsHash` binds the new key); add to `MUTATING_OR_CONTENT_METHODS` + Rust `requires_signature` (lockstep + drift test); **delete the rotation branch from `registerClientIdentity`** (server.ts ~lines 796-814, the `else if (existing.fingerprint !== fingerprint)` block). Reuse `requireVerifiedAgent` for the current-key check.
+- **A6** — `RootEntry` redesign in `filegit.ts`: inode `(dev,ino)` key + atomic claim + persistence (D3: PGlite table, `UNIQUE(dev,ino)`, restore on startup, outside any registerable root) + eviction cascade (strip evicted agentId from other entries' grants too) + **forbid daemon-minted root ownership** (D2: `project.open` rejects when caller `key_origin='daemon'`) + the D1 interim anchor-lint/`harness.health` consistency assertion.
+- **A7** — owner-only signed `project.grant`/`project.revoke`, keyed on **agentId** (not fingerprint); add both to `MUTATING_OR_CONTENT_METHODS` + Rust `requires_signature` (lockstep + drift test); `requireRoot` grants branch.
+- **A8** — adversarial CI suite (§6.a–k + the 3-leak regression + PoP-rotation + exhaustive Rust↔TS drift).
+- **A9 / ADR** — refresh lane `plan.md` §3 (stale); amend `docs/decisions/2026-06-24-zero-9p-agent-isolation.md` §2/§2a + record D1/D2/D3 + the daemon-minted-coordination disclosure + Studio coordination-signing follow-up.
