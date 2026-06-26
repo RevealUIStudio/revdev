@@ -45,6 +45,9 @@ const SIGNED = [
   'worktree.remove',
   // Key rotation: PoP — signed by the current key, paramsHash binds new key.
   'identity.rotate',
+  // Grant/revoke cross-agent root access: owner-only, signature-required.
+  'project.grant',
+  'project.revoke',
 ];
 
 // Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.

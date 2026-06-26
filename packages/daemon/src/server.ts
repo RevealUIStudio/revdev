@@ -192,6 +192,11 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // possession (paramsHash covers newPublicKeyPem, binding the new key).
   // Cross-language contract: signing.rs requires_signature() must mark this too.
   'identity.rotate',
+  // Grant/revoke cross-agent root access: signature-required so only the
+  // verified owner can mutate the grant list. Cross-language contract: signing.rs
+  // requires_signature() must mark these too.
+  'project.grant',
+  'project.revoke',
 ]);
 
 // ---------------------------------------------------------------------------
