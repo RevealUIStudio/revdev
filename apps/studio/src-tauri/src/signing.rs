@@ -57,6 +57,13 @@ pub fn requires_signature(method: &str) -> bool {
             // root under the verified signer (per-agent root scoping). MUST
             // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
             | "project.open"
+            // Key rotation: proof-of-possession — signed by the current key,
+            // paramsHash binds the new public key. MUST mirror server.ts.
+            | "identity.rotate"
+            // Grant/revoke cross-agent root access: owner-only, signature-required.
+            // MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
+            | "project.grant"
+            | "project.revoke"
             // git metadata reads — signature-required so they are scoped to the
             // verified signer (no cross-agent branch/history/dirty-path leak).
             | "git.status"
