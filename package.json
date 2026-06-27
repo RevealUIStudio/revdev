@@ -41,6 +41,8 @@
       "qs": ">=6.15.2",
       "ws@8": ">=8.20.1"
     },
-    "onlyBuiltDependencies": ["node-pty"]
+    "onlyBuiltDependencies": [
+      "node-pty"
+    ]
   }
 }
