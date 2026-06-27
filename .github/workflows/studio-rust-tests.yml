@@ -17,6 +17,9 @@ on:
       - "packages/daemon/**"
       - "packages/protocol/**"
       - ".github/workflows/studio-rust-tests.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
   pull_request:
     branches: [main, test]
     paths:
@@ -25,6 +28,9 @@ on:
       - "packages/daemon/**"
       - "packages/protocol/**"
       - ".github/workflows/studio-rust-tests.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
 
 permissions:
   contents: read
