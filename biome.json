@@ -54,5 +54,20 @@
         "noUnusedVariables": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/studio/src/hooks/**", "apps/studio/src/lib/**"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noVoid": "error"
+          },
+          "suspicious": {
+            "noEmptyBlockStatements": "error"
+          }
+        }
+      }
+    }
+  ]
 }

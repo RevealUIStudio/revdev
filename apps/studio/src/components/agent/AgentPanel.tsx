@@ -391,11 +391,32 @@ export default function AgentPanel() {
     setEditingRepo(false);
   };
 
-  const stageFile = (path: string) => gitStageFile(repoPath, path).then(() => loadChanges());
+  const stageFile = async (path: string): Promise<void> => {
+    try {
+      await gitStageFile(repoPath, path);
+      await loadChanges();
+    } catch (e) {
+      setGitError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
-  const unstageFile = (path: string) => gitUnstageFile(repoPath, path).then(() => loadChanges());
+  const unstageFile = async (path: string): Promise<void> => {
+    try {
+      await gitUnstageFile(repoPath, path);
+      await loadChanges();
+    } catch (e) {
+      setGitError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
-  const discardFile = (path: string) => gitDiscardFile(repoPath, path).then(() => loadChanges());
+  const discardFile = async (path: string): Promise<void> => {
+    try {
+      await gitDiscardFile(repoPath, path);
+      await loadChanges();
+    } catch (e) {
+      setGitError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const stageAll = async () => {
     if (!gitState || stagingAll) return;
@@ -405,6 +426,8 @@ export default function AgentPanel() {
         [...gitState.unstaged, ...gitState.untracked].map((f) => gitStageFile(repoPath, f.path)),
       );
       await loadChanges();
+    } catch (e) {
+      setGitError(e instanceof Error ? e.message : String(e));
     } finally {
       setStagingAll(false);
     }
@@ -416,6 +439,8 @@ export default function AgentPanel() {
     try {
       await Promise.all(gitState.unstaged.map((f) => gitDiscardFile(repoPath, f.path)));
       await loadChanges();
+    } catch (e) {
+      setGitError(e instanceof Error ? e.message : String(e));
     } finally {
       setDiscardingAll(false);
     }
