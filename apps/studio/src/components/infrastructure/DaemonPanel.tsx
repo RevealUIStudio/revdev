@@ -7,6 +7,7 @@ import {
   daemonStatus,
   daemonStop,
 } from '../../lib/invoke';
+import ConfirmDialog from '../ui/ConfirmDialog';
 
 interface DaemonPanelProps {
   harnessStatus: HarnessStatus;
@@ -16,6 +17,7 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<'stop' | 'restart' | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -46,24 +48,18 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
     }
   }
 
-  async function handleStop() {
+  async function handleConfirm() {
+    if (pendingAction === null) return;
+    const action = pendingAction;
+    setPendingAction(null);
     setLoading(true);
     setError(null);
     try {
-      await daemonStop();
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRestart() {
-    setLoading(true);
-    setError(null);
-    try {
-      await daemonRestart();
+      if (action === 'stop') {
+        await daemonStop();
+      } else {
+        await daemonRestart();
+      }
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -85,6 +81,15 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
       : harnessStatus === 'connecting'
         ? 'Connecting...'
         : 'Disconnected';
+
+  const dialogTitle = pendingAction === 'stop' ? 'Stop daemon?' : 'Restart daemon?';
+
+  const dialogBody =
+    pendingAction === 'stop'
+      ? 'Stopping the daemon disconnects all active agent sessions. Unsaved agent work may be lost.'
+      : 'Restarting the daemon briefly disconnects all active agent sessions. Unsaved agent work may be lost.';
+
+  const dialogConfirmLabel = pendingAction === 'stop' ? 'Stop daemon' : 'Restart daemon';
 
   return (
     <div className="space-y-4">
@@ -110,19 +115,19 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
           <>
             <button
               type="button"
-              onClick={handleRestart}
+              onClick={() => setPendingAction('restart')}
               disabled={loading}
               className="rounded bg-yellow-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-600 disabled:opacity-50"
             >
-              {loading ? 'Restarting...' : 'Restart'}
+              {loading && pendingAction === null ? 'Restarting...' : 'Restart'}
             </button>
             <button
               type="button"
-              onClick={handleStop}
+              onClick={() => setPendingAction('stop')}
               disabled={loading}
               className="rounded bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-50"
             >
-              {loading ? 'Stopping...' : 'Stop'}
+              {loading && pendingAction === null ? 'Stopping...' : 'Stop'}
             </button>
           </>
         )}
@@ -139,6 +144,15 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
           {status.pid && <div>PID: {status.pid}</div>}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={dialogTitle}
+        body={dialogBody}
+        confirmLabel={dialogConfirmLabel}
+        onConfirm={handleConfirm}
+        onClose={() => setPendingAction(null)}
+      />
     </div>
   );
 }

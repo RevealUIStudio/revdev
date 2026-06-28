@@ -4,6 +4,7 @@ import type { SshBookmark, SshConnectParams } from '../../types';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import Input from '../ui/Input';
 
 interface SshBookmarkSidebarProps {
@@ -14,6 +15,7 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
   const [bookmarks, setBookmarks] = useState<SshBookmark[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<SshBookmark | null>(null);
 
   // Form state
   const [label, setLabel] = useState('');
@@ -50,8 +52,10 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
     });
   };
 
-  const handleDelete = async (id: string) => {
-    await sshBookmarkDelete(id);
+  const handleDeleteConfirmed = async () => {
+    if (pendingDelete === null) return;
+    await sshBookmarkDelete(pendingDelete.id);
+    setPendingDelete(null);
     await loadBookmarks();
   };
 
@@ -190,7 +194,7 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
                 >
                   Connect
                 </Button>
-                <Button variant="danger" size="sm" onClick={() => handleDelete(bookmark.id)}>
+                <Button variant="danger" size="sm" onClick={() => setPendingDelete(bookmark)}>
                   Delete
                 </Button>
               </div>
@@ -198,6 +202,20 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
           ))}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete bookmark"
+        body={
+          <>
+            Delete <strong>{pendingDelete?.label}</strong> ({pendingDelete?.username}@
+            {pendingDelete?.host})?
+          </>
+        }
+        confirmLabel="Delete bookmark"
+        onConfirm={handleDeleteConfirmed}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

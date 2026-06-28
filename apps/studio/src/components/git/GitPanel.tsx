@@ -25,6 +25,7 @@ import type {
   GitFileEntry,
   GitStatusResult,
 } from '../../types';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import DiffView from './DiffView';
 
 // ── Status badge ─────────────────────────────────────────────────────────────
@@ -411,6 +412,9 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
   const [rightTab, setRightTab] = useState<'diff' | 'log'>('diff');
   const [log, setLog] = useState<GitCommitInfo[]>([]);
   const [logLoading, setLogLoading] = useState(false);
+
+  // Pending discard confirmation
+  const [pendingDiscard, setPendingDiscard] = useState<string | null>(null);
 
   const loadBranches = useCallback(async () => {
     try {
@@ -849,7 +853,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                       void stageFile(entry.path);
                     }}
                     onDiscard={() => {
-                      void discardFile(entry.path);
+                      setPendingDiscard(entry.path);
                     }}
                     onOpenEditor={
                       onOpenEditor
@@ -958,6 +962,22 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
           {rightTab === 'log' && <CommitLog entries={log} loading={logLoading} />}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDiscard !== null}
+        title="Discard changes"
+        body="This will permanently discard all uncommitted changes to this file. This cannot be undone."
+        affectedItems={pendingDiscard !== null ? [pendingDiscard] : undefined}
+        confirmLabel="Discard changes"
+        typeToConfirm="discard"
+        onConfirm={() => {
+          if (pendingDiscard !== null) {
+            void discardFile(pendingDiscard);
+          }
+          setPendingDiscard(null);
+        }}
+        onClose={() => setPendingDiscard(null)}
+      />
     </div>
   );
 }
