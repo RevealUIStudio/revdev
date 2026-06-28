@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { neonTestConnection, runDbMigrate, runDbSeed } from '../../lib/deploy';
 import type { StudioConfig, WizardData } from '../../types';
 import Button from '../ui/Button';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import Input from '../ui/Input';
 import WizardStep from './WizardStep';
 
@@ -37,6 +38,7 @@ export default function StepDatabase({
   const [supabaseSecretKey, setSupabaseSecretKey] = useState(data.supabaseSecretKey || '');
   const [phase, setPhase] = useState<Phase>('input');
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<'migrate' | 'seed' | null>(null);
 
   const isRunning = phase !== 'input' && phase !== 'done';
 
@@ -48,10 +50,32 @@ export default function StepDatabase({
     try {
       setPhase('testing');
       await neonTestConnection(postgresUrl.trim());
+      setPendingAction('migrate');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Database setup failed');
+      setPhase('input');
+    }
+  }
 
+  async function handleConfirmMigrate() {
+    setPendingAction(null);
+    setError(null);
+
+    try {
       setPhase('migrating');
       await runDbMigrate('.');
+      setPendingAction('seed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Migration failed');
+      setPhase('input');
+    }
+  }
 
+  async function handleConfirmSeed() {
+    setPendingAction(null);
+    setError(null);
+
+    try {
       setPhase('seeding');
       await runDbSeed('.');
 
@@ -67,9 +91,14 @@ export default function StepDatabase({
           : {}),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Database setup failed');
+      setError(err instanceof Error ? err.message : 'Seeding failed');
       setPhase('input');
     }
+  }
+
+  function handleDialogClose() {
+    setPendingAction(null);
+    setPhase('input');
   }
 
   return (
@@ -163,6 +192,20 @@ export default function StepDatabase({
           Next
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={pendingAction === 'seed' ? 'Seed database?' : 'Run schema migration?'}
+        body={
+          pendingAction === 'seed'
+            ? 'Seeding will insert or replace rows in the target database. Existing data in seeded tables may be overwritten and cannot be recovered.'
+            : 'This will apply pending schema migrations to the target database, altering its structure. Ensure you have a backup before proceeding.'
+        }
+        confirmLabel={pendingAction === 'seed' ? 'Seed database' : 'Run migration'}
+        typeToConfirm={pendingAction === 'seed' ? 'seed' : undefined}
+        onConfirm={pendingAction === 'seed' ? handleConfirmSeed : handleConfirmMigrate}
+        onClose={handleDialogClose}
+      />
     </WizardStep>
   );
 }
