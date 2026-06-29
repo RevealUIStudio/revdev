@@ -104,17 +104,45 @@ export function useLocalShell(options: UseLocalShellOptions = {}) {
     setState({ sessionId: null, isOpen: false, opening: false, error: null });
   }, [clearListeners]);
 
-  const send = useCallback(async (data: string) => {
-    const id = sessionIdRef.current;
-    if (!id) return;
-    await shellSend(id, btoa(data));
-  }, []);
+  const send = useCallback(
+    async (data: string) => {
+      const id = sessionIdRef.current;
+      if (!id) return;
+      try {
+        await shellSend(id, btoa(data));
+      } catch (err) {
+        sessionIdRef.current = null;
+        clearListeners();
+        setState({
+          sessionId: null,
+          isOpen: false,
+          opening: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [clearListeners],
+  );
 
-  const resize = useCallback(async (cols: number, rows: number) => {
-    const id = sessionIdRef.current;
-    if (!id) return;
-    await shellResize(id, cols, rows);
-  }, []);
+  const resize = useCallback(
+    async (cols: number, rows: number) => {
+      const id = sessionIdRef.current;
+      if (!id) return;
+      try {
+        await shellResize(id, cols, rows);
+      } catch (err) {
+        sessionIdRef.current = null;
+        clearListeners();
+        setState({
+          sessionId: null,
+          isOpen: false,
+          opening: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [clearListeners],
+  );
 
   useEffect(() => {
     return () => {

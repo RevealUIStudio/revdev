@@ -5,6 +5,8 @@
  * using the device bearer token for authentication.
  */
 
+import { httpRequest } from './http';
+
 // ── Response types ──────────────────────────────────────────────────────────
 
 export type BillingTier = 'free' | 'pro' | 'max' | 'enterprise';
@@ -27,13 +29,19 @@ export interface UsageResponse {
 
 // ── Client ──────────────────────────────────────────────────────────────────
 
+/**
+ * Authenticated GET against the billing API. Routes through httpRequest so a
+ * non-2xx response throws a categorized {@link HttpError} with an actionable,
+ * server-provided message (instead of the old bare `returned 500`), and a
+ * malformed body is reported as a parse error rather than leaking a SyntaxError.
+ */
 async function authedGet<T>(
   apiUrl: string,
   path: string,
   token: string,
   signal?: AbortSignal,
 ): Promise<T> {
-  const res = await fetch(`${apiUrl}/api/billing${path}`, {
+  return httpRequest<T>(`${apiUrl}/api/billing${path}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -41,12 +49,6 @@ async function authedGet<T>(
     },
     signal,
   });
-
-  if (!res.ok) {
-    throw new Error(`Billing API ${path} returned ${res.status}`);
-  }
-
-  return (await res.json()) as T;
 }
 
 /**

@@ -104,21 +104,37 @@ export function useVault() {
 
   const createSecret = useCallback(
     async (path: string, value: string) => {
-      await vaultSet(path, value, false);
-      await refresh();
+      setState((prev) => ({ ...prev, error: null }));
+      try {
+        await vaultSet(path, value, false);
+        await refresh();
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      }
     },
     [refresh],
   );
 
   const deleteSecret = useCallback(
     async (path: string) => {
-      await vaultDelete(path);
-      setState((prev) => ({
-        ...prev,
-        selectedPath: prev.selectedPath === path ? null : prev.selectedPath,
-        selectedValue: prev.selectedPath === path ? null : prev.selectedValue,
-      }));
-      await refresh();
+      setState((prev) => ({ ...prev, error: null }));
+      try {
+        await vaultDelete(path);
+        setState((prev) => ({
+          ...prev,
+          selectedPath: prev.selectedPath === path ? null : prev.selectedPath,
+          selectedValue: prev.selectedPath === path ? null : prev.selectedValue,
+        }));
+        await refresh();
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      }
     },
     [refresh],
   );

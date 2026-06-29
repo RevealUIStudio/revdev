@@ -1,12 +1,29 @@
 import { useState } from 'react';
 import Button from '../ui/Button';
+import ErrorAlert from '../ui/ErrorAlert';
 
 interface IntentScreenProps {
-  onSelect: (intent: 'deploy' | 'develop') => void;
+  onSelect: (intent: 'deploy' | 'develop') => Promise<void> | void;
 }
 
 export default function IntentScreen({ onSelect }: IntentScreenProps) {
   const [selected, setSelected] = useState<'deploy' | 'develop' | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleContinue(): Promise<void> {
+    if (!selected) return;
+    setError(null);
+    setPending(true);
+    try {
+      await onSelect(selected);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to save your selection. Please try again.',
+      );
+      setPending(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950">
@@ -53,14 +70,17 @@ export default function IntentScreen({ onSelect }: IntentScreenProps) {
           </button>
         </div>
 
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <ErrorAlert message={error} className="w-full" />
           <Button
             variant="primary"
             size="lg"
-            disabled={!selected}
-            onClick={() => selected && onSelect(selected)}
+            disabled={!selected || pending}
+            onClick={() => {
+              void handleContinue();
+            }}
           >
-            Continue
+            {pending ? 'Saving…' : 'Continue'}
           </Button>
         </div>
       </div>
