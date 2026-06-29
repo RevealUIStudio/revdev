@@ -67,6 +67,11 @@ export default function SettingsPanel() {
             }`}
           >
             {tab.label}
+            {tab.key === 'connection' && settings.localMode && (
+              <span className="ml-1.5 inline-block rounded bg-amber-600 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
+                LOCAL
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -131,7 +136,14 @@ export default function SettingsPanel() {
               </div>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-sm text-neutral-400">Local mode</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-neutral-400">Local mode</span>
+                {settings.localMode && (
+                  <span className="rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-white">
+                    Active
+                  </span>
+                )}
+              </div>
               <div className="flex gap-2">
                 {LOCAL_MODE_OPTIONS.map((opt) => (
                   <button

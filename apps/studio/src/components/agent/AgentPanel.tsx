@@ -290,9 +290,7 @@ export default function AgentPanel() {
   const workboardInputRef = useRef<HTMLInputElement>(null);
 
   const [repoPath, setRepoPath] = useState(
-    () =>
-      (typeof localStorage !== 'undefined' && localStorage.getItem('git-repo-path')) ||
-      '~/projects/RevealUI',
+    () => (typeof localStorage !== 'undefined' && localStorage.getItem('git-repo-path')) || '',
   );
   const [editingRepo, setEditingRepo] = useState(false);
   const [draftRepo, setDraftRepo] = useState(repoPath);
