@@ -17,11 +17,11 @@
  * compliance ADR.
  */
 
-const colorMap = {
-  ok: 'bg-[var(--rvui-success)]',
-  warn: 'bg-[var(--rvui-warning)]',
-  error: 'bg-[var(--rvui-error)]',
-  off: 'bg-[var(--rvui-text-2)]',
+const statusMeta = {
+  ok: { color: 'bg-[var(--rvui-success)]', label: 'OK' },
+  warn: { color: 'bg-[var(--rvui-warning)]', label: 'Warning' },
+  error: { color: 'bg-[var(--rvui-error)]', label: 'Error' },
+  off: { color: 'bg-[var(--rvui-text-2)]', label: 'Off' },
 } as const;
 
 const sizeMap = {
@@ -30,10 +30,23 @@ const sizeMap = {
 } as const;
 
 interface StatusDotProps {
-  status: keyof typeof colorMap;
+  status: keyof typeof statusMeta;
   size?: keyof typeof sizeMap;
   pulse?: boolean;
   className?: string;
+  /**
+   * Accessible label for assistive tech. Defaults to a per-status word ("OK",
+   * "Warning", "Error", "Off"). Pass a richer context string at the call site
+   * (e.g. "Database: healthy") when the dot stands alone.
+   */
+  label?: string;
+  /**
+   * Set when an adjacent VISIBLE text label already conveys the status (e.g.
+   * HealthCard renders "Degraded" next to the dot). The dot is then hidden from
+   * screen readers to avoid a redundant double-announcement. Defaults to false,
+   * so a bare dot announces its status via `role="img"` + `aria-label`.
+   */
+  decorative?: boolean;
 }
 
 export default function StatusDot({
@@ -41,11 +54,21 @@ export default function StatusDot({
   size = 'sm',
   pulse = false,
   className = '',
+  label,
+  decorative = false,
 }: StatusDotProps) {
+  const meta = statusMeta[status];
+  // Color alone is not an accessible status cue (color-only fails WCAG 1.4.1 and
+  // is ambiguous for colorblind users). A bare dot therefore exposes its status
+  // as text to assistive tech; a dot paired with a visible label opts out.
+  const a11y = decorative
+    ? ({ 'aria-hidden': true } as const)
+    : ({ role: 'img', 'aria-label': label ?? meta.label } as const);
+
   return (
     <span
-      className={`inline-block shrink-0 rounded-full ${colorMap[status]} ${sizeMap[size]} ${pulse ? 'animate-pulse' : ''} ${className}`}
-      aria-hidden="true"
+      className={`inline-block shrink-0 rounded-full ${meta.color} ${sizeMap[size]} ${pulse ? 'animate-pulse' : ''} ${className}`}
+      {...a11y}
     />
   );
 }

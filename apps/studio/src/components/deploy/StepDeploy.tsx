@@ -174,7 +174,7 @@ const STATUS_LABELS: Record<AppStatus, string> = {
   idle: 'Waiting',
   'pushing-env': 'Pushing env vars...',
   deploying: 'Deploying...',
-  polling: 'Waiting for deployment...',
+  polling: 'Awaiting readiness...',
   ready: 'Ready',
   error: 'Error',
 };
@@ -293,15 +293,21 @@ function AppCard({ name, state }: { name: AppName; state: AppState }) {
   );
 }
 
-function StatusDot({ status }: { status: AppStatus }) {
+function StatusDot({ status }: { status: AppStatus }): React.ReactElement {
   const colors: Record<AppStatus, string> = {
     idle: 'bg-neutral-600',
     'pushing-env': 'bg-yellow-500 animate-pulse',
     deploying: 'bg-orange-500 animate-pulse',
-    polling: 'bg-orange-500 animate-pulse',
+    polling: 'bg-amber-300 animate-pulse',
     ready: 'bg-green-500',
     error: 'bg-red-500',
   };
 
-  return <span className={`inline-block size-2.5 rounded-full ${colors[status]}`} />;
+  return (
+    <span
+      className={`inline-block size-2.5 rounded-full ${colors[status]}`}
+      role="img"
+      aria-label={STATUS_LABELS[status]}
+    />
+  );
 }
