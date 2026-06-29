@@ -78,7 +78,7 @@ describe('useSync', () => {
     });
 
     await act(async () => {
-      await result.current.syncOne('RevealUI');
+      await result.current.syncOne('C', 'RevealUI');
     });
 
     expect(syncRepo).toHaveBeenCalledWith('RevealUI');
@@ -93,11 +93,11 @@ describe('useSync', () => {
     const { result } = renderHook(() => useSync());
 
     await act(async () => {
-      await result.current.syncOne('RevealUI');
+      await result.current.syncOne('C', 'RevealUI');
     });
 
     expect(result.current.anySyncing).toBe(false);
-    expect(result.current.errors.RevealUI).toBe('Dirty working tree');
+    expect(result.current.errors['C/RevealUI']).toBe('Dirty working tree');
     expect(result.current.globalError).toBeNull();
   });
 
