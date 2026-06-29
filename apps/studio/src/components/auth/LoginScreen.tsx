@@ -8,11 +8,13 @@
  * Matches the Studio visual style (dark theme, orange accent).
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthContext } from '../../hooks/use-auth';
 import { useSettingsContext } from '../../hooks/use-settings';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function LoginScreen() {
   const { step, loading, error, sendOtp, submitOtp } = useAuthContext();
@@ -20,28 +22,55 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function handleSendOtp(e: React.FormEvent) {
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+
+  function startCooldown(): void {
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    intervalRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalRef.current!);
+          intervalRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
+
+  async function handleSendOtp(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (!email.trim()) return;
     const ok = await sendOtp(settings.apiUrl, email.trim());
     if (ok) {
       setOtpSent(true);
+      startCooldown();
     }
   }
 
-  async function handleVerify(e: React.FormEvent) {
+  async function handleVerify(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (!code.trim() || code.length !== 6) return;
     await submitOtp(settings.apiUrl, email.trim(), code.trim());
   }
 
-  async function handleResend() {
+  async function handleResend(): Promise<void> {
     setCode('');
     await sendOtp(settings.apiUrl, email.trim());
+    startCooldown();
   }
 
   const showOtp = step === 'otp' || otpSent;
+  const resendBlocked = resendCooldown > 0;
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-neutral-950">
@@ -114,10 +143,10 @@ export default function LoginScreen() {
               <button
                 type="button"
                 onClick={handleResend}
-                disabled={loading}
-                className="text-neutral-500 hover:text-orange-400 disabled:opacity-50"
+                disabled={loading || resendBlocked}
+                className="text-neutral-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Resend code
+                {resendBlocked ? `Resend in ${resendCooldown}s` : 'Resend code'}
               </button>
               <button
                 type="button"

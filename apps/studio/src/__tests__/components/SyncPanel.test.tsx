@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../hooks/use-sync', () => ({
   useSync: vi.fn().mockReturnValue({
-    syncing: false,
+    syncingRepos: new Set<string>(),
+    anySyncing: false,
     results: [],
     log: [],
-    error: null,
+    globalError: null,
+    errors: {},
     syncAll: vi.fn(),
     syncOne: vi.fn(),
   }),
@@ -35,13 +37,15 @@ describe('SyncPanel', () => {
 
   it('shows repo cards when results exist', () => {
     vi.mocked(useSync).mockReturnValue({
-      syncing: false,
+      syncingRepos: new Set<string>(),
+      anySyncing: false,
       results: [
         { drive: 'C', repo: 'RevealUI', status: 'ok', branch: 'main' },
         { drive: 'E', repo: 'my-private-repo', status: 'dirty', branch: 'main' },
       ],
       log: [],
-      error: null,
+      globalError: null,
+      errors: {},
       syncAll: vi.fn(),
       syncOne: vi.fn(),
     });
@@ -52,10 +56,12 @@ describe('SyncPanel', () => {
 
   it('shows sync log when entries exist', () => {
     vi.mocked(useSync).mockReturnValue({
-      syncing: false,
+      syncingRepos: new Set<string>(),
+      anySyncing: false,
       results: [],
       log: ['Syncing...', 'Done'],
-      error: null,
+      globalError: null,
+      errors: {},
       syncAll: vi.fn(),
       syncOne: vi.fn(),
     });
@@ -64,12 +70,14 @@ describe('SyncPanel', () => {
     expect(screen.getByText('Done')).toBeInTheDocument();
   });
 
-  it('shows error when error is set', () => {
+  it('shows a global error when the Sync All path fails', () => {
     vi.mocked(useSync).mockReturnValue({
-      syncing: false,
+      syncingRepos: new Set<string>(),
+      anySyncing: false,
       results: [],
       log: [],
-      error: 'Sync failed',
+      globalError: 'Sync failed',
+      errors: {},
       syncAll: vi.fn(),
       syncOne: vi.fn(),
     });

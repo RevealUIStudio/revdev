@@ -6,6 +6,7 @@ interface RepoCardProps {
   result: SyncResult;
   onSync: () => void;
   syncing: boolean;
+  error: string | null;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -17,7 +18,7 @@ const STATUS_STYLES: Record<string, string> = {
   error: 'text-red-400',
 };
 
-export default function RepoCard({ result, onSync, syncing }: RepoCardProps) {
+export default function RepoCard({ result, onSync, syncing, error }: RepoCardProps) {
   return (
     <Card variant="default" padding="none" className="flex items-center justify-between px-4 py-3">
       <div>
@@ -31,6 +32,7 @@ export default function RepoCard({ result, onSync, syncing }: RepoCardProps) {
           </span>
           <span className="text-neutral-600">{result.branch}</span>
         </div>
+        {error !== null && <p className="mt-1 text-xs text-red-400">{error}</p>}
       </div>
       <Button variant="ghost" size="sm" onClick={onSync} disabled={syncing}>
         Sync
