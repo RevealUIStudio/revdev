@@ -26,52 +26,64 @@ const ERROR_RESULT: SyncResult = {
 
 describe('RepoCard', () => {
   it('renders repo name', () => {
-    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} />);
+    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     expect(screen.getByText('RevealUI')).toBeInTheDocument();
   });
 
   it('renders drive letter', () => {
-    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} />);
+    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     expect(screen.getByText('C')).toBeInTheDocument();
   });
 
   it('renders branch name', () => {
-    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} />);
+    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     expect(screen.getByText('main')).toBeInTheDocument();
   });
 
   it('renders status in uppercase', () => {
-    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} />);
+    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     expect(screen.getByText('OK')).toBeInTheDocument();
   });
 
   it('applies green style for ok status', () => {
-    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} />);
+    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     const statusEl = screen.getByText('OK');
     expect(statusEl.className).toContain('text-green-400');
   });
 
   it('applies yellow style for dirty status', () => {
-    render(<RepoCard result={DIRTY_RESULT} onSync={vi.fn()} syncing={false} />);
+    render(<RepoCard result={DIRTY_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     const statusEl = screen.getByText('DIRTY');
     expect(statusEl.className).toContain('text-yellow-400');
   });
 
   it('applies red style for error status', () => {
-    render(<RepoCard result={ERROR_RESULT} onSync={vi.fn()} syncing={false} />);
+    render(<RepoCard result={ERROR_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     const statusEl = screen.getByText('ERROR');
     expect(statusEl.className).toContain('text-red-400');
   });
 
+  it('renders a per-repo error message when one is set', () => {
+    render(
+      <RepoCard
+        result={ERROR_RESULT}
+        onSync={vi.fn()}
+        syncing={false}
+        error="Dirty working tree"
+      />,
+    );
+    expect(screen.getByText('Dirty working tree')).toBeInTheDocument();
+  });
+
   it('calls onSync when Sync button is clicked', () => {
     const onSync = vi.fn();
-    render(<RepoCard result={OK_RESULT} onSync={onSync} syncing={false} />);
+    render(<RepoCard result={OK_RESULT} onSync={onSync} syncing={false} error={null} />);
     fireEvent.click(screen.getByText('Sync'));
     expect(onSync).toHaveBeenCalledOnce();
   });
 
   it('disables Sync button when syncing', () => {
-    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={true} />);
+    render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={true} error={null} />);
     expect(screen.getByText('Sync').closest('button')).toBeDisabled();
   });
 });
