@@ -134,23 +134,46 @@ func (p *Proxy) spawnSession(name string) (string, error) {
 func (p *Proxy) pickSession(s ssh.Session, sessions []SessionInfo) (string, error) {
 	fmt.Fprintf(s, "\033[1;33mRevealUI Terminal — Agent Sessions\033[0m\r\n\r\n")
 
-	// Filter to PTY sessions only
+	// Partition PTY sessions: running ones are selectable; non-running ones are
+	// still listed (dimmed, with an explicit status word) instead of being
+	// hidden, so an operator can see that a crashed/exited session exists rather
+	// than wondering why it silently vanished. Status is shown as text, not by
+	// color alone.
 	ptySessions := make([]SessionInfo, 0)
+	otherSessions := make([]SessionInfo, 0)
 	for _, sess := range sessions {
-		if sess.IsPty && sess.Status == "running" {
+		if !sess.IsPty {
+			continue
+		}
+		if sess.Status == "running" {
 			ptySessions = append(ptySessions, sess)
+		} else {
+			otherSessions = append(otherSessions, sess)
 		}
 	}
 
 	if len(ptySessions) > 0 {
 		fmt.Fprintf(s, "  \033[1mActive sessions:\033[0m\r\n")
 		for i, sess := range ptySessions {
-			fmt.Fprintf(s, "    \033[36m%d)\033[0m %s \033[90m(%s)\033[0m\r\n",
+			fmt.Fprintf(s, "    \033[36m%d)\033[0m %s \033[90m(%s)\033[0m \033[32m[running]\033[0m\r\n",
 				i+1, sess.Name, short(sess.ID))
 		}
 		fmt.Fprintf(s, "\r\n")
 	} else {
 		fmt.Fprintf(s, "  \033[90mNo active sessions.\033[0m\r\n\r\n")
+	}
+
+	if len(otherSessions) > 0 {
+		fmt.Fprintf(s, "  \033[1mInactive sessions:\033[0m \033[90m(not attachable)\033[0m\r\n")
+		for _, sess := range otherSessions {
+			status := sess.Status
+			if status == "" {
+				status = "unknown"
+			}
+			fmt.Fprintf(s, "    \033[90m-) %s (%s) [%s]\033[0m\r\n",
+				sess.Name, short(sess.ID), status)
+		}
+		fmt.Fprintf(s, "\r\n")
 	}
 
 	fmt.Fprintf(s, "  \033[36mn)\033[0m New agent session\r\n")
