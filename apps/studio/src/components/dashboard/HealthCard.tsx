@@ -16,6 +16,18 @@ const STATUS_MAP = {
   unreachable: { dot: 'off', label: 'Unreachable', color: 'text-neutral-500' },
 } as const;
 
+const CHECK_DOT_MAP = {
+  healthy: 'ok',
+  degraded: 'warn',
+  unhealthy: 'error',
+} as const satisfies Record<HealthCheck['status'], 'ok' | 'warn' | 'error'>;
+
+const CHECK_COLOR_MAP = {
+  healthy: 'text-emerald-400',
+  degraded: 'text-amber-400',
+  unhealthy: 'text-red-400',
+} as const satisfies Record<HealthCheck['status'], string>;
+
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
@@ -56,7 +68,7 @@ export default function HealthCard() {
   return (
     <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
       <div className="flex items-center gap-2">
-        <StatusDot status={info.dot as 'ok' | 'warn' | 'error' | 'off'} size="md" />
+        <StatusDot status={info.dot as 'ok' | 'warn' | 'error' | 'off'} size="md" decorative />
         <h3 className="text-sm font-medium text-neutral-200">API Health</h3>
       </div>
 
@@ -71,15 +83,8 @@ export default function HealthCard() {
           {checks.map((check) => (
             <div key={check.name} className="flex items-center justify-between text-xs">
               <span className="text-neutral-400">{check.name}</span>
-              <span
-                className={
-                  check.status === 'healthy'
-                    ? 'text-emerald-400'
-                    : check.status === 'degraded'
-                      ? 'text-amber-400'
-                      : 'text-red-400'
-                }
-              >
+              <span className={`flex items-center gap-1 ${CHECK_COLOR_MAP[check.status]}`}>
+                <StatusDot status={CHECK_DOT_MAP[check.status]} size="sm" decorative />
                 {check.status}
               </span>
             </div>

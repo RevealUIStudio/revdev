@@ -4,6 +4,7 @@ import { healthCheck } from '../../lib/deploy';
 import type { StudioConfig } from '../../types';
 import Button from '../ui/Button';
 import PanelHeader from '../ui/PanelHeader';
+import StatusDot from '../ui/StatusDot';
 
 type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'checking';
 
@@ -121,25 +122,30 @@ export default function DeployDashboard() {
   );
 }
 
+const domainStatusMap: Record<ServiceStatus, 'ok' | 'warn' | 'error' | 'off'> = {
+  healthy: 'ok',
+  degraded: 'warn',
+  down: 'error',
+  checking: 'off',
+};
+
+const statusLabels: Record<ServiceStatus, string> = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  down: 'Down',
+  checking: 'Checking...',
+};
+
 function HealthCard({ service }: { service: ServiceState }) {
-  const dotClasses: Record<ServiceStatus, string> = {
-    healthy: 'bg-green-500',
-    degraded: 'bg-yellow-500',
-    down: 'bg-red-500',
-    checking: 'bg-neutral-500 animate-pulse',
-  };
-
-  const statusLabels: Record<ServiceStatus, string> = {
-    healthy: 'Healthy',
-    degraded: 'Degraded',
-    down: 'Down',
-    checking: 'Checking...',
-  };
-
   return (
     <div className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4">
       <div className="flex items-center gap-2 mb-2">
-        <span className={`inline-block size-2.5 rounded-full ${dotClasses[service.status]}`} />
+        <StatusDot
+          status={domainStatusMap[service.status]}
+          size="md"
+          pulse={service.status === 'checking'}
+          decorative
+        />
         <span className="text-sm font-medium text-neutral-200">{service.label}</span>
       </div>
       <p className="text-xs text-neutral-500">{statusLabels[service.status]}</p>
@@ -156,7 +162,7 @@ function QuickLink({ label, url }: { label: string; url: string }) {
       rel="noopener noreferrer"
       className="flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300 transition-colors"
     >
-      <span>{'\u2192'}</span>
+      <span>{'→'}</span>
       <span>{label}</span>
       <span className="font-mono text-xs text-neutral-500">{url}</span>
     </a>

@@ -188,9 +188,9 @@ export default function AgentTerminalPane() {
                     stopSession(s.id);
                   }}
                   className="rounded px-1 text-xs text-neutral-500 hover:bg-red-900/30 hover:text-red-400"
-                  title="Stop"
+                  aria-label="Stop agent"
                 >
-                  ■
+                  <span aria-hidden="true">■</span>
                 </button>
               )}
             </button>
