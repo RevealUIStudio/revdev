@@ -578,6 +578,10 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
   const handlePush = useCallback(async () => {
     setPushStatus('loading');
     setRemoteError(null);
+    // Starting an op clears the shared error banner, so clear a stale sibling
+    // error icon too — else a prior failed pull's red icon contradicts the
+    // now-cleared banner.
+    setPullStatus((s) => (s === 'error' ? 'idle' : s));
     try {
       await gitPush(repoPath, 'origin', status?.branch ?? 'main');
       setPushStatus('ok');
@@ -593,6 +597,8 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
   const handlePull = useCallback(async () => {
     setPullStatus('loading');
     setRemoteError(null);
+    // Clear a stale push-error icon when starting a pull — see handlePush.
+    setPushStatus((s) => (s === 'error' ? 'idle' : s));
     try {
       await gitPull(repoPath, 'origin', status?.branch ?? 'main');
       setPullStatus('ok');

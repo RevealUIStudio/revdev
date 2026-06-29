@@ -24,15 +24,18 @@ export default function SyncPanel() {
 
       {results.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {results.map((result) => (
-            <RepoCard
-              key={`${result.drive}-${result.repo}`}
-              result={result}
-              onSync={() => syncOne(result.repo)}
-              syncing={syncingRepos.has(result.repo) || syncingRepos.has('__all__')}
-              error={errors[result.repo] ?? null}
-            />
-          ))}
+          {results.map((result) => {
+            const key = `${result.drive}/${result.repo}`;
+            return (
+              <RepoCard
+                key={key}
+                result={result}
+                onSync={() => syncOne(result.drive, result.repo)}
+                syncing={syncingRepos.has(key) || syncingRepos.has('__all__')}
+                error={errors[key] ?? null}
+              />
+            );
+          })}
         </div>
       )}
 
