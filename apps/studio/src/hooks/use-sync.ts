@@ -43,30 +43,31 @@ export function useSync() {
   }, [appendLog]);
 
   const syncOne = useCallback(
-    async (name: string) => {
+    // Keyed on the drive/repo composite — rows are unique by (drive, repo), so a
+    // repo present on two drives must not share one spinner/error or collide.
+    async (drive: string, repo: string) => {
+      const key = `${drive}/${repo}`;
       setState((prev) => ({
         ...prev,
-        syncingRepos: new Set([...prev.syncingRepos, name]),
-        errors: Object.fromEntries(Object.entries(prev.errors).filter(([k]) => k !== name)),
+        syncingRepos: new Set([...prev.syncingRepos, key]),
+        errors: Object.fromEntries(Object.entries(prev.errors).filter(([k]) => k !== key)),
       }));
-      appendLog(`Syncing ${name}...`);
+      appendLog(`Syncing ${repo}...`);
       try {
-        const result = await syncRepo(name);
-        appendLog(`${name}: ${result.status}`);
+        const result = await syncRepo(repo);
+        appendLog(`${repo}: ${result.status}`);
         setState((prev) => ({
           ...prev,
-          syncingRepos: new Set([...prev.syncingRepos].filter((r) => r !== name)),
-          results: prev.results.map((r) =>
-            r.repo === name && r.drive === result.drive ? result : r,
-          ),
+          syncingRepos: new Set([...prev.syncingRepos].filter((r) => r !== key)),
+          results: prev.results.map((r) => (r.drive === drive && r.repo === repo ? result : r)),
         }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         appendLog(`Error: ${msg}`);
         setState((prev) => ({
           ...prev,
-          syncingRepos: new Set([...prev.syncingRepos].filter((r) => r !== name)),
-          errors: { ...prev.errors, [name]: msg },
+          syncingRepos: new Set([...prev.syncingRepos].filter((r) => r !== key)),
+          errors: { ...prev.errors, [key]: msg },
         }));
       }
     },
