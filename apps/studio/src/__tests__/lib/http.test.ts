@@ -6,7 +6,7 @@ function jsonResponse(status: number, body: unknown): Response {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
-  } as Response;
+  } as unknown as Response;
 }
 
 function malformedResponse(status: number): Response {
@@ -16,7 +16,17 @@ function malformedResponse(status: number): Response {
     json: async () => {
       throw new SyntaxError('Unexpected token < in JSON');
     },
-  } as Response;
+  } as unknown as Response;
+}
+
+/** Await a request expected to reject, returning the thrown HttpError (typed). */
+async function expectHttpError(promise: Promise<unknown>): Promise<HttpError> {
+  try {
+    await promise;
+  } catch (e) {
+    return e as HttpError;
+  }
+  throw new Error('expected httpRequest to throw, but it resolved');
 }
 
 afterEach(() => {
@@ -37,7 +47,7 @@ describe('httpRequest', () => {
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse(429, { error: 'Too many requests' })),
     );
-    const err = await httpRequest('https://x/rate').catch((e) => e);
+    const err = await expectHttpError(httpRequest('https://x/rate'));
     expect(err).toBeInstanceOf(HttpError);
     expect(err.kind).toBe('client');
     expect(err.status).toBe(429);
@@ -47,7 +57,7 @@ describe('httpRequest', () => {
 
   it('throws a server HttpError with a fallback message on 5xx', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(500, {})));
-    const err = await httpRequest('https://x/boom').catch((e) => e);
+    const err = await expectHttpError(httpRequest('https://x/boom'));
     expect(err).toBeInstanceOf(HttpError);
     expect(err.kind).toBe('server');
     expect(err.status).toBe(500);
@@ -56,7 +66,7 @@ describe('httpRequest', () => {
 
   it('throws a network HttpError when fetch rejects', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
-    const err = await httpRequest('https://x/down').catch((e) => e);
+    const err = await expectHttpError(httpRequest('https://x/down'));
     expect(err).toBeInstanceOf(HttpError);
     expect(err.kind).toBe('network');
     expect(err.message).toMatch(/unable to reach/i);
@@ -64,7 +74,7 @@ describe('httpRequest', () => {
 
   it('classifies an aborted fetch as a network error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('aborted', 'AbortError')));
-    const err = await httpRequest('https://x/slow').catch((e) => e);
+    const err = await expectHttpError(httpRequest('https://x/slow'));
     expect(err).toBeInstanceOf(HttpError);
     expect(err.kind).toBe('network');
     expect(err.message).toMatch(/timed out or was canceled/i);
@@ -72,7 +82,7 @@ describe('httpRequest', () => {
 
   it('throws a parse HttpError when a 2xx body is malformed', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(malformedResponse(200)));
-    const err = await httpRequest('https://x/garbage').catch((e) => e);
+    const err = await expectHttpError(httpRequest('https://x/garbage'));
     expect(err).toBeInstanceOf(HttpError);
     expect(err.kind).toBe('parse');
   });
