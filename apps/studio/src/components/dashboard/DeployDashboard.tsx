@@ -90,6 +90,7 @@ export default function DeployDashboard() {
   }
 
   const domain = config?.deploy?.domain;
+  const configLoaded = config !== null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,11 +103,20 @@ export default function DeployDashboard() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {services.map((service) => (
-          <HealthCard key={service.label} service={service} />
-        ))}
-      </div>
+      {services.length > 0 ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {services.map((service) => (
+            <HealthCard key={service.label} service={service} />
+          ))}
+        </div>
+      ) : configLoaded ? (
+        <p className="py-6 text-center text-xs text-neutral-600">
+          No services configured.{' '}
+          <span className="text-neutral-500">
+            Add a deploy domain in settings to enable health monitoring.
+          </span>
+        </p>
+      ) : null}
 
       {domain && (
         <div className="rounded-md border border-neutral-700 bg-neutral-900/50 p-4">

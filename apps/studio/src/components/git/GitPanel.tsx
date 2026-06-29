@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const COMMIT_SUCCESS_FEEDBACK_MS = 3_000;
 const REMOTE_SUCCESS_FEEDBACK_MS = 2_000;
-const REMOTE_ERROR_FEEDBACK_MS = 4_000;
 
 import {
   gitCommit,
@@ -26,6 +25,7 @@ import type {
   GitStatusResult,
 } from '../../types';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import ErrorAlert from '../ui/ErrorAlert';
 import DiffView from './DiffView';
 
 // ── Status badge ─────────────────────────────────────────────────────────────
@@ -394,6 +394,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
   const [selected, setSelected] = useState<DiffSelection | null>(null);
   const [diffContent, setDiffContent] = useState<GitDiffContent | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState<string | null>(null);
 
   // Branch state
   const [branches, setBranches] = useState<GitBranch[]>([]);
@@ -478,16 +479,15 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
     async (filePath: string, staged: boolean) => {
       setSelected({ filePath, staged });
       setDiffContent(null);
+      setDiffError(null);
       setDiffLoading(true);
       try {
         const content = await gitDiffContent(repoPath, filePath, staged);
         setDiffContent(content);
       } catch (e) {
-        // Show the error as the modified side so the viewer has something to display
-        setDiffContent({
-          original: '',
-          modified: `Error: ${e instanceof Error ? e.message : String(e)}`,
-        });
+        // Surface failures as a distinct error state — rendering them as the
+        // "modified" side made an error look like real diff content.
+        setDiffError(e instanceof Error ? e.message : String(e));
       } finally {
         setDiffLoading(false);
       }
@@ -585,10 +585,8 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
     } catch (e) {
       setPushStatus('error');
       setRemoteError(e instanceof Error ? e.message : String(e));
-      setTimeout(() => {
-        setPushStatus('idle');
-        setRemoteError(null);
-      }, REMOTE_ERROR_FEEDBACK_MS);
+      // A failed push/pull persists until the user dismisses it — a 4s
+      // auto-dismiss meant the operator could miss why the operation failed.
     }
   }, [repoPath, status?.branch]);
 
@@ -603,10 +601,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
     } catch (e) {
       setPullStatus('error');
       setRemoteError(e instanceof Error ? e.message : String(e));
-      setTimeout(() => {
-        setPullStatus('idle');
-        setRemoteError(null);
-      }, REMOTE_ERROR_FEEDBACK_MS);
+      // Persist the failure until dismissed — see handlePush.
     }
   }, [repoPath, status?.branch, refresh]);
 
@@ -787,11 +782,23 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                 {repoPath}
               </button>
 
-              {/* Remote error */}
+              {/* Remote error — persists until the user dismisses it */}
               {remoteError && (
-                <p className="mt-0.5 truncate text-[10px] text-red-400" title={remoteError}>
-                  {remoteError}
-                </p>
+                <div className="mt-0.5 flex items-start gap-1 text-[10px] text-red-400">
+                  <span className="flex-1 break-words">{remoteError}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRemoteError(null);
+                      if (pushStatus === 'error') setPushStatus('idle');
+                      if (pullStatus === 'error') setPullStatus('idle');
+                    }}
+                    className="shrink-0 rounded px-1 leading-none text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                    aria-label="Dismiss error"
+                  >
+                    ×
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -947,6 +954,10 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
             (diffLoading ? (
               <div className="flex h-full items-center justify-center text-sm text-neutral-500">
                 Loading diff…
+              </div>
+            ) : diffError ? (
+              <div className="flex h-full items-start justify-center p-4">
+                <ErrorAlert message={diffError} />
               </div>
             ) : diffContent ? (
               <DiffView
