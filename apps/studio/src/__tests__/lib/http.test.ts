@@ -57,6 +57,16 @@ describe('httpRequest', () => {
     });
   });
 
+  it('returns undefined for a 204 No Content response (no parse error)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(emptyResponse(204)));
+    await expect(httpRequest<void>('https://x/revoke')).resolves.toBeUndefined();
+  });
+
+  it('returns undefined for an empty 2xx body (no parse error)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(emptyResponse(200)));
+    await expect(httpRequest<void>('https://x/empty')).resolves.toBeUndefined();
+  });
+
   it('throws a client HttpError carrying the server message on 4xx', async () => {
     vi.stubGlobal(
       'fetch',
