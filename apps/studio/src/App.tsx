@@ -61,6 +61,11 @@ function AuthGatedApp() {
 function MainApp() {
   const [page, setPage] = useState<Page>('dashboard');
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
+  // Session-level dismiss of the setup wizard. Distinct from `config.setupComplete`:
+  // dismissing only hides the wizard for this launch (it reappears next start),
+  // whereas completing setup persists. Conflating the two used to mark setup
+  // permanently complete on any close gesture (UX-durability audit, Theme 3).
+  const [wizardDismissed, setWizardDismissed] = useState(false);
   const { config, loading, setIntent, updateConfig } = useConfig();
 
   // Listen for tray-click navigation events from Rust
@@ -139,11 +144,14 @@ function MainApp() {
           {page === 'setup' ? <SetupPage /> : null}
           {page === 'settings' ? <SettingsPanel /> : null}
         </AppShell>
-        <SetupWizard
-          onClose={() => {
-            void updateConfig({ setupComplete: true });
-          }}
-        />
+        {!wizardDismissed && (
+          <SetupWizard
+            onComplete={() => {
+              void updateConfig({ setupComplete: true });
+            }}
+            onDismiss={() => setWizardDismissed(true)}
+          />
+        )}
       </>
     );
   }

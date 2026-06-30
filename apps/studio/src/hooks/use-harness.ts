@@ -176,10 +176,14 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       }
     }
 
-    setupListeners();
+    setupListeners().catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : String(e));
+    });
 
     // Do one initial fetch so we don't wait for the first watcher tick
-    void loadAllRef.current();
+    loadAllRef.current().catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : String(e));
+    });
 
     return () => {
       cancelled = true;
@@ -212,39 +216,68 @@ export function useHarness(agentId?: string): UseHarnessReturn {
     subject: string,
     body: string,
   ): Promise<HarnessMessage> {
-    const msg = await harnessSendMessage(fromAgent, toAgent, subject, body);
-    // In browser mode, refresh immediately. In Tauri mode, the watcher will push.
-    if (!isTauri()) await loadAll();
-    return msg;
+    try {
+      const msg = await harnessSendMessage(fromAgent, toAgent, subject, body);
+      if (!isTauri()) await loadAll();
+      return msg;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   async function markRead(messageIds: number[]): Promise<void> {
-    await harnessMarkRead(messageIds);
-    if (!isTauri()) await loadAll();
+    try {
+      await harnessMarkRead(messageIds);
+      if (!isTauri()) await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   async function createTask(taskId: string, description: string): Promise<HarnessTask> {
-    const task = await harnessCreateTask(taskId, description);
-    if (!isTauri()) await loadAll();
-    return task;
+    try {
+      const task = await harnessCreateTask(taskId, description);
+      if (!isTauri()) await loadAll();
+      return task;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   async function claimTask(taskId: string, aid: string): Promise<HarnessClaimResult> {
-    const result = await harnessClaimTask(taskId, aid);
-    if (!isTauri()) await loadAll();
-    return result;
+    try {
+      const result = await harnessClaimTask(taskId, aid);
+      if (!isTauri()) await loadAll();
+      return result;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   async function completeTask(taskId: string, aid: string): Promise<boolean> {
-    const ok = await harnessCompleteTask(taskId, aid);
-    if (!isTauri()) await loadAll();
-    return ok;
+    try {
+      const ok = await harnessCompleteTask(taskId, aid);
+      if (!isTauri()) await loadAll();
+      return ok;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   async function releaseTask(taskId: string, aid: string): Promise<boolean> {
-    const ok = await harnessReleaseTask(taskId, aid);
-    if (!isTauri()) await loadAll();
-    return ok;
+    try {
+      const ok = await harnessReleaseTask(taskId, aid);
+      if (!isTauri()) await loadAll();
+      return ok;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   async function reserveFile(
@@ -253,9 +286,14 @@ export function useHarness(agentId?: string): UseHarnessReturn {
     ttlSeconds: number,
     reason: string,
   ): Promise<HarnessReserveResult> {
-    const result = await harnessReserveFile(filePath, aid, ttlSeconds, reason);
-    if (!isTauri()) await loadAll();
-    return result;
+    try {
+      const result = await harnessReserveFile(filePath, aid, ttlSeconds, reason);
+      if (!isTauri()) await loadAll();
+      return result;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   return {

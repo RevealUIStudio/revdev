@@ -8,6 +8,12 @@
 import { useState } from 'react';
 
 import { useInference } from '../../hooks/use-inference';
+import ConfirmDialog from '../ui/ConfirmDialog';
+
+interface PendingDelete {
+  kind: 'model' | 'snapshot';
+  name: string;
+}
 
 export default function InferencePanel() {
   const {
@@ -28,6 +34,17 @@ export default function InferencePanel() {
   } = useInference();
 
   const [pullInput, setPullInput] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+
+  function handleConfirmDelete(): void {
+    if (pendingDelete === null) return;
+    if (pendingDelete.kind === 'model') {
+      void deleteModel(pendingDelete.name);
+    } else {
+      void removeSnap(pendingDelete.name);
+    }
+    setPendingDelete(null);
+  }
 
   if (loading) {
     return (
@@ -170,7 +187,7 @@ export default function InferencePanel() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => void removeSnap(snap.name)}
+                    onClick={() => setPendingDelete({ kind: 'snapshot', name: snap.name })}
                     className="rounded px-2 py-0.5 text-[10px] text-neutral-500 transition-colors hover:bg-red-900/30 hover:text-red-400"
                   >
                     Remove
@@ -241,7 +258,7 @@ export default function InferencePanel() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void deleteModel(m.name)}
+                  onClick={() => setPendingDelete({ kind: 'model', name: m.name })}
                   className="shrink-0 rounded px-2 py-0.5 text-[10px] text-neutral-500 transition-colors hover:bg-red-900/30 hover:text-red-400"
                 >
                   Delete
@@ -259,6 +276,27 @@ export default function InferencePanel() {
           </p>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete?.kind === 'model' ? 'Delete model' : 'Remove snap'}
+        body={
+          pendingDelete?.kind === 'model' ? (
+            <>
+              Delete <strong className="text-neutral-100">{pendingDelete.name}</strong>? The model
+              files will be removed from disk. Re-downloading it is a multi-GB operation.
+            </>
+          ) : (
+            <>
+              Remove the <strong className="text-neutral-100">{pendingDelete?.name}</strong> snap?
+              It can be reinstalled at any time with a single command.
+            </>
+          )
+        }
+        confirmLabel={pendingDelete?.kind === 'model' ? 'Delete model' : 'Delete snapshot'}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

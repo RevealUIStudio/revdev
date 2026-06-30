@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const COMMIT_SUCCESS_FEEDBACK_MS = 3_000;
 const REMOTE_SUCCESS_FEEDBACK_MS = 2_000;
-const REMOTE_ERROR_FEEDBACK_MS = 4_000;
 
 import {
   gitCommit,
@@ -25,6 +24,8 @@ import type {
   GitFileEntry,
   GitStatusResult,
 } from '../../types';
+import ConfirmDialog from '../ui/ConfirmDialog';
+import ErrorAlert from '../ui/ErrorAlert';
 import DiffView from './DiffView';
 
 // ── Status badge ─────────────────────────────────────────────────────────────
@@ -393,6 +394,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
   const [selected, setSelected] = useState<DiffSelection | null>(null);
   const [diffContent, setDiffContent] = useState<GitDiffContent | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState<string | null>(null);
 
   // Branch state
   const [branches, setBranches] = useState<GitBranch[]>([]);
@@ -411,6 +413,9 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
   const [rightTab, setRightTab] = useState<'diff' | 'log'>('diff');
   const [log, setLog] = useState<GitCommitInfo[]>([]);
   const [logLoading, setLogLoading] = useState(false);
+
+  // Pending discard confirmation
+  const [pendingDiscard, setPendingDiscard] = useState<string | null>(null);
 
   const loadBranches = useCallback(async () => {
     try {
@@ -474,16 +479,15 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
     async (filePath: string, staged: boolean) => {
       setSelected({ filePath, staged });
       setDiffContent(null);
+      setDiffError(null);
       setDiffLoading(true);
       try {
         const content = await gitDiffContent(repoPath, filePath, staged);
         setDiffContent(content);
       } catch (e) {
-        // Show the error as the modified side so the viewer has something to display
-        setDiffContent({
-          original: '',
-          modified: `Error: ${e instanceof Error ? e.message : String(e)}`,
-        });
+        // Surface failures as a distinct error state — rendering them as the
+        // "modified" side made an error look like real diff content.
+        setDiffError(e instanceof Error ? e.message : String(e));
       } finally {
         setDiffLoading(false);
       }
@@ -574,6 +578,10 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
   const handlePush = useCallback(async () => {
     setPushStatus('loading');
     setRemoteError(null);
+    // Starting an op clears the shared error banner, so clear a stale sibling
+    // error icon too — else a prior failed pull's red icon contradicts the
+    // now-cleared banner.
+    setPullStatus((s) => (s === 'error' ? 'idle' : s));
     try {
       await gitPush(repoPath, 'origin', status?.branch ?? 'main');
       setPushStatus('ok');
@@ -581,16 +589,16 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
     } catch (e) {
       setPushStatus('error');
       setRemoteError(e instanceof Error ? e.message : String(e));
-      setTimeout(() => {
-        setPushStatus('idle');
-        setRemoteError(null);
-      }, REMOTE_ERROR_FEEDBACK_MS);
+      // A failed push/pull persists until the user dismisses it — a 4s
+      // auto-dismiss meant the operator could miss why the operation failed.
     }
   }, [repoPath, status?.branch]);
 
   const handlePull = useCallback(async () => {
     setPullStatus('loading');
     setRemoteError(null);
+    // Clear a stale push-error icon when starting a pull — see handlePush.
+    setPushStatus((s) => (s === 'error' ? 'idle' : s));
     try {
       await gitPull(repoPath, 'origin', status?.branch ?? 'main');
       setPullStatus('ok');
@@ -599,10 +607,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
     } catch (e) {
       setPullStatus('error');
       setRemoteError(e instanceof Error ? e.message : String(e));
-      setTimeout(() => {
-        setPullStatus('idle');
-        setRemoteError(null);
-      }, REMOTE_ERROR_FEEDBACK_MS);
+      // Persist the failure until dismissed — see handlePush.
     }
   }, [repoPath, status?.branch, refresh]);
 
@@ -783,11 +788,23 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                 {repoPath}
               </button>
 
-              {/* Remote error */}
+              {/* Remote error — persists until the user dismisses it */}
               {remoteError && (
-                <p className="mt-0.5 truncate text-[10px] text-red-400" title={remoteError}>
-                  {remoteError}
-                </p>
+                <div className="mt-0.5 flex items-start gap-1 text-[10px] text-red-400">
+                  <span className="flex-1 break-words">{remoteError}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRemoteError(null);
+                      if (pushStatus === 'error') setPushStatus('idle');
+                      if (pullStatus === 'error') setPullStatus('idle');
+                    }}
+                    className="shrink-0 rounded px-1 leading-none text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                    aria-label="Dismiss error"
+                  >
+                    ×
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -849,7 +866,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                       void stageFile(entry.path);
                     }}
                     onDiscard={() => {
-                      void discardFile(entry.path);
+                      setPendingDiscard(entry.path);
                     }}
                     onOpenEditor={
                       onOpenEditor
@@ -944,6 +961,10 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
               <div className="flex h-full items-center justify-center text-sm text-neutral-500">
                 Loading diff…
               </div>
+            ) : diffError ? (
+              <div className="flex h-full items-start justify-center p-4">
+                <ErrorAlert message={diffError} />
+              </div>
             ) : diffContent ? (
               <DiffView
                 original={diffContent.original}
@@ -958,6 +979,22 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
           {rightTab === 'log' && <CommitLog entries={log} loading={logLoading} />}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDiscard !== null}
+        title="Discard changes"
+        body="This will permanently discard all uncommitted changes to this file. This cannot be undone."
+        affectedItems={pendingDiscard !== null ? [pendingDiscard] : undefined}
+        confirmLabel="Discard changes"
+        typeToConfirm="discard"
+        onConfirm={() => {
+          if (pendingDiscard !== null) {
+            void discardFile(pendingDiscard);
+          }
+          setPendingDiscard(null);
+        }}
+        onClose={() => setPendingDiscard(null)}
+      />
     </div>
   );
 }

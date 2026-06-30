@@ -3,18 +3,18 @@ import { syncAllRepos, syncRepo } from '../lib/invoke';
 import type { SyncResult } from '../types';
 
 interface SyncState {
-  syncing: boolean;
+  syncingRepos: Set<string>;
   results: SyncResult[];
   log: string[];
-  error: string | null;
+  errors: Record<string, string>;
 }
 
 export function useSync() {
   const [state, setState] = useState<SyncState>({
-    syncing: false,
+    syncingRepos: new Set(),
     results: [],
     log: [],
-    error: null,
+    errors: {},
   });
 
   const appendLog = useCallback(
@@ -23,48 +23,67 @@ export function useSync() {
   );
 
   const syncAll = useCallback(async () => {
-    setState({ syncing: true, results: [], log: [], error: null });
+    setState({ syncingRepos: new Set(['__all__']), results: [], log: [], errors: {} });
     appendLog('Starting full repo sync...');
     try {
       const results = await syncAllRepos();
       appendLog(
         `Sync complete: ${results.filter((r) => r.status === 'ok').length}/${results.length} OK`,
       );
-      setState((prev) => ({ ...prev, syncing: false, results }));
+      setState((prev) => ({ ...prev, syncingRepos: new Set(), results }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       appendLog(`Error: ${msg}`);
-      setState((prev) => ({ ...prev, syncing: false, error: msg }));
+      setState((prev) => ({
+        ...prev,
+        syncingRepos: new Set(),
+        errors: { ...prev.errors, __all__: msg },
+      }));
     }
   }, [appendLog]);
 
   const syncOne = useCallback(
-    async (name: string) => {
+    // Keyed on the drive/repo composite — rows are unique by (drive, repo), so a
+    // repo present on two drives must not share one spinner/error or collide.
+    async (drive: string, repo: string) => {
+      const key = `${drive}/${repo}`;
       setState((prev) => ({
         ...prev,
-        syncing: true,
-        log: [],
-        error: null,
+        syncingRepos: new Set([...prev.syncingRepos, key]),
+        errors: Object.fromEntries(Object.entries(prev.errors).filter(([k]) => k !== key)),
       }));
-      appendLog(`Syncing ${name}...`);
+      appendLog(`Syncing ${repo}...`);
       try {
-        const result = await syncRepo(name);
-        appendLog(`${name}: ${result.status}`);
+        const result = await syncRepo(repo);
+        appendLog(`${repo}: ${result.status}`);
         setState((prev) => ({
           ...prev,
-          syncing: false,
-          results: prev.results.map((r) =>
-            r.repo === name && r.drive === result.drive ? result : r,
-          ),
+          syncingRepos: new Set([...prev.syncingRepos].filter((r) => r !== key)),
+          results: prev.results.map((r) => (r.drive === drive && r.repo === repo ? result : r)),
         }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         appendLog(`Error: ${msg}`);
-        setState((prev) => ({ ...prev, syncing: false, error: msg }));
+        setState((prev) => ({
+          ...prev,
+          syncingRepos: new Set([...prev.syncingRepos].filter((r) => r !== key)),
+          errors: { ...prev.errors, [key]: msg },
+        }));
       }
     },
     [appendLog],
   );
 
-  return { ...state, syncAll, syncOne };
+  const anySyncing = state.syncingRepos.size > 0;
+
+  return {
+    syncingRepos: state.syncingRepos,
+    anySyncing,
+    globalError: (state.errors['__all__'] ?? null) as string | null,
+    errors: state.errors,
+    results: state.results,
+    log: state.log,
+    syncAll,
+    syncOne,
+  };
 }

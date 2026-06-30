@@ -173,6 +173,7 @@ export default function AgentTerminalPane() {
             >
               <StatusDot
                 status={s.status === 'running' ? 'ok' : s.status === 'errored' ? 'error' : 'off'}
+                decorative
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-neutral-200">{s.name}</div>
@@ -188,9 +189,9 @@ export default function AgentTerminalPane() {
                     stopSession(s.id);
                   }}
                   className="rounded px-1 text-xs text-neutral-500 hover:bg-red-900/30 hover:text-red-400"
-                  title="Stop"
+                  aria-label="Stop agent"
                 >
-                  ■
+                  <span aria-hidden="true">■</span>
                 </button>
               )}
             </button>
