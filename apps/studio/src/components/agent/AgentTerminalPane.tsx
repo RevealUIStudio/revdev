@@ -173,6 +173,7 @@ export default function AgentTerminalPane() {
             >
               <StatusDot
                 status={s.status === 'running' ? 'ok' : s.status === 'errored' ? 'error' : 'off'}
+                decorative
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-neutral-200">{s.name}</div>
