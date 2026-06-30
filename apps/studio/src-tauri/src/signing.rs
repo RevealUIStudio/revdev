@@ -511,6 +511,11 @@ mod tests {
         assert!(requires_signature("git.log"));
         assert!(requires_signature("worktree.create"));
         assert!(requires_signature("worktree.remove"));
+        assert!(requires_signature("agent.spawn"));
+        assert!(requires_signature("agent.stop"));
+        assert!(requires_signature("agent.input"));
+        assert!(requires_signature("agent.resize"));
+        assert!(requires_signature("agent.output"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
     }
