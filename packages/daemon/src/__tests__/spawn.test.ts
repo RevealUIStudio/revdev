@@ -216,6 +216,19 @@ beforeAll(async () => {
     trustedAnchorRequireRootOwned: false,
   });
   close = d.close;
+
+  // Persist each client's public key so the daemon can Ed25519-verify their
+  // signed agent.* calls (the trust anchor only holds the fingerprint). One-time
+  // session.register per identity — the same bootstrap the Studio client does.
+  for (const s of [owner, other]) {
+    const reg = await rpcFrame(socketPath, 'session.register', {
+      agentId: s.agentId,
+      agentName: s.agentId,
+      backend: 'test',
+      publicKeyPem: s.publicKeyPem,
+    });
+    if (reg.error) throw new Error(`register ${s.agentId} failed: ${reg.error.message}`);
+  }
 });
 
 afterAll(async () => {
