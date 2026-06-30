@@ -1002,7 +1002,28 @@ registerHandler('session.update', async (params, db, ctx) => {
   const task = strOrNull(params.task);
   const files = strOrNull(params.files);
 
-  // Build the update dynamically but keep values parameterized.
+  // Activity-state (GAP-257) is SELF-SCOPED: it mutates the caller's OWN
+  // bound session (ctx.agentId) ONLY — never the caller-supplied `target`
+  // override. Routing `state` through `target` (params.sessionId/agentId)
+  // would recreate the cross-agent eviction hole session.end carries (MED,
+  // 2026-06-28 agent.* review) — here a cross-agent liveness/coordination
+  // DoS (any socket-reachable caller marks a PEER 'blocked'/'idle'). The
+  // pre-existing task/files override is unchanged and remains separately
+  // tracked. Validate up-front so a bad/unbound state call throws before
+  // any DB write.
+  const state = strOrNull(params.state);
+  if (state !== null) {
+    if (!ctx.agentId) {
+      throw new Error(
+        'session.update: state change requires a bound session — register/attach/sign first',
+      );
+    }
+    if (!VALID_ACTIVITY_STATES.has(state)) {
+      throw new Error(`session.update: invalid state '${state}' (active|blocked|idle)`);
+    }
+  }
+
+  // Build the task/files update dynamically but keep values parameterized.
   const sets: string[] = ['updated_at = NOW()'];
   const vals: unknown[] = [];
   let i = 1;
@@ -1016,13 +1037,34 @@ registerHandler('session.update', async (params, db, ctx) => {
   }
   vals.push(target);
   await db.query(`UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = $${i}`, vals);
+
+  // State mutation — separate statement, scoped to ctx.agentId ONLY.
+  // `blocked_since` is server-authoritative (NOW(), preserved across repeat
+  // 'blocked' calls via COALESCE) and cleared on any non-blocked state, so
+  // it's never trusted from the caller's clock.
+  if (state !== null && ctx.agentId) {
+    const blockedReason =
+      state === 'blocked' ? (strOrNull(params.blockedReason) ?? 'permission') : null;
+    await db.query(
+      `UPDATE agent_sessions
+          SET activity_state = $1,
+              blocked_reason = $2,
+              blocked_since  = CASE WHEN $1 = 'blocked'
+                                    THEN COALESCE(blocked_since, NOW())
+                                    ELSE NULL END,
+              updated_at     = NOW()
+        WHERE id = $3`,
+      [state, blockedReason, ctx.agentId],
+    );
+  }
+
   // Best-effort dual-write — task is the only column the Neon-side
   // session row exposes from the daemon's update; files / updated_at
   // are daemon-only concerns. See GAP-154 §E.
   if (task !== null) {
     await syncSessionUpdate({ sessionId: target, task });
   }
-  return { updated: target };
+  return state !== null ? { updated: target, stateScopedTo: ctx.agentId } : { updated: target };
 });
 
 // -- Identity ---------------------------------------------------------------
