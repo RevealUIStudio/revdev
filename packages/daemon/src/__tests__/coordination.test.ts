@@ -917,3 +917,119 @@ describe('signature acceptance', () => {
     expect(err?.code).toBe(-32002);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GAP-257 — session activity-state (self-scoped state + active-window).
+//
+// Proves: (1) state is SELF-SCOPED — a signed caller cannot flip another
+// session's state via the params override (the session.end cross-agent hole
+// must NOT be recreated); (2) the active-window derivation drops a session
+// out of "active" once updated_at ages past the window; (3) blocked → active
+// clears blocked_since; (4) unbound/invalid state calls are rejected.
+// ---------------------------------------------------------------------------
+
+type ListedSession = {
+  id: string;
+  activity_state?: string;
+  blocked_reason?: string | null;
+  blocked_since?: string | null;
+  active?: boolean;
+  staleSeconds?: number;
+};
+
+async function listLocal(): Promise<ListedSession[]> {
+  const r = (await rpc(socketPath, 'session.list')) as { sessions: ListedSession[] };
+  return r.sessions;
+}
+
+describe('GAP-257: session activity-state', () => {
+  it('state is self-scoped — a signed caller cannot set ANOTHER session state', async () => {
+    const a = await seedIdentity('gap257-self-a');
+    await seedIdentity('gap257-self-b');
+
+    // Signed as A, but naming B in the override params. State must land on A.
+    const res = (await signedRpc(
+      socketPath,
+      'session.update',
+      { sessionId: 'gap257-self-b', agentId: 'gap257-self-b', state: 'blocked' },
+      { did: a.did, fingerprint: a.fingerprint, privateKeyPem: a.privateKeyPem },
+    )) as { updated: string; stateScopedTo: string };
+    expect(res.stateScopedTo).toBe('gap257-self-a');
+
+    const sessions = await listLocal();
+    const rowA = sessions.find((s) => s.id === 'gap257-self-a');
+    const rowB = sessions.find((s) => s.id === 'gap257-self-b');
+    // A (the signer) is blocked; B (the named target) is untouched.
+    expect(rowA?.activity_state).toBe('blocked');
+    expect(rowA?.blocked_reason).toBe('permission');
+    expect(rowA?.blocked_since).toBeTruthy();
+    expect(rowB?.activity_state).toBe('active');
+    expect(rowB?.blocked_since).toBeFalsy();
+  });
+
+  it('a caller that passes the identity gate but is NOT bound cannot set state', async () => {
+    // actorAgentId clears the dispatch identity gate, but does NOT bind
+    // ctx.agentId — so the handler's self-scope check must still reject. This
+    // proves state requires register/attach/sign, never just a claimed id.
+    await seedIdentity('gap257-unbound-target');
+    await expect(
+      rpc(socketPath, 'session.update', {
+        actorAgentId: 'gap257-unbound-target',
+        sessionId: 'gap257-unbound-target',
+        state: 'blocked',
+      }),
+    ).rejects.toThrow(/requires a bound session/);
+
+    const sessions = await listLocal();
+    expect(sessions.find((s) => s.id === 'gap257-unbound-target')?.activity_state).toBe('active');
+  });
+
+  it('rejects an invalid state value (schema enum + handler guard)', async () => {
+    const a = await seedIdentity('gap257-invalid');
+    // Rejected at the validation edge (-32602) by the schema enum; the
+    // handler keeps a defensive VALID_ACTIVITY_STATES guard behind it.
+    await expect(
+      signedRpc(
+        socketPath,
+        'session.update',
+        { state: 'wat' },
+        { did: a.did, fingerprint: a.fingerprint, privateKeyPem: a.privateKeyPem },
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('derives active=false once updated_at ages past the active window', async () => {
+    await seedIdentity('gap257-window');
+    // Freshly seeded → within the window → active.
+    let row = (await listLocal()).find((s) => s.id === 'gap257-window');
+    expect(row?.active).toBe(true);
+    expect(typeof row?.staleSeconds).toBe('number');
+
+    // Age updated_at well past the default 120s window (the row still declares
+    // activity_state='active'; only the heartbeat fallback drops it).
+    await db.query(
+      `UPDATE agent_sessions SET updated_at = NOW() - INTERVAL '500 seconds' WHERE id = $1`,
+      ['gap257-window'],
+    );
+    row = (await listLocal()).find((s) => s.id === 'gap257-window');
+    expect(row?.activity_state).toBe('active');
+    expect(row?.active).toBe(false);
+    expect(row?.staleSeconds).toBeGreaterThanOrEqual(500);
+  });
+
+  it('blocked → active clears blocked_since and blocked_reason', async () => {
+    const a = await seedIdentity('gap257-trans');
+    const keys = { did: a.did, fingerprint: a.fingerprint, privateKeyPem: a.privateKeyPem };
+
+    await signedRpc(socketPath, 'session.update', { state: 'blocked' }, keys);
+    let row = (await listLocal()).find((s) => s.id === 'gap257-trans');
+    expect(row?.activity_state).toBe('blocked');
+    expect(row?.blocked_since).toBeTruthy();
+
+    await signedRpc(socketPath, 'session.update', { state: 'active' }, keys);
+    row = (await listLocal()).find((s) => s.id === 'gap257-trans');
+    expect(row?.activity_state).toBe('active');
+    expect(row?.blocked_since).toBeFalsy();
+    expect(row?.blocked_reason).toBeFalsy();
+  });
+});
