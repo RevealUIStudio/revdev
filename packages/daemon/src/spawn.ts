@@ -149,15 +149,21 @@ function buildSafeEnv(extraEnv: Record<string, string>): Record<string, string> 
 // Local parameter extraction helpers
 // ---------------------------------------------------------------------------
 
-function requireAgent(ctx: SocketContext, params: Record<string, unknown>): string {
-  if (ctx.agentId) return ctx.agentId;
-  const actor = params.actorAgentId;
-  if (typeof actor === 'string' && actor.length > 0) {
-    ctx.agentId = actor;
-    ctx.boundVia = 'param';
-    return actor;
-  }
-  throw new Error('Not registered: call session.register or pass actorAgentId');
+// agent.* is signature-gated: every method is in server.ts
+// MUTATING_OR_CONTENT_METHODS and in signing.rs requires_signature(), so the
+// dispatch gate has already verified the Ed25519 signature and bound ctx.agentId
+// to the VERIFIED signer (boundVia==='signature') before this handler runs.
+// Trust ONLY that binding. The old spoofable params.actorAgentId fallback is
+// removed — it let a client name another agent as the PTY/exec owner (the
+// 2026-06-29 Part B cross-agent PTY-hijack finding) and let an unsigned host
+// process drive agent.spawn as the daemon UID (the unsigned-RCE finding). The
+// dispatch gate rejects unsigned calls with -32003 before we get here; this is
+// the defense-in-depth backstop. `_params` is retained for call-site parity.
+function requireAgent(ctx: SocketContext, _params: Record<string, unknown>): string {
+  if (ctx.boundVia === 'signature' && ctx.agentId) return ctx.agentId;
+  throw new Error(
+    'agent.* requires a signed request (verified Ed25519 signature); unsigned or param-bound actor rejected',
+  );
 }
 
 function stringParam(params: Record<string, unknown>, key: string): string {

@@ -74,6 +74,16 @@ pub fn requires_signature(method: &str) -> bool {
             // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
             | "worktree.create"
             | "worktree.remove"
+            // agent.* PTY/exec surface — `agent.spawn` forks a caller-supplied
+            // command as the daemon UID (unsigned-RCE) and stop/input/resize/
+            // output drive another agent's live PTY. Signature-required so the
+            // native client signs them and the daemon binds the verified signer.
+            // MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
+            | "agent.spawn"
+            | "agent.stop"
+            | "agent.input"
+            | "agent.resize"
+            | "agent.output"
     )
 }
 
@@ -501,6 +511,11 @@ mod tests {
         assert!(requires_signature("git.log"));
         assert!(requires_signature("worktree.create"));
         assert!(requires_signature("worktree.remove"));
+        assert!(requires_signature("agent.spawn"));
+        assert!(requires_signature("agent.stop"));
+        assert!(requires_signature("agent.input"));
+        assert!(requires_signature("agent.resize"));
+        assert!(requires_signature("agent.output"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
     }

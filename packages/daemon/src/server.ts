@@ -197,6 +197,18 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // requires_signature() must mark these too.
   'project.grant',
   'project.revoke',
+  // agent.* PTY/exec surface. `agent.spawn` forks a caller-supplied command as
+  // the daemon UID — an unsigned, Pro-tier-reachable RCE — and stop/input/
+  // resize/output drive or read another agent's live PTY. Signature-REQUIRED so
+  // the actor is the VERIFIED signer (ctx.agentId via boundVia==='signature'),
+  // never a spoofable params.actorAgentId. Closes the 2026-06-29 Part B
+  // unsigned-RCE + cross-agent PTY-hijack findings. Cross-language contract:
+  // signing.rs requires_signature() must mark these too.
+  'agent.spawn',
+  'agent.stop',
+  'agent.input',
+  'agent.resize',
+  'agent.output',
 ]);
 
 // ---------------------------------------------------------------------------
