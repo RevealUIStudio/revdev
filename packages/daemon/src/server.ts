@@ -936,20 +936,6 @@ const ACTIVE_WINDOW_SECONDS = (() => {
   return Number.isFinite(raw) && raw > 0 ? raw : 120;
 })();
 
-/** Annotate a session row with derived `active` + `staleSeconds`. */
-function enrichSessionActivity(
-  row: Record<string, unknown>,
-  nowMs: number,
-): Record<string, unknown> {
-  const updatedMs = new Date(String(row.updated_at ?? '')).getTime();
-  const staleSeconds = Number.isNaN(updatedMs)
-    ? Number.MAX_SAFE_INTEGER
-    : Math.max(0, Math.round((nowMs - updatedMs) / 1000));
-  const state = typeof row.activity_state === 'string' ? row.activity_state : 'active';
-  const active = state === 'active' && staleSeconds < ACTIVE_WINDOW_SECONDS;
-  return { ...row, staleSeconds, active };
-}
-
 registerHandler('session.list', async (params, db) => {
   // Default scope is 'local' — query the daemon's own PGlite, which is
   // fast (in-process) and authoritative for this machine.
@@ -963,12 +949,21 @@ registerHandler('session.list', async (params, db) => {
     const fleet = await listFleetSessions();
     return { sessions: fleet, scope: 'fleet', neonSyncActive: isNeonSyncActive() };
   }
+  // `active` + `staleSeconds` are derived SERVER-SIDE (NOW() vs updated_at)
+  // so the comparison never depends on the client clock or on JS parsing a
+  // naive PGlite TIMESTAMP — the same NOW()-relative basis the GAP-153 prune
+  // uses. Quoted alias preserves the camelCase `staleSeconds` key.
   const result = await db.query<Record<string, unknown>>(
-    `SELECT * FROM agent_sessions WHERE ended_at IS NULL ORDER BY started_at DESC`,
+    `SELECT *,
+            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - updated_at))))::int AS "staleSeconds",
+            (activity_state = 'active'
+             AND updated_at > NOW() - make_interval(secs => $1)) AS active
+       FROM agent_sessions
+      WHERE ended_at IS NULL
+      ORDER BY started_at DESC`,
+    [ACTIVE_WINDOW_SECONDS],
   );
-  const now = Date.now();
-  const sessions = result.rows.map((row) => enrichSessionActivity(row, now));
-  return { sessions, scope: 'local', activeWindowSeconds: ACTIVE_WINDOW_SECONDS };
+  return { sessions: result.rows, scope: 'local', activeWindowSeconds: ACTIVE_WINDOW_SECONDS };
 });
 
 registerHandler('session.end', async (params, db, ctx) => {
