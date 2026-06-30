@@ -6,35 +6,40 @@ import RepoCard from './RepoCard';
 import SyncLog from './SyncLog';
 
 export default function SyncPanel() {
-  const { syncing, results, log, error, syncAll, syncOne } = useSync();
+  const { anySyncing, syncingRepos, globalError, errors, results, log, syncAll, syncOne } =
+    useSync();
 
   return (
     <div className="space-y-6">
       <PanelHeader
         title="Repo Sync"
         action={
-          <Button variant="primary" size="lg" onClick={syncAll} loading={syncing}>
+          <Button variant="primary" size="lg" onClick={syncAll} loading={anySyncing}>
             Sync All
           </Button>
         }
       />
 
-      <ErrorAlert message={error} />
+      <ErrorAlert message={globalError} />
 
       {results.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {results.map((result) => (
-            <RepoCard
-              key={`${result.drive}-${result.repo}`}
-              result={result}
-              onSync={() => syncOne(result.repo)}
-              syncing={syncing}
-            />
-          ))}
+          {results.map((result) => {
+            const key = `${result.drive}/${result.repo}`;
+            return (
+              <RepoCard
+                key={key}
+                result={result}
+                onSync={() => syncOne(result.drive, result.repo)}
+                syncing={syncingRepos.has(key) || syncingRepos.has('__all__')}
+                error={errors[key] ?? null}
+              />
+            );
+          })}
         </div>
       )}
 
-      {results.length === 0 && !syncing && (
+      {results.length === 0 && !anySyncing && (
         <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
           <div className="flex size-10 items-center justify-center rounded-lg bg-neutral-800">
             <svg

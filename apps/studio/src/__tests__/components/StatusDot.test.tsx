@@ -48,9 +48,30 @@ describe('StatusDot', () => {
     expect(container.querySelector('span')?.className).not.toContain('animate-pulse');
   });
 
-  it('has aria-hidden="true" for accessibility', () => {
-    const { container } = render(<StatusDot status="ok" />);
-    expect(container.querySelector('span')?.getAttribute('aria-hidden')).toBe('true');
+  it('exposes status to assistive tech via role="img" + aria-label by default', () => {
+    const { container } = render(<StatusDot status="error" />);
+    const span = container.querySelector('span');
+    expect(span?.getAttribute('role')).toBe('img');
+    expect(span?.getAttribute('aria-label')).toBe('Error');
+    expect(span?.getAttribute('aria-hidden')).toBeNull();
+  });
+
+  it('uses a per-status default label', () => {
+    const { container } = render(<StatusDot status="warn" />);
+    expect(container.querySelector('span')?.getAttribute('aria-label')).toBe('Warning');
+  });
+
+  it('honors a custom label override', () => {
+    const { container } = render(<StatusDot status="ok" label="Database: healthy" />);
+    expect(container.querySelector('span')?.getAttribute('aria-label')).toBe('Database: healthy');
+  });
+
+  it('is hidden from screen readers when decorative (adjacent text conveys status)', () => {
+    const { container } = render(<StatusDot status="ok" decorative />);
+    const span = container.querySelector('span');
+    expect(span?.getAttribute('aria-hidden')).toBe('true');
+    expect(span?.getAttribute('role')).toBeNull();
+    expect(span?.getAttribute('aria-label')).toBeNull();
   });
 
   it('applies custom className', () => {

@@ -88,7 +88,12 @@ describe('SshBookmarkSidebar', () => {
       expect(screen.getAllByText('Delete')).toHaveLength(2);
     });
 
+    // The row trash button now opens a confirm dialog instead of deleting outright.
     fireEvent.click(screen.getAllByText('Delete')[0]);
+    expect(invoke.sshBookmarkDelete).not.toHaveBeenCalled();
+
+    // Confirming in the dialog performs the delete.
+    fireEvent.click(screen.getByRole('button', { name: 'Delete bookmark' }));
     await waitFor(() => {
       expect(invoke.sshBookmarkDelete).toHaveBeenCalledWith('1');
     });

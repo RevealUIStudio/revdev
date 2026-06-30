@@ -1,6 +1,4 @@
-import { useSettingsContext } from '../../hooks/use-settings';
 import { useStatusContext } from '../../hooks/use-status';
-import RvuiUpgradePanel from '../subscription/RvuiUpgradePanel';
 import Button from '../ui/Button';
 import ErrorAlert from '../ui/ErrorAlert';
 import PanelHeader from '../ui/PanelHeader';
@@ -13,7 +11,6 @@ import WelcomeBanner from './WelcomeBanner';
 
 export default function Dashboard() {
   const { system, mount, loading, error, refresh } = useStatusContext();
-  const { settings } = useSettingsContext();
 
   if (loading && !system) {
     return <LoadingSkeleton />;
@@ -73,8 +70,6 @@ export default function Dashboard() {
         <HealthCard />
         <SubscriptionCard />
       </div>
-
-      <RvuiUpgradePanel currentTier={system?.tier} apiUrl={settings.apiUrl} />
     </div>
   );
 }

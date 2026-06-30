@@ -27,10 +27,11 @@ describe('useSync', () => {
   it('initializes with default state', () => {
     const { result } = renderHook(() => useSync());
 
-    expect(result.current.syncing).toBe(false);
+    expect(result.current.anySyncing).toBe(false);
     expect(result.current.results).toEqual([]);
     expect(result.current.log).toEqual([]);
-    expect(result.current.error).toBeNull();
+    expect(result.current.globalError).toBeNull();
+    expect(result.current.errors).toEqual({});
   });
 
   it('syncs all repos successfully', async () => {
@@ -43,11 +44,11 @@ describe('useSync', () => {
     });
 
     expect(syncAllRepos).toHaveBeenCalledOnce();
-    expect(result.current.syncing).toBe(false);
+    expect(result.current.anySyncing).toBe(false);
     expect(result.current.results).toEqual(MOCK_RESULTS);
     expect(result.current.log).toContain('Starting full repo sync...');
     expect(result.current.log).toContain('Sync complete: 2/2 OK');
-    expect(result.current.error).toBeNull();
+    expect(result.current.globalError).toBeNull();
   });
 
   it('handles syncAll error', async () => {
@@ -59,8 +60,8 @@ describe('useSync', () => {
       await result.current.syncAll();
     });
 
-    expect(result.current.syncing).toBe(false);
-    expect(result.current.error).toBe('Network error');
+    expect(result.current.anySyncing).toBe(false);
+    expect(result.current.globalError).toBe('Network error');
     expect(result.current.log).toContain('Error: Network error');
   });
 
@@ -77,26 +78,27 @@ describe('useSync', () => {
     });
 
     await act(async () => {
-      await result.current.syncOne('RevealUI');
+      await result.current.syncOne('C', 'RevealUI');
     });
 
     expect(syncRepo).toHaveBeenCalledWith('RevealUI');
-    expect(result.current.syncing).toBe(false);
+    expect(result.current.anySyncing).toBe(false);
     expect(result.current.log).toContain('Syncing RevealUI...');
     expect(result.current.log).toContain('RevealUI: ok');
   });
 
-  it('handles syncOne error', async () => {
+  it('handles syncOne error (keyed to that repo, not global)', async () => {
     vi.mocked(syncRepo).mockRejectedValueOnce(new Error('Dirty working tree'));
 
     const { result } = renderHook(() => useSync());
 
     await act(async () => {
-      await result.current.syncOne('RevealUI');
+      await result.current.syncOne('C', 'RevealUI');
     });
 
-    expect(result.current.syncing).toBe(false);
-    expect(result.current.error).toBe('Dirty working tree');
+    expect(result.current.anySyncing).toBe(false);
+    expect(result.current.errors['C/RevealUI']).toBe('Dirty working tree');
+    expect(result.current.globalError).toBeNull();
   });
 
   it('counts only ok results in sync summary', async () => {

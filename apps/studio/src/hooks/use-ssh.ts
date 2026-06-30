@@ -42,61 +42,68 @@ export function useSsh(options: UseSshOptions = {}) {
   onDisconnectRef.current = options.onDisconnect;
   onHostKeyRef.current = options.onHostKey;
 
-  const connect = useCallback(async (params: SshConnectParams) => {
-    setState((prev) => ({ ...prev, connecting: true, error: null }));
-    try {
-      // Listen for host key verification events (fires during handshake)
-      const unlistenHk = await listen<SshHostKeyEvent>('ssh_host_key', (event) => {
-        onHostKeyRef.current?.(event.payload);
-      });
-      unlistenHostKeyRef.current = unlistenHk;
+  const handleSessionLost = useCallback((reason: string) => {
+    sessionIdRef.current = null;
+    unlistenOutputRef.current?.();
+    unlistenDisconnectRef.current?.();
+    unlistenHostKeyRef.current?.();
+    unlistenOutputRef.current = null;
+    unlistenDisconnectRef.current = null;
+    unlistenHostKeyRef.current = null;
+    setState({
+      sessionId: null,
+      connected: false,
+      connecting: false,
+      error: reason,
+    });
+    onDisconnectRef.current?.(reason);
+  }, []);
 
-      const id = await sshConnect(params);
-      sessionIdRef.current = id;
+  const connect = useCallback(
+    async (params: SshConnectParams) => {
+      setState((prev) => ({ ...prev, connecting: true, error: null }));
+      try {
+        // Listen for host key verification events (fires during handshake)
+        const unlistenHk = await listen<SshHostKeyEvent>('ssh_host_key', (event) => {
+          onHostKeyRef.current?.(event.payload);
+        });
+        unlistenHostKeyRef.current = unlistenHk;
 
-      // Listen for output events
-      const unlistenOut = await listen<SshOutputEvent>('ssh_output', (event) => {
-        if (event.payload.session_id !== sessionIdRef.current) return;
-        const bytes = Uint8Array.from(atob(event.payload.data), (c) => c.charCodeAt(0));
-        onDataRef.current?.(bytes);
-      });
-      unlistenOutputRef.current = unlistenOut;
+        const id = await sshConnect(params);
+        sessionIdRef.current = id;
 
-      // Listen for disconnect events
-      const unlistenDc = await listen<SshDisconnectEvent>('ssh_disconnect', (event) => {
-        if (event.payload.session_id !== sessionIdRef.current) return;
-        sessionIdRef.current = null;
-        unlistenOutputRef.current?.();
-        unlistenDisconnectRef.current?.();
-        unlistenHostKeyRef.current?.();
-        unlistenOutputRef.current = null;
-        unlistenDisconnectRef.current = null;
-        unlistenHostKeyRef.current = null;
+        // Listen for output events
+        const unlistenOut = await listen<SshOutputEvent>('ssh_output', (event) => {
+          if (event.payload.session_id !== sessionIdRef.current) return;
+          const bytes = Uint8Array.from(atob(event.payload.data), (c) => c.charCodeAt(0));
+          onDataRef.current?.(bytes);
+        });
+        unlistenOutputRef.current = unlistenOut;
+
+        // Listen for disconnect events
+        const unlistenDc = await listen<SshDisconnectEvent>('ssh_disconnect', (event) => {
+          if (event.payload.session_id !== sessionIdRef.current) return;
+          handleSessionLost(event.payload.reason);
+        });
+        unlistenDisconnectRef.current = unlistenDc;
+
+        setState({
+          sessionId: id,
+          connected: true,
+          connecting: false,
+          error: null,
+        });
+      } catch (err) {
         setState({
           sessionId: null,
           connected: false,
           connecting: false,
-          error: null,
+          error: err instanceof Error ? err.message : String(err),
         });
-        onDisconnectRef.current?.(event.payload.reason);
-      });
-      unlistenDisconnectRef.current = unlistenDc;
-
-      setState({
-        sessionId: id,
-        connected: true,
-        connecting: false,
-        error: null,
-      });
-    } catch (err) {
-      setState({
-        sessionId: null,
-        connected: false,
-        connecting: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }, []);
+      }
+    },
+    [handleSessionLost],
+  );
 
   const disconnect = useCallback(async () => {
     const id = sessionIdRef.current;
@@ -121,19 +128,32 @@ export function useSsh(options: UseSshOptions = {}) {
     });
   }, []);
 
-  const send = useCallback(async (data: string) => {
-    const id = sessionIdRef.current;
-    if (!id) return;
-    // base64 encode
-    const encoded = btoa(data);
-    await sshSend(id, encoded);
-  }, []);
+  const send = useCallback(
+    async (data: string) => {
+      const id = sessionIdRef.current;
+      if (!id) return;
+      const encoded = btoa(data);
+      try {
+        await sshSend(id, encoded);
+      } catch (err) {
+        handleSessionLost(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [handleSessionLost],
+  );
 
-  const resize = useCallback(async (cols: number, rows: number) => {
-    const id = sessionIdRef.current;
-    if (!id) return;
-    await sshResize(id, cols, rows);
-  }, []);
+  const resize = useCallback(
+    async (cols: number, rows: number) => {
+      const id = sessionIdRef.current;
+      if (!id) return;
+      try {
+        await sshResize(id, cols, rows);
+      } catch (err) {
+        handleSessionLost(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [handleSessionLost],
+  );
 
   // Cleanup on unmount
   useEffect(() => {

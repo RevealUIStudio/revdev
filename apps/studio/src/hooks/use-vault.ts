@@ -102,23 +102,46 @@ export function useVault() {
     }
   }, []);
 
+  // Return a success boolean so a caller (e.g. CreateSecretDialog) can keep its
+  // form open + preserve input on failure rather than closing on a resolved
+  // promise that actually failed (the #200 resolve-on-failure finding).
   const createSecret = useCallback(
-    async (path: string, value: string) => {
-      await vaultSet(path, value, false);
-      await refresh();
+    async (path: string, value: string): Promise<boolean> => {
+      setState((prev) => ({ ...prev, error: null }));
+      try {
+        await vaultSet(path, value, false);
+        await refresh();
+        return true;
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+        return false;
+      }
     },
     [refresh],
   );
 
   const deleteSecret = useCallback(
-    async (path: string) => {
-      await vaultDelete(path);
-      setState((prev) => ({
-        ...prev,
-        selectedPath: prev.selectedPath === path ? null : prev.selectedPath,
-        selectedValue: prev.selectedPath === path ? null : prev.selectedValue,
-      }));
-      await refresh();
+    async (path: string): Promise<boolean> => {
+      setState((prev) => ({ ...prev, error: null }));
+      try {
+        await vaultDelete(path);
+        setState((prev) => ({
+          ...prev,
+          selectedPath: prev.selectedPath === path ? null : prev.selectedPath,
+          selectedValue: prev.selectedPath === path ? null : prev.selectedValue,
+        }));
+        await refresh();
+        return true;
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+        return false;
+      }
     },
     [refresh],
   );
