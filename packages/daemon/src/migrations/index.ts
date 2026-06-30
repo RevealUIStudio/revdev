@@ -20,10 +20,12 @@ import { MIGRATION_0001 } from './0001-initial-schema.js';
 import { MIGRATION_0002 } from './0002-key-origin.js';
 import { MIGRATION_0003 } from './0003-project-roots.js';
 import { MIGRATION_0004 } from './0004-agent-processes.js';
+import { MIGRATION_0005 } from './0005-session-activity-state.js';
 
 export const MIGRATIONS: readonly Migration[] = [
   MIGRATION_0001,
   MIGRATION_0002,
   MIGRATION_0003,
   MIGRATION_0004,
+  MIGRATION_0005,
 ];
