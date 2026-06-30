@@ -5,7 +5,21 @@ function jsonResponse(status: number, body: unknown): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    // httpRequest reads 2xx bodies via text()+JSON.parse and error bodies via
+    // json(); provide both so the mock matches the real Response surface.
     json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
+}
+
+function emptyResponse(status: number): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => {
+      throw new SyntaxError('Unexpected end of JSON input');
+    },
+    text: async () => '',
   } as unknown as Response;
 }
 
@@ -16,6 +30,7 @@ function malformedResponse(status: number): Response {
     json: async () => {
       throw new SyntaxError('Unexpected token < in JSON');
     },
+    text: async () => '<not json>',
   } as unknown as Response;
 }
 
@@ -40,6 +55,16 @@ describe('httpRequest', () => {
       ok: true,
       value: 42,
     });
+  });
+
+  it('returns undefined for a 204 No Content response (no parse error)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(emptyResponse(204)));
+    await expect(httpRequest<void>('https://x/revoke')).resolves.toBeUndefined();
+  });
+
+  it('returns undefined for an empty 2xx body (no parse error)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(emptyResponse(200)));
+    await expect(httpRequest<void>('https://x/empty')).resolves.toBeUndefined();
   });
 
   it('throws a client HttpError carrying the server message on 4xx', async () => {

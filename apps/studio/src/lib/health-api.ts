@@ -54,7 +54,22 @@ export async function fetchHealth(
       signal: combined,
     });
   } catch (err) {
-    if (err instanceof HttpError) return null;
+    if (err instanceof HttpError) {
+      // A degraded API can answer non-2xx (e.g. 503) yet still carry a valid
+      // HealthResponse body. Surface that detail instead of collapsing the whole
+      // dashboard to "Unreachable"; only a non-health body (HTML error page,
+      // network failure, etc.) becomes null.
+      return isHealthResponse(err.body) ? err.body : null;
+    }
     throw err;
   }
+}
+
+/** Structural guard: a non-2xx body that is still a usable HealthResponse. */
+function isHealthResponse(body: unknown): body is HealthResponse {
+  if (typeof body !== 'object' || body === null) return false;
+  const b = body as Record<string, unknown>;
+  return (
+    (b.status === 'healthy' || b.status === 'degraded' || b.status === 'unhealthy') && 'checks' in b
+  );
 }

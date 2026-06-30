@@ -5,7 +5,10 @@ import Input from '../ui/Input';
 import Modal from '../ui/Modal';
 
 interface CreateSecretDialogProps {
-  onConfirm: (path: string, value: string) => Promise<void>;
+  // Returns true on success; on false the dialog stays open and preserves input
+  // so a failed save no longer silently closes the form (the #200
+  // resolve-on-failure finding). The error itself is surfaced by the vault hook.
+  onConfirm: (path: string, value: string) => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -21,8 +24,7 @@ export default function CreateSecretDialog({ onConfirm, onClose }: CreateSecretD
     setSaving(true);
     setError(null);
     try {
-      await onConfirm(path.trim(), value.trim());
-      onClose();
+      if (await onConfirm(path.trim(), value.trim())) onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

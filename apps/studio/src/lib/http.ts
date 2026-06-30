@@ -79,8 +79,13 @@ export async function httpRequest<T>(url: string, init?: RequestInit): Promise<T
     throw new HttpError(messageFromBody(body) ?? fallback, kind, res.status, body);
   }
 
+  // 204 No Content and other empty 2xx bodies (e.g. token /revoke) carry no
+  // JSON — return undefined rather than throwing a spurious 'parse' error.
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  if (text.length === 0) return undefined as T;
   try {
-    return (await res.json()) as T;
+    return JSON.parse(text) as T;
   } catch {
     throw new HttpError('The server returned a malformed response.', 'parse', res.status);
   }
