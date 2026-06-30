@@ -920,6 +920,36 @@ registerHandler('session.attach', async (params, db, ctx) => {
   return { attached: true, sessionId, agentId: sessionId };
 });
 
+// -- Session activity-state (GAP-257) ---------------------------------------
+//
+// A session blocked on an unanswered permission prompt is, in the raw
+// `agent_sessions` shape, byte-identical to one actively working. `state`
+// makes that distinction explicit (Signal 1), and the active-window
+// derivation below is the heartbeat fallback (Signal 2): a blocked session
+// stops emitting PostToolUse, so its `updated_at` ages past the window and it
+// drops out of "active" even when Signal 1 never fired (older CLI, disabled
+// hook, wedged process). The seconds-scale liveness window is independent of
+// the days-scale GAP-153 stale-prune.
+const VALID_ACTIVITY_STATES = new Set(['active', 'blocked', 'idle']);
+const ACTIVE_WINDOW_SECONDS = (() => {
+  const raw = Number(process.env.REVDEV_ACTIVE_WINDOW_SECONDS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 120;
+})();
+
+/** Annotate a session row with derived `active` + `staleSeconds`. */
+function enrichSessionActivity(
+  row: Record<string, unknown>,
+  nowMs: number,
+): Record<string, unknown> {
+  const updatedMs = new Date(String(row.updated_at ?? '')).getTime();
+  const staleSeconds = Number.isNaN(updatedMs)
+    ? Number.MAX_SAFE_INTEGER
+    : Math.max(0, Math.round((nowMs - updatedMs) / 1000));
+  const state = typeof row.activity_state === 'string' ? row.activity_state : 'active';
+  const active = state === 'active' && staleSeconds < ACTIVE_WINDOW_SECONDS;
+  return { ...row, staleSeconds, active };
+}
+
 registerHandler('session.list', async (params, db) => {
   // Default scope is 'local' — query the daemon's own PGlite, which is
   // fast (in-process) and authoritative for this machine.
@@ -936,7 +966,9 @@ registerHandler('session.list', async (params, db) => {
   const result = await db.query<Record<string, unknown>>(
     `SELECT * FROM agent_sessions WHERE ended_at IS NULL ORDER BY started_at DESC`,
   );
-  return { sessions: result.rows, scope: 'local' };
+  const now = Date.now();
+  const sessions = result.rows.map((row) => enrichSessionActivity(row, now));
+  return { sessions, scope: 'local', activeWindowSeconds: ACTIVE_WINDOW_SECONDS };
 });
 
 registerHandler('session.end', async (params, db, ctx) => {
