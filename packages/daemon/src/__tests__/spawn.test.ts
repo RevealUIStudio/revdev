@@ -173,7 +173,7 @@ function makeSigner(agentId: string) {
         kp.privateKeyPem,
       ),
     );
-  return { agentId, fingerprint, did, sign };
+  return { agentId, fingerprint, did, publicKeyPem: kp.publicKeyPem, sign };
 }
 
 // owner drives the happy paths; other proves cross-agent ownership rejection.
