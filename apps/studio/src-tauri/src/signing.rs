@@ -74,6 +74,16 @@ pub fn requires_signature(method: &str) -> bool {
             // mirror the daemon's MUTATING_OR_CONTENT_METHODS set (server.ts).
             | "worktree.create"
             | "worktree.remove"
+            // agent.* PTY/exec surface — `agent.spawn` forks a caller-supplied
+            // command as the daemon UID (unsigned-RCE) and stop/input/resize/
+            // output drive another agent's live PTY. Signature-required so the
+            // native client signs them and the daemon binds the verified signer.
+            // MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
+            | "agent.spawn"
+            | "agent.stop"
+            | "agent.input"
+            | "agent.resize"
+            | "agent.output"
     )
 }
 

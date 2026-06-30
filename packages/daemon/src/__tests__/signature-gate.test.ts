@@ -48,6 +48,15 @@ const SIGNED = [
   // Grant/revoke cross-agent root access: owner-only, signature-required.
   'project.grant',
   'project.revoke',
+  // agent.* PTY/exec surface: agent.spawn forks a caller-supplied command as the
+  // daemon UID (unsigned-RCE) and stop/input/resize/output drive another agent's
+  // live PTY. Signature-required so the actor is the verified signer, not a
+  // spoofable actorAgentId (2026-06-29 Part B findings).
+  'agent.spawn',
+  'agent.stop',
+  'agent.input',
+  'agent.resize',
+  'agent.output',
 ];
 
 // Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.
