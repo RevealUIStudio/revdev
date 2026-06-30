@@ -967,11 +967,15 @@ describe('GAP-257: session activity-state', () => {
     expect(rowB?.blocked_since).toBeFalsy();
   });
 
-  it('an unbound (unsigned) caller cannot set state for a named session', async () => {
+  it('a caller that passes the identity gate but is NOT bound cannot set state', async () => {
+    // actorAgentId clears the dispatch identity gate, but does NOT bind
+    // ctx.agentId — so the handler's self-scope check must still reject. This
+    // proves state requires register/attach/sign, never just a claimed id.
     await seedIdentity('gap257-unbound-target');
     await expect(
       rpc(socketPath, 'session.update', {
-        agentId: 'gap257-unbound-target',
+        actorAgentId: 'gap257-unbound-target',
+        sessionId: 'gap257-unbound-target',
         state: 'blocked',
       }),
     ).rejects.toThrow(/requires a bound session/);
