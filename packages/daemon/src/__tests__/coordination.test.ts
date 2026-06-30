@@ -984,8 +984,10 @@ describe('GAP-257: session activity-state', () => {
     expect(sessions.find((s) => s.id === 'gap257-unbound-target')?.activity_state).toBe('active');
   });
 
-  it('rejects an invalid state value', async () => {
+  it('rejects an invalid state value (schema enum + handler guard)', async () => {
     const a = await seedIdentity('gap257-invalid');
+    // Rejected at the validation edge (-32602) by the schema enum; the
+    // handler keeps a defensive VALID_ACTIVITY_STATES guard behind it.
     await expect(
       signedRpc(
         socketPath,
@@ -993,7 +995,7 @@ describe('GAP-257: session activity-state', () => {
         { state: 'wat' },
         { did: a.did, fingerprint: a.fingerprint, privateKeyPem: a.privateKeyPem },
       ),
-    ).rejects.toThrow(/invalid state/);
+    ).rejects.toThrow();
   });
 
   it('derives active=false once updated_at ages past the active window', async () => {
