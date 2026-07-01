@@ -189,10 +189,12 @@ describe('adversarial agent isolation (B6 §6)', () => {
     // Provision all three agents in the trust anchor.
     anchor = join(dataDir, 'trusted-client-fingerprint');
     await writeFile(anchor, `${agentIdA}:${fpA}\n${agentIdB}:${fpB}\n${agentIdC}:${fpC}\n`);
-    // Pro license: project.grant/revoke, identity.rotate, mail.*, memory.* are
-    // Pro-gated. License OFF tests (§6.g) are covered by the §6.a/§6.d cases
-    // above which use no Pro-gated surface.
-    setTestLicenseEnv(generateTestLicense('pro'));
+    // Max license: project.grant/revoke, identity.rotate, mail.* are Pro-gated,
+    // and memory.* is MAX-gated (GAP-267). A Max license covers both so the
+    // isolation assertions below exercise real handlers rather than tier -32001s.
+    // License OFF tests (§6.g) are covered by the §6.a/§6.d cases above which
+    // use no licensed surface.
+    setTestLicenseEnv(generateTestLicense('max'));
     await startFreshDaemon();
     await registerAgent(agentIdA, kpA.publicKeyPem);
     await registerAgent(agentIdB, kpB.publicKeyPem);
