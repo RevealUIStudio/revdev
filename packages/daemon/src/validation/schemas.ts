@@ -149,6 +149,10 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       task: z.string().max(MAX_BODY_LENGTH).optional(),
       files: z.string().max(MAX_BODY_LENGTH).optional(),
+      // Activity-state (GAP-257). The handler self-scopes `state` to
+      // ctx.agentId — sessionId/agentId override task/files only, never state.
+      state: z.enum(['active', 'blocked', 'idle']).optional(),
+      blockedReason: z.string().max(MAX_NAME_LENGTH).optional(),
       // Compat: handler accepts sessionId or agentId for cross-session targeting.
       sessionId: z.string().max(MAX_NAME_LENGTH).optional(),
       agentId: z.string().max(MAX_NAME_LENGTH).optional(),

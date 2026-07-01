@@ -920,6 +920,22 @@ registerHandler('session.attach', async (params, db, ctx) => {
   return { attached: true, sessionId, agentId: sessionId };
 });
 
+// -- Session activity-state (GAP-257) ---------------------------------------
+//
+// A session blocked on an unanswered permission prompt is, in the raw
+// `agent_sessions` shape, byte-identical to one actively working. `state`
+// makes that distinction explicit (Signal 1), and the active-window
+// derivation below is the heartbeat fallback (Signal 2): a blocked session
+// stops emitting PostToolUse, so its `updated_at` ages past the window and it
+// drops out of "active" even when Signal 1 never fired (older CLI, disabled
+// hook, wedged process). The seconds-scale liveness window is independent of
+// the days-scale GAP-153 stale-prune.
+const VALID_ACTIVITY_STATES = new Set(['active', 'blocked', 'idle']);
+const ACTIVE_WINDOW_SECONDS = (() => {
+  const raw = Number(process.env.REVDEV_ACTIVE_WINDOW_SECONDS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 120;
+})();
+
 registerHandler('session.list', async (params, db) => {
   // Default scope is 'local' — query the daemon's own PGlite, which is
   // fast (in-process) and authoritative for this machine.
@@ -933,10 +949,21 @@ registerHandler('session.list', async (params, db) => {
     const fleet = await listFleetSessions();
     return { sessions: fleet, scope: 'fleet', neonSyncActive: isNeonSyncActive() };
   }
+  // `active` + `staleSeconds` are derived SERVER-SIDE (NOW() vs updated_at)
+  // so the comparison never depends on the client clock or on JS parsing a
+  // naive PGlite TIMESTAMP — the same NOW()-relative basis the GAP-153 prune
+  // uses. Quoted alias preserves the camelCase `staleSeconds` key.
   const result = await db.query<Record<string, unknown>>(
-    `SELECT * FROM agent_sessions WHERE ended_at IS NULL ORDER BY started_at DESC`,
+    `SELECT *,
+            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - updated_at))))::int AS "staleSeconds",
+            (activity_state = 'active'
+             AND updated_at > NOW() - make_interval(secs => $1)) AS active
+       FROM agent_sessions
+      WHERE ended_at IS NULL
+      ORDER BY started_at DESC`,
+    [ACTIVE_WINDOW_SECONDS],
   );
-  return { sessions: result.rows, scope: 'local' };
+  return { sessions: result.rows, scope: 'local', activeWindowSeconds: ACTIVE_WINDOW_SECONDS };
 });
 
 registerHandler('session.end', async (params, db, ctx) => {
@@ -970,7 +997,28 @@ registerHandler('session.update', async (params, db, ctx) => {
   const task = strOrNull(params.task);
   const files = strOrNull(params.files);
 
-  // Build the update dynamically but keep values parameterized.
+  // Activity-state (GAP-257) is SELF-SCOPED: it mutates the caller's OWN
+  // bound session (ctx.agentId) ONLY — never the caller-supplied `target`
+  // override. Routing `state` through `target` (params.sessionId/agentId)
+  // would recreate the cross-agent eviction hole session.end carries (MED,
+  // 2026-06-28 agent.* review) — here a cross-agent liveness/coordination
+  // DoS (any socket-reachable caller marks a PEER 'blocked'/'idle'). The
+  // pre-existing task/files override is unchanged and remains separately
+  // tracked. Validate up-front so a bad/unbound state call throws before
+  // any DB write.
+  const state = strOrNull(params.state);
+  if (state !== null) {
+    if (!ctx.agentId) {
+      throw new Error(
+        'session.update: state change requires a bound session — register/attach/sign first',
+      );
+    }
+    if (!VALID_ACTIVITY_STATES.has(state)) {
+      throw new Error(`session.update: invalid state '${state}' (active|blocked|idle)`);
+    }
+  }
+
+  // Build the task/files update dynamically but keep values parameterized.
   const sets: string[] = ['updated_at = NOW()'];
   const vals: unknown[] = [];
   let i = 1;
@@ -984,13 +1032,34 @@ registerHandler('session.update', async (params, db, ctx) => {
   }
   vals.push(target);
   await db.query(`UPDATE agent_sessions SET ${sets.join(', ')} WHERE id = $${i}`, vals);
+
+  // State mutation — separate statement, scoped to ctx.agentId ONLY.
+  // `blocked_since` is server-authoritative (NOW(), preserved across repeat
+  // 'blocked' calls via COALESCE) and cleared on any non-blocked state, so
+  // it's never trusted from the caller's clock.
+  if (state !== null && ctx.agentId) {
+    const blockedReason =
+      state === 'blocked' ? (strOrNull(params.blockedReason) ?? 'permission') : null;
+    await db.query(
+      `UPDATE agent_sessions
+          SET activity_state = $1,
+              blocked_reason = $2,
+              blocked_since  = CASE WHEN $1 = 'blocked'
+                                    THEN COALESCE(blocked_since, NOW())
+                                    ELSE NULL END,
+              updated_at     = NOW()
+        WHERE id = $3`,
+      [state, blockedReason, ctx.agentId],
+    );
+  }
+
   // Best-effort dual-write — task is the only column the Neon-side
   // session row exposes from the daemon's update; files / updated_at
   // are daemon-only concerns. See GAP-154 §E.
   if (task !== null) {
     await syncSessionUpdate({ sessionId: target, task });
   }
-  return { updated: target };
+  return state !== null ? { updated: target, stateScopedTo: ctx.agentId } : { updated: target };
 });
 
 // -- Identity ---------------------------------------------------------------
