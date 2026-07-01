@@ -72,11 +72,16 @@ const EXEMPT_METHODS = new Set([
   'session.attach',
   // Single-repo file + git I/O is FREE: RevDev is meant to be a usable daily
   // driver and dogfood surface, so basic editing/committing of your own repo
-  // is never gated behind Pro. Only MULTI-AGENT COORDINATION stays Pro
-  // (agent.*, merge.*, mail.*, tasks.*, files.* reservations, memory.*,
-  // inference.*). Enumerated explicitly — NO wildcard — so a Pro method can
-  // never be exempted by accident; a CI test asserts each method below
-  // returns success on a free license and that the Pro methods still -32001.
+  // is never gated behind Pro. MULTI-AGENT COORDINATION stays Pro (agent.*,
+  // merge.*, mail.*, tasks.*, files.* reservations, events.*, harness.*).
+  // Two capabilities are MAX, not Pro — see METHOD_MIN_TIER below: full AI
+  // memory (memory.store/query) and heavyweight local-model management
+  // (inference.pull/start/stop). Interacting with an ALREADY-running local
+  // model (inference.status/chat/generate) is the FREE `aiLocal` run surface
+  // and is exempt here alongside file/git. Enumerated explicitly — NO
+  // wildcard — so a gated method can never be exempted by accident; a CI test
+  // asserts each method below returns success on a free license and that
+  // gated methods still -32001 at their required tier.
   'project.open',
   'file.read',
   'file.write',
@@ -98,7 +103,58 @@ const EXEMPT_METHODS = new Set([
   'git.pull',
   'git.readBlobAtHead',
   'git.readBlobAtIndex',
+  // Local inference RUN surface (`aiLocal` = FREE): interacting with an
+  // already-pulled/started model. Model MANAGEMENT (pull/start/stop) is MAX
+  // and lives in METHOD_MIN_TIER, not here.
+  'inference.status',
+  'inference.chat',
+  'inference.generate',
 ]);
+
+/**
+ * Per-method MINIMUM license tier for non-exempt methods that require a tier
+ * ABOVE the default Pro floor. Enumerated explicitly — NO wildcard — so a Max
+ * capability can never be silently down-graded to Pro, mirroring the
+ * EXEMPT_METHODS discipline. A non-exempt method with no entry here defaults
+ * to `'pro'` (see `requiredTier`).
+ *
+ * Authority: `featureTierMap` (features.ts) + the public pricing page — "Full
+ * AI memory" and heavyweight local-model management are Max ($299), not Pro
+ * ($49). This is the fix for the binary guard that let a $49 Pro JWT reach
+ * Max-marketed `memory.*` (GAP-267).
+ *
+ * Only Max-tier methods are listed:
+ *   - memory.store / memory.query   → full AI memory (working + episodic + vector)
+ *   - inference.pull/start/stop     → local-model management (pull / spawn / teardown)
+ * The FREE local-inference RUN surface (inference.status/chat/generate) is in
+ * EXEMPT_METHODS; every other non-exempt method is Pro by default.
+ */
+export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
+  ['memory.store', 'max'],
+  ['memory.query', 'max'],
+  ['inference.pull', 'max'],
+  ['inference.start', 'max'],
+  ['inference.stop', 'max'],
+]);
+
+/**
+ * Ordinal rank of a tier within LICENSE_TIERS (free=0 < pro=1 < max=2 <
+ * enterprise=3) — the array index doubles as the rank. Used by the RPC guard
+ * for `>=` tier comparison. Returns -1 for an unrecognized tier (sorts below
+ * free — fail-closed).
+ */
+export function tierRank(tier: LicenseTier): number {
+  return LICENSE_TIERS.indexOf(tier);
+}
+
+/**
+ * Minimum license tier required to call a non-exempt method. Max-tier methods
+ * are enumerated in METHOD_MIN_TIER; every other non-exempt method defaults to
+ * `'pro'`. Exempt methods never reach here — the guard short-circuits them.
+ */
+export function requiredTier(method: string): LicenseTier {
+  return METHOD_MIN_TIER.get(method) ?? 'pro';
+}
 
 const DAY_SECONDS = 86_400;
 
