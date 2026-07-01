@@ -23,13 +23,22 @@ import {
   type LicenseEvaluation,
   LicenseExpiredError,
   type LicenseTier,
+  requiredTier,
+  tierRank,
 } from './license.js';
 import { recordLicenseMetrics } from './observability.js';
 
 export interface RpcGuardResult {
   allowed: boolean;
   tier: LicenseTier;
+  /** Minimum tier the method requires — set on denials so the client can render an accurate upsell. */
+  requiredTier?: LicenseTier;
   reason?: string;
+}
+
+/** Title-case a tier name for human-facing messages ("pro" → "Pro"). */
+function titleTier(tier: LicenseTier): string {
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
 /** Cached license state — checked once at startup, refreshable on demand. */
@@ -148,30 +157,53 @@ export function getLicenseState(): { tier: LicenseTier; valid: boolean } {
 /**
  * Guard an RPC method call against the current license tier.
  *
- * Returns { allowed: true } for exempt methods and valid Pro+ licenses.
- * Returns { allowed: false, reason } for gated methods on free tier.
+ * Ordinal enforcement (free < pro < max < enterprise):
+ *   1. Exempt methods (session.*, ping, file/git, local-inference run) always pass.
+ *   2. No valid license → every gated method is blocked (-32001).
+ *   3. Valid license below the method's minimum tier (e.g. a $49 Pro JWT
+ *      calling Max-only `memory.*`) → blocked (-32001), naming the required tier.
+ *   4. Otherwise the license meets/exceeds the minimum → allowed.
+ *
+ * `requiredTier(method)` defaults to 'pro'; Max methods are enumerated in
+ * `METHOD_MIN_TIER`. This replaces the previous BINARY check (any valid JWT =
+ * full access) that let Pro reach Max-marketed methods (GAP-267).
  */
 export function guardRpcMethod(method: string): RpcGuardResult {
   const license = getLicenseState();
 
-  // Exempt methods always pass (session management, ping)
+  // Exempt methods always pass (session management, ping, file/git, local-inference run)
   if (isExemptMethod(method)) {
     return { allowed: true, tier: license.tier };
   }
 
-  // Valid Pro+ license: full access
-  if (license.valid) {
-    return { allowed: true, tier: license.tier };
+  const required = requiredTier(method);
+
+  // No valid license → free/degraded mode: every gated method is blocked.
+  if (!license.valid) {
+    return {
+      allowed: false,
+      tier: 'free',
+      requiredTier: required,
+      reason:
+        `Method "${method}" requires a ${titleTier(required)} or higher license. ` +
+        'Set REVEALUI_LICENSE_KEY or upgrade at https://revealui.com/pro',
+    };
   }
 
-  // Free tier: blocked
-  return {
-    allowed: false,
-    tier: 'free',
-    reason:
-      `Method "${method}" requires a Pro or higher license. ` +
-      'Set REVEALUI_LICENSE_KEY or upgrade at https://revealui.com/pro',
-  };
+  // Valid license but below the method's minimum tier (e.g. Pro → Max method).
+  if (tierRank(license.tier) < tierRank(required)) {
+    return {
+      allowed: false,
+      tier: license.tier,
+      requiredTier: required,
+      reason:
+        `Method "${method}" requires a ${titleTier(required)} license; ` +
+        `your license is ${titleTier(license.tier)}. Upgrade at https://revealui.com/pro`,
+    };
+  }
+
+  // Valid license at or above the required tier: allowed.
+  return { allowed: true, tier: license.tier };
 }
 
 /**
@@ -187,6 +219,7 @@ export function licenseErrorResponse(id: number | string | null, result: RpcGuar
       message: 'License required',
       data: {
         tier: result.tier,
+        requiredTier: result.requiredTier,
         reason: result.reason,
         upgradeUrl: 'https://revealui.com/pro',
       },
