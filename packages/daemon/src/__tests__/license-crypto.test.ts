@@ -1,6 +1,7 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isRevokedJti, verifyLicenseJWT } from '../license-crypto.js';
+import { getVendorPublicKey, isRevokedJti, verifyLicenseJWT } from '../license-crypto.js';
+import { DEFAULT_VENDOR_PUBLIC_KEY } from '../vendor-public-key.js';
 
 function makeToken(
   payload: Record<string, unknown>,

@@ -94,15 +94,18 @@ To unlock Pro features (agent spawning, inference, merge pipeline, memory, coord
 
 1. Purchase a license at [revealui.com/pro](https://revealui.com/pro)
 2. You'll receive a license key starting with `eyJ` — an Ed25519-signed JWT (RFC 7519, `alg: EdDSA`), a three-part `<header>.<payload>.<signature>` token.
-3. Set it, **and the vendor public key the daemon verifies it against**, as environment variables:
+3. Set it as an environment variable:
 
 ```bash
 # Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
 export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ0aWVyIjoicHJvIiwuLi59.<signature>"
+```
 
-# Required to verify the license signature (PEM-encoded Ed25519 public key).
-# Self-host activation cannot succeed without this — the daemon stays in
-# Free mode with reason "REVDEV_LICENSE_PUBLIC_KEY not set" until it is set.
+The daemon ships with the vendor public key baked in, so it verifies your license with no further configuration.
+
+**Advanced (key rotation / override):** `REVDEV_LICENSE_PUBLIC_KEY` overrides the baked-in vendor key with a PEM-encoded Ed25519 public key. You only need it if the vendor signing key has rotated and your build predates the rotation, or you are testing against your own keypair. The current public key is shown on your account page at [revealui.com/account/license](https://revealui.com/account/license).
+
+```bash
 export REVDEV_LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA...
 -----END PUBLIC KEY-----"
