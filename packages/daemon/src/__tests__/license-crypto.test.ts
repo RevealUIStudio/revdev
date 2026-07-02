@@ -135,16 +135,6 @@ describe('getVendorPublicKey — baked default + override', () => {
     expect(getVendorPublicKey()).toBe(publicKey);
   });
 
-  it('activation succeeds against the baked default for a token it signed', () => {
-    // A token signed by the key whose public half IS the baked default verifies
-    // with no env var set — the happy path a v0.1.1 buyer hits.
-    const token = makeToken(VALID_PAYLOAD, privateKey);
-    const result = verifyLicenseJWT(token, DEFAULT_VENDOR_PUBLIC_KEY);
-    // The ephemeral test key is not the real vendor key, so this specific token
-    // does NOT validate against the baked default: fail-closed is preserved.
-    expect(result.valid).toBe(false);
-  });
-
   it('stays fail-closed: a tampered/foreign token degrades to Free under the baked default', () => {
     delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
     const token = makeToken(VALID_PAYLOAD, privateKey); // signed by a non-vendor key
