@@ -27,18 +27,25 @@
  */
 
 import { verify } from 'node:crypto';
+import { DEFAULT_VENDOR_PUBLIC_KEY } from './vendor-public-key.js';
 
 /**
- * Vendor Ed25519 public key (PEM), read from REVDEV_LICENSE_PUBLIC_KEY at
- * call time (tests set the env var after import). To mint a fresh keypair:
+ * Vendor Ed25519 public key (PEM) used to verify license JWTs.
+ *
+ * Falls back to the baked-in DEFAULT_VENDOR_PUBLIC_KEY so activation succeeds
+ * with only REVEALUI_LICENSE_KEY set (no second env var on the happy path).
+ * REVDEV_LICENSE_PUBLIC_KEY overrides the default for key rotation or testing;
+ * an empty/whitespace override is treated as unset and falls back to the default.
+ * To mint a fresh keypair:
  *
  *   pnpm exec tsx scripts/issue-license.ts --generate-keypair
  *
- * That writes both halves to revvault and prints the PEM-formatted public
- * key to copy into the daemon's environment / Studio bundle.
+ * That writes both halves to revvault and prints the PEM-formatted public key;
+ * refresh DEFAULT_VENDOR_PUBLIC_KEY (in vendor-public-key.ts) on rotation.
  */
 export function getVendorPublicKey(): string {
-  return process.env.REVDEV_LICENSE_PUBLIC_KEY ?? '';
+  const override = process.env.REVDEV_LICENSE_PUBLIC_KEY;
+  return override?.trim() ? override : DEFAULT_VENDOR_PUBLIC_KEY;
 }
 
 const VALID_TIERS = new Set(['pro', 'max', 'enterprise']);
