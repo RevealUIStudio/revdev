@@ -76,12 +76,11 @@ jobs:
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS ships ad-hoc/unsigned until Apple Developer ID + notarization are provisioned (tracked internally).
+          # With APPLE_* absent, tauri's bundler skips code-signing (keychain -> None) and produces an unsigned
+          # .app/.dmg; passing an invalid/unprovisioned APPLE_CERTIFICATE instead hard-fails the bundle at `security
+          # import`. Restore the 6 APPLE_* secrets here once a real Developer ID cert lands. Same unsigned posture as
+          # Windows (SmartScreen). Does NOT touch TAURI_SIGNING_* (updater key, workflow env above) or license signing.
         with:
           projectPath: apps/studio
           tauriScript: pnpm tauri
