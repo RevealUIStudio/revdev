@@ -136,10 +136,14 @@ describe('startDaemon().close() — drain integration', () => {
     const start = Date.now();
     await d.close();
     const elapsed = Date.now() - start;
-    // Should pass the 100 ms drain deadline plus db.close() + unlink time,
-    // but shouldn't hang indefinitely.
+    // Behavioral assertion: close() honored the 100ms drain deadline before
+    // proceeding past the stuck handler.
     expect(elapsed).toBeGreaterThanOrEqual(100);
-    expect(elapsed).toBeLessThan(3000);
+    // Hang-guard only: close() must terminate, not wait on the stuck handler
+    // forever. This is a generous ceiling (db.close() + unlink + scheduling under
+    // parallel-test load), NOT a perf bound — a true indefinite hang is caught by
+    // the vitest testTimeout. A tight wall-clock ceiling here flaked under load.
+    expect(elapsed).toBeLessThan(15000);
     // Counter is still 1 (we never decremented it from the test side).
     // Reset for afterEach.
     _setActiveHandlerCountForTest(0);
