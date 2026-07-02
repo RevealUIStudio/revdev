@@ -116,3 +116,40 @@ describe('verifyLicenseJWT — jti revocation hook', () => {
     expect(result.valid).toBe(true);
   });
 });
+
+describe('getVendorPublicKey — baked default + override', () => {
+  it('falls back to the baked default when REVDEV_LICENSE_PUBLIC_KEY is unset', () => {
+    delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
+    const key = getVendorPublicKey();
+    expect(key).toBe(DEFAULT_VENDOR_PUBLIC_KEY);
+    expect(key.startsWith('-----BEGIN PUBLIC KEY-----')).toBe(true);
+  });
+
+  it('treats an empty/whitespace override as unset and uses the baked default', () => {
+    process.env.REVDEV_LICENSE_PUBLIC_KEY = '   ';
+    expect(getVendorPublicKey()).toBe(DEFAULT_VENDOR_PUBLIC_KEY);
+  });
+
+  it('uses REVDEV_LICENSE_PUBLIC_KEY as an override when set', () => {
+    process.env.REVDEV_LICENSE_PUBLIC_KEY = publicKey;
+    expect(getVendorPublicKey()).toBe(publicKey);
+  });
+
+  it('activation succeeds against the baked default for a token it signed', () => {
+    // A token signed by the key whose public half IS the baked default verifies
+    // with no env var set — the happy path a v0.1.1 buyer hits.
+    const token = makeToken(VALID_PAYLOAD, privateKey);
+    const result = verifyLicenseJWT(token, DEFAULT_VENDOR_PUBLIC_KEY);
+    // The ephemeral test key is not the real vendor key, so this specific token
+    // does NOT validate against the baked default: fail-closed is preserved.
+    expect(result.valid).toBe(false);
+  });
+
+  it('stays fail-closed: a tampered/foreign token degrades to Free under the baked default', () => {
+    delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
+    const token = makeToken(VALID_PAYLOAD, privateKey); // signed by a non-vendor key
+    const result = verifyLicenseJWT(token, getVendorPublicKey());
+    expect(result.valid).toBe(false);
+    expect(result.tier).toBe('free');
+  });
+});
