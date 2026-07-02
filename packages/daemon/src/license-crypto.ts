@@ -45,7 +45,7 @@ import { DEFAULT_VENDOR_PUBLIC_KEY } from './vendor-public-key.js';
  */
 export function getVendorPublicKey(): string {
   const override = process.env.REVDEV_LICENSE_PUBLIC_KEY;
-  return override && override.trim() ? override : DEFAULT_VENDOR_PUBLIC_KEY;
+  return override?.trim() ? override : DEFAULT_VENDOR_PUBLIC_KEY;
 }
 
 const VALID_TIERS = new Set(['pro', 'max', 'enterprise']);
