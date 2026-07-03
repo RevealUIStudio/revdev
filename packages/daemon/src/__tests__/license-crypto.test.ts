@@ -1,6 +1,7 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isRevokedJti, verifyLicenseJWT } from '../license-crypto.js';
+import { getVendorPublicKey, isRevokedJti, verifyLicenseJWT } from '../license-crypto.js';
+import { DEFAULT_VENDOR_PUBLIC_KEY } from '../vendor-public-key.js';
 
 function makeToken(
   payload: Record<string, unknown>,
@@ -113,5 +114,32 @@ describe('verifyLicenseJWT — jti revocation hook', () => {
     const token = makeToken({ ...VALID_PAYLOAD, jti: 'clean-jti-1234' }, privateKey);
     const result = verifyLicenseJWT(token, publicKey);
     expect(result.valid).toBe(true);
+  });
+});
+
+describe('getVendorPublicKey — baked default + override', () => {
+  it('falls back to the baked default when REVDEV_LICENSE_PUBLIC_KEY is unset', () => {
+    delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
+    const key = getVendorPublicKey();
+    expect(key).toBe(DEFAULT_VENDOR_PUBLIC_KEY);
+    expect(key.startsWith('-----BEGIN PUBLIC KEY-----')).toBe(true);
+  });
+
+  it('treats an empty/whitespace override as unset and uses the baked default', () => {
+    process.env.REVDEV_LICENSE_PUBLIC_KEY = '   ';
+    expect(getVendorPublicKey()).toBe(DEFAULT_VENDOR_PUBLIC_KEY);
+  });
+
+  it('uses REVDEV_LICENSE_PUBLIC_KEY as an override when set', () => {
+    process.env.REVDEV_LICENSE_PUBLIC_KEY = publicKey;
+    expect(getVendorPublicKey()).toBe(publicKey);
+  });
+
+  it('stays fail-closed: a tampered/foreign token degrades to Free under the baked default', () => {
+    delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
+    const token = makeToken(VALID_PAYLOAD, privateKey); // signed by a non-vendor key
+    const result = verifyLicenseJWT(token, getVendorPublicKey());
+    expect(result.valid).toBe(false);
+    expect(result.tier).toBe('free');
   });
 });
