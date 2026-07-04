@@ -278,6 +278,18 @@ async function runPrune(
       RETURNING id`,
     [hard],
   );
+  // Prune stale signature telemetry events. Use the same hardDeleteDays
+  // threshold: these rows are low-value after the session window closes.
+  const prunedTelemetry = await db.query<{ id: number }>(
+    `DELETE FROM events
+      WHERE event_type = 'identity.signature_status'
+        AND created_at < NOW() - INTERVAL '1 day' * $1
+      RETURNING id`,
+    [hard],
+  );
+  if (prunedTelemetry.rows.length > 0) {
+    log.debug('pruned signature telemetry events', { count: prunedTelemetry.rows.length });
+  }
   pruneState.lastRunAt = new Date();
   pruneState.lastAgedCount = aged.rows.length;
   pruneState.lastDeletedCount = deleted.rows.length;
