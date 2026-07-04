@@ -1867,6 +1867,11 @@ export async function startDaemon(
         // than a fully-verified envelope is rejected with -32003 before the
         // handler runs, mirroring the license-guard block above.
         const verification = await verifyOrWarn(req, db, ctx);
+        // P2 telemetry (ADR 2026-05-16 §Q5). Record the per-RPC signature status
+        // for every non-exempt method BEFORE any accept/reject below, so the
+        // 'none'/'invalid' coverage rate is measured across ALL non-exempt
+        // traffic (the P3 flip gate). Best-effort — never blocks or fails the RPC.
+        emitSignatureTelemetry(req, db, ctx, verification);
         if (MUTATING_OR_CONTENT_METHODS.has(req.method) && verification !== 'verified') {
           socket.write(
             `${JSON.stringify({
