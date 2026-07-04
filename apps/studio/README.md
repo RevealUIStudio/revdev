@@ -1,6 +1,6 @@
 # RevealUI Studio
 
-> **Status:** Functional in dev — connects to the harness daemon, 506 frontend tests passing. Prebuilt binary release is **not** yet shipped (Tauri `studio-release.yml` CI in progress). Run locally via `pnpm tauri:dev` for now.
+> **Status:** Functional — connects to the harness daemon, 506 frontend tests passing. **Prebuilt binaries are published** on [GitHub Releases](https://github.com/RevealUIStudio/revdev/releases) (first release `studio-v0.1.0`, 2026-07-02; macOS · Linux · Windows). macOS builds are currently **unsigned / ad-hoc**, so Gatekeeper blocks the first launch — **right-click the app → Open** (or `System Settings → Privacy & Security → Open Anyway`) once to run it. In-app auto-update is **configured but not yet live** (the `releases.revealui.com` update endpoint is not serving manifests yet), so update by downloading the latest release manually for now. To run from source instead: `pnpm tauri:dev`.
 
 Native AI experience — agent coordination hub, local inference management, visual agent dashboard, DevPod manager, and secret vault.
 
