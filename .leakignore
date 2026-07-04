@@ -23,3 +23,10 @@ packages/daemon/src/__tests__/flows.test.ts               license-key
 # workboard, ADRs). Public readers without .jv see broken links — by
 # design; the file is for agent ramp, not customer docs.
 docs/INDEX.md                                              private-jv-repo
+
+# By-design: the issue/PR-body leak-scan gitleaks config (consumed by
+# .github/workflows/issue-leak-scan.yml) must name the private-path and
+# username literals in its detection regexes + keywords to catch them in
+# issue bodies. This is the config that enforces the rule, not a leak of
+# it (mirrors the ci.yml anti-regression entries).
+.gitleaks.issues.toml                   lit-username,abs-home-path,private-jv-repo,private-jv-name
