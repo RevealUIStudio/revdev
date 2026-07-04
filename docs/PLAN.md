@@ -142,7 +142,7 @@ The concrete delivery of **product exit criterion #1** ("messages injected autom
 
 ### W8–W13 — UX + durability audit remediation (2026-06-23)
 
-Source of truth: [`audits/2026-06-23-ux-durability-audit.md`](./audits/2026-06-23-ux-durability-audit.md) — 182 confirmed defects (7 critical, 44 high) across Studio (React + Tauri Rust), Console (Go), the harness daemon, and protocol/bridge. The audit's "Map to existing plan" found most themes already have a home (Theme 1/2/5 + deploy-wizard highs → **W1**; signature/identity findings → **W2**; Neon dual-write findings → **W3**; ConfirmDialog/StatusDot primitives → **W4**; the Go proxy/TUI cluster → **W5**; MessageInbox + mail.broadcast atomicity → **W7**). The six workstreams below are the **net-new, previously-untracked** lanes the audit surfaced. Execution runs one branch + PR per ordered item against `test` (see the audit's "Execution task breakdown"); these workstreams track the cross-cutting capabilities those PRs build.
+Source of truth: an internal UX + durability audit (2026-06-23) spanning Studio (React + Tauri Rust), Console (Go), the harness daemon, and protocol/bridge; the full audit is tracked privately. Most surfaced themes already map to the existing workstreams (W1–W7); the six workstreams below are the **net-new, previously-untracked** lanes it added. Execution runs one branch + PR per ordered item against `test`; these workstreams track the cross-cutting capabilities those PRs build.
 
 | WS | Lane | Scope | Maps to audit | Status |
 |---|---|---|---|---|
