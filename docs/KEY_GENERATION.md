@@ -21,10 +21,11 @@ openssl rand -base64 24 > "$D/pw"
 cd ~/revfleet/revdev/apps/studio
 node_modules/.bin/tauri signer generate -w "$D/revdev-studio.key" --password "$(cat "$D/pw")"
 
-# Vault all three (revvault set reads stdin)
-revvault set revdev/tauri-signing-private-key          < "$D/revdev-studio.key"
-revvault set revdev/tauri-signing-private-key-password < "$D/pw"
-revvault set revdev/tauri-signing-public-key           < "$D/revdev-studio.key.pub"
+# Vault all three (revvault set reads stdin). Substitute the real revvault
+# paths from the internal key index for the placeholders below.
+revvault set <tauri-signing-private-key path>          < "$D/revdev-studio.key"
+revvault set <tauri-signing-private-key-password path> < "$D/pw"
+revvault set <tauri-signing-public-key path>           < "$D/revdev-studio.key.pub"
 
 # Mirror to CI secrets, then shred
 gh secret set TAURI_SIGNING_PRIVATE_KEY          -R RevealUIStudio/revdev < "$D/revdev-studio.key"
