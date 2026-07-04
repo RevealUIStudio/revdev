@@ -37,3 +37,18 @@
 # the real format; it trips the default generic-api-key rule but is illustrative,
 # not an issued credential. (Audit item 1, 2026-06-24.)
 713404b3093f98b258f82d4245049e36a66bc87b:docs/TROUBLESHOOTING.md:generic-api-key:97
+
+# --- Pre-rewrite lineage (2026-07-04 history rewrite) ---
+# The same findings under their PRE-rewrite commit SHAs. Inert on the
+# rewritten history (those SHAs no longer exist there), but they keep
+# gitleaks green on clones/refs that still carry the pre-rewrite lineage
+# (gitleaks scans all refs). Drop this section once all pre-rewrite
+# branches are re-cut and stale refs are pruned.
+5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:102
+5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:109
+173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:102
+173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:109
+173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/coordination.test.ts:generic-api-key:69
+5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/coordination.test.ts:generic-api-key:69
+0e06d76a51d3705228a49be6c928c6f59cfb2046:packages/daemon/src/__tests__/e2e-ipc.test.ts:generic-api-key:80
+59dc05ae1bb76770159111480c681ea74936e735:docs/TROUBLESHOOTING.md:generic-api-key:97
