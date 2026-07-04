@@ -500,6 +500,47 @@ function asStringArray(v: unknown): string[] {
 const SIG_TS_WINDOW_SECS = 60;
 const NONCE_SWEEP_WINDOW_MINUTES = 10;
 
+/**
+ * P2 signature-status telemetry (ADR 2026-05-16 §Q5). Emits one
+ * `identity.signature_status` event per NON-EXEMPT RPC capturing whether the
+ * call carried a fully-verified Ed25519 signature (`verified` / `none` /
+ * `invalid`) plus whether the method already hard-requires a signature
+ * (`required` = in MUTATING_OR_CONTENT_METHODS). Purely observational — it
+ * changes no accept/reject behavior. Consumed during the P2 soak to measure
+ * signed-coverage per agent before the P3 mandatory-enforcement flip.
+ *
+ * Fire-and-forget: PGlite enqueues the INSERT synchronously, so any later read
+ * on the same db observes it; not awaited, so it adds no latency to the RPC.
+ * A floating `.catch` swallows failures — telemetry can never throw into or
+ * fail the dispatch path. `agent_id` is NOT NULL, so unauthenticated calls
+ * record the `'unbound'` sentinel.
+ */
+function emitSignatureTelemetry(
+  req: RpcRequest,
+  db: PGlite,
+  ctx: SocketContext,
+  verification: VerificationResult,
+): void {
+  if (IDENTITY_EXEMPT.has(req.method)) return;
+  const actor =
+    ctx.agentId ??
+    (req.params && typeof req.params.actorAgentId === 'string'
+      ? req.params.actorAgentId
+      : 'unbound');
+  const payload = {
+    method: req.method,
+    verification,
+    required: MUTATING_OR_CONTENT_METHODS.has(req.method),
+  };
+  db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+    actor,
+    'identity.signature_status',
+    JSON.stringify(payload),
+  ]).catch((err) => {
+    log.debug('signature telemetry emit failed', { method: req.method, err });
+  });
+}
+
 async function verifyOrWarn(
   req: RpcRequest,
   db: PGlite,
