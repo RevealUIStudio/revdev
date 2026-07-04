@@ -9,7 +9,7 @@ All keys are stored in revvault (encrypted at rest).
 
 Signs Studio desktop binaries for auto-update verification.
 
-> **STATUS: DONE 2026-06-11.** The keypair exists. Private key, password, and public key live in revvault at `revdev/tauri-signing-{private-key,private-key-password,public-key}`; the public key is embedded in `apps/studio/src-tauri/tauri.conf.json` → `plugins.updater.pubkey`; the `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` repo secrets are set.
+> **STATUS: DONE 2026-06-11.** The keypair exists and is stored in revvault (exact store paths are kept in the internal key index, not this public runbook); the public key is embedded in `apps/studio/src-tauri/tauri.conf.json` → `plugins.updater.pubkey`; the `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` repo secrets are set.
 >
 > **Re-running this section ROTATES the key.** Installed Studio builds verify updates against the embedded public key — a new keypair orphans every existing install until it manually reinstalls. Only rotate on compromise, and treat it as a breaking release event.
 
