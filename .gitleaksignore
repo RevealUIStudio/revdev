@@ -11,26 +11,26 @@
 # also unlock, by design. They exist in history from two commits.
 
 # guard.test.ts — test license keys for max/enterprise tier paths
-5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:102
-5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:109
+6efe00441ca42be580df209a6848f340b0f9c3c9:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:102
+6efe00441ca42be580df209a6848f340b0f9c3c9:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:109
 173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:102
 173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/guard.test.ts:generic-api-key:109
 
 # coordination.test.ts — test license key required for license-gated coordination RPCs
 173d460359d0378cd2b6d2aeb6526c5149437b31:packages/daemon/src/__tests__/coordination.test.ts:generic-api-key:69
-5afa81cc5e5a4614ce9b1748172caaa9ab4e7752:packages/daemon/src/__tests__/coordination.test.ts:generic-api-key:69
+6efe00441ca42be580df209a6848f340b0f9c3c9:packages/daemon/src/__tests__/coordination.test.ts:generic-api-key:69
 
 # e2e-ipc.test.ts — test license key set in beforeAll() for end-to-end IPC suite.
-# Historical: commit 0e06d76 (PR #18, 2026-04-20) had a literal REVEALUI_LICENSE_KEY
+# Historical: commit 2a00283 (PR #18, 2026-04-20; re-keyed post history-rewrite) had a literal REVEALUI_LICENSE_KEY
 # assignment at line 80 with a fake test-fixture value matching the RVUI-{tier}-{32-hex}
 # format. Subsequent commits refactored this into test-license-helper.ts; the literal
 # no longer exists in the current file. This fingerprint suppresses the historical-only
 # finding so wide-range pull_request gitleaks scans (e.g. test->main promotion sync PRs)
 # don't trip on it.
-0e06d76a51d3705228a49be6c928c6f59cfb2046:packages/daemon/src/__tests__/e2e-ipc.test.ts:generic-api-key:80
+2a00283dbcc9dfb4fcc1cd3426eb37960319e391:packages/daemon/src/__tests__/e2e-ipc.test.ts:generic-api-key:80
 
 # TROUBLESHOOTING.md — documentation example license key. The eyJ-prefixed
 # EdDSA-JWT example value for REVEALUI_LICENSE_KEY is shown so users recognize
 # the real format; it trips the default generic-api-key rule but is illustrative,
 # not an issued credential. (Audit item 1, 2026-06-24.)
-59dc05ae1bb76770159111480c681ea74936e735:docs/TROUBLESHOOTING.md:generic-api-key:97
+713404b3093f98b258f82d4245049e36a66bc87b:docs/TROUBLESHOOTING.md:generic-api-key:97
