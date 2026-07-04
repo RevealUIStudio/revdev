@@ -95,8 +95,8 @@ Add these to RevealUIStudio/revdev → Settings → Secrets → Actions:
 
 | Secret | Value Source | Status |
 |--------|-------------|--------|
-| `TAURI_SIGNING_PRIVATE_KEY` | `revvault get --full revdev/tauri-signing-private-key` | ✅ set 2026-06-11 |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | `revvault get --full revdev/tauri-signing-private-key-password` | ✅ set 2026-06-11 |
+| `TAURI_SIGNING_PRIVATE_KEY` | revvault — Tauri signing private key (see internal key index) | ✅ set 2026-06-11 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | revvault — Tauri signing private-key password (see internal key index) | ✅ set 2026-06-11 |
 
 macOS-only (when ready for Apple distribution):
 | Secret | Value Source |
