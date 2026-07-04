@@ -5,6 +5,20 @@ All notable changes to RevealUI Studio are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates are ISO 8601 (UTC).
 
+## [0.1.1] — 2026-07-03
+
+### Fixed
+
+- Daemon license activation now works with only the license JWT: the vendor
+  public key ships baked into the daemon as the default (override via
+  REVDEV_LICENSE_PUBLIC_KEY unchanged). Previously a fresh install without the
+  public-key env var fell back to the Free tier silently.
+
+### Changed
+
+- Test-suite hardening: resource-aware bounded concurrency and a de-brittled
+  shutdown-drain hang guard.
+
 ## [0.1.0] — 2026-07-01
 
 First public release of RevealUI Studio — a native desktop AI editor and
