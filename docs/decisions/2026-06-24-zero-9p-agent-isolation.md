@@ -3,7 +3,7 @@
 - **Status:** Accepted (2026-06-24)
 - **Supersedes:** the implicit single-trust-domain assumption in
   `docs/decisions/2026-06-23-daemon-in-wsl-zero-9p.md` (the parent zero-9P ADR).
-- **Tracking:** `docs/lanes/multi-agent-filesystem-isolation/plan.md`
+- **Tracking:** RevealUI Studio internal coordination hub (multi-agent filesystem-isolation lane)
 
 ## Context
 
