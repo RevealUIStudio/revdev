@@ -42,8 +42,8 @@ shred -u "$D/pw" "$D/revdev-studio.key" && rm -rf "$D"
 Signs customer license keys (Ed25519-signed JWTs — the daemon rejects legacy `RVUI.v2.*` / `RVUI-*` formats) so the daemon can verify them. <!-- doclint:allow-legacy-format -->
 
 ```bash
-# Mint Ed25519 keypair; auto-stores both halves in revvault at
-# revdev/license-signing-{private,public}-key and prints the public PEM.
+# Mint Ed25519 keypair; auto-stores both halves in revvault (exact store paths
+# are kept in the internal key index) and prints the public PEM.
 # No plaintext key files ever land on disk.
 cd ~/revfleet/revdev
 npx tsx scripts/issue-license.ts --generate-keypair
