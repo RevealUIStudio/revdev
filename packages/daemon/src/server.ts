@@ -278,6 +278,18 @@ async function runPrune(
       RETURNING id`,
     [hard],
   );
+  // Prune stale signature telemetry events. Use the same hardDeleteDays
+  // threshold: these rows are low-value after the session window closes.
+  const prunedTelemetry = await db.query<{ id: number }>(
+    `DELETE FROM events
+      WHERE event_type = 'identity.signature_status'
+        AND created_at < NOW() - INTERVAL '1 day' * $1
+      RETURNING id`,
+    [hard],
+  );
+  if (prunedTelemetry.rows.length > 0) {
+    log.debug('pruned signature telemetry events', { count: prunedTelemetry.rows.length });
+  }
   pruneState.lastRunAt = new Date();
   pruneState.lastAgedCount = aged.rows.length;
   pruneState.lastDeletedCount = deleted.rows.length;
@@ -487,6 +499,47 @@ function asStringArray(v: unknown): string[] {
 
 const SIG_TS_WINDOW_SECS = 60;
 const NONCE_SWEEP_WINDOW_MINUTES = 10;
+
+/**
+ * P2 signature-status telemetry (ADR 2026-05-16 §Q5). Emits one
+ * `identity.signature_status` event per NON-EXEMPT RPC capturing whether the
+ * call carried a fully-verified Ed25519 signature (`verified` / `none` /
+ * `invalid`) plus whether the method already hard-requires a signature
+ * (`required` = in MUTATING_OR_CONTENT_METHODS). Purely observational — it
+ * changes no accept/reject behavior. Consumed during the P2 soak to measure
+ * signed-coverage per agent before the P3 mandatory-enforcement flip.
+ *
+ * Fire-and-forget: PGlite enqueues the INSERT synchronously, so any later read
+ * on the same db observes it; not awaited, so it adds no latency to the RPC.
+ * A floating `.catch` swallows failures — telemetry can never throw into or
+ * fail the dispatch path. `agent_id` is NOT NULL, so unauthenticated calls
+ * record the `'unbound'` sentinel.
+ */
+function emitSignatureTelemetry(
+  req: RpcRequest,
+  db: PGlite,
+  ctx: SocketContext,
+  verification: VerificationResult,
+): void {
+  if (IDENTITY_EXEMPT.has(req.method)) return;
+  const actor =
+    ctx.agentId ??
+    (req.params && typeof req.params.actorAgentId === 'string'
+      ? req.params.actorAgentId
+      : 'unbound');
+  const payload = {
+    method: req.method,
+    verification,
+    required: MUTATING_OR_CONTENT_METHODS.has(req.method),
+  };
+  db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+    actor,
+    'identity.signature_status',
+    JSON.stringify(payload),
+  ]).catch((err) => {
+    log.debug('signature telemetry emit failed', { method: req.method, err });
+  });
+}
 
 async function verifyOrWarn(
   req: RpcRequest,
@@ -1855,6 +1908,11 @@ export async function startDaemon(
         // than a fully-verified envelope is rejected with -32003 before the
         // handler runs, mirroring the license-guard block above.
         const verification = await verifyOrWarn(req, db, ctx);
+        // P2 telemetry (ADR 2026-05-16 §Q5). Record the per-RPC signature status
+        // for every non-exempt method BEFORE any accept/reject below, so the
+        // 'none'/'invalid' coverage rate is measured across ALL non-exempt
+        // traffic (the P3 flip gate). Best-effort — never blocks or fails the RPC.
+        emitSignatureTelemetry(req, db, ctx, verification);
         if (MUTATING_OR_CONTENT_METHODS.has(req.method) && verification !== 'verified') {
           socket.write(
             `${JSON.stringify({
