@@ -33,6 +33,8 @@ Download the latest release for your platform from [GitHub Releases](https://git
 | Linux (AppImage) | `RevealUI-Studio_x.x.x_amd64.AppImage` |
 | Windows | `RevealUI-Studio_x.x.x_x64-setup.exe` |
 
+> **macOS note:** the macOS `.dmg` builds are currently unsigned / ad-hoc, so Gatekeeper blocks the first launch. **Right-click the app → Open** (or approve it under `System Settings → Privacy & Security → Open Anyway`) once; subsequent launches work normally. Signed/notarized macOS builds are planned. In-app auto-update is not live yet — grab new versions from the Releases page manually for now.
+
 ### 2. Install the Harness Daemon
 
 The daemon is the coordination brain — Studio connects to it for all agent operations.
