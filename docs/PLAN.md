@@ -153,7 +153,7 @@ Source of truth: an internal UX + durability audit (2026-06-23) spanning Studio 
 | W12 | Docs-accuracy CI gate | Beyond the one-time doc fix: CI tooling that fails on doc-vs-code drift. First piece shipped: `scripts/doc-lint-license-format.mjs` (fails on rejected `RVUI.v2.*`/`RVUI-*` license formats in tracked Markdown, with explicit allow-markers for rejection-documenting mentions). Extend to env-var coverage + emitted-string verification. | Theme 1 durability | **IN PROGRESS** — doc-lint landed with item 1 | <!-- doclint:allow-legacy-format -->
 | W13 | Accessibility | At-a-glance health invisible to assistive tech / ambiguous to colorblind users. Fix `StatusDot` once (`role="img"` + `aria-label` + non-color shape/icon cue); distinct text labels per status (resolve two-orange StepDeploy states); console per-session status text. | Theme 8 | **OPEN** — item 11 (`a11y/status-primitives`) |
 
-**Owner-gated items carried out of the audit** (do not action without sign-off): signature fail-open → reject posture (W2/item 9); deploy-wizard generated-secret at-rest storage location (item 7); known_hosts/TOFU strictness for the Studio SSH client (item 10); `total_sessions` historical backfill (data work, not a code fix); and the **separate removal** of `RvuiUpgradePanel.tsx` (POSTs real payment for the cancelled RevealCoin/RVC product — fix is deletion + entry-point removal, confirm mount point first).
+**Owner-gated items carried out of the audit** (do not action without sign-off): a set of hardening, data-migration, and component-removal items is tracked privately and must not be actioned without owner sign-off. See the internal audit tracker for the itemized list.
 
 ---
 
