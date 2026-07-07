@@ -10,10 +10,10 @@ import type { HealthCheck } from '../../lib/health-api';
 import StatusDot from '../ui/StatusDot';
 
 const STATUS_MAP = {
-  healthy: { dot: 'ok', label: 'Healthy', color: 'text-emerald-400' },
-  degraded: { dot: 'warn', label: 'Degraded', color: 'text-amber-400' },
-  unhealthy: { dot: 'error', label: 'Unhealthy', color: 'text-red-400' },
-  unreachable: { dot: 'off', label: 'Unreachable', color: 'text-neutral-500' },
+  healthy: { dot: 'ok', label: 'Healthy', color: 'text-success' },
+  degraded: { dot: 'warn', label: 'Degraded', color: 'text-warning' },
+  unhealthy: { dot: 'error', label: 'Unhealthy', color: 'text-error' },
+  unreachable: { dot: 'off', label: 'Unreachable', color: 'text-fg-subtle' },
 } as const;
 
 const CHECK_DOT_MAP = {
@@ -23,9 +23,9 @@ const CHECK_DOT_MAP = {
 } as const satisfies Record<HealthCheck['status'], 'ok' | 'warn' | 'error'>;
 
 const CHECK_COLOR_MAP = {
-  healthy: 'text-emerald-400',
-  degraded: 'text-amber-400',
-  unhealthy: 'text-red-400',
+  healthy: 'text-success',
+  degraded: 'text-warning',
+  unhealthy: 'text-error',
 } as const satisfies Record<HealthCheck['status'], string>;
 
 function formatUptime(seconds: number): string {
@@ -54,9 +54,9 @@ export default function HealthCard() {
 
   if (loading && !health) {
     return (
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <div className="h-5 w-20 animate-pulse rounded bg-neutral-800" />
-        <div className="mt-3 h-4 w-32 animate-pulse rounded bg-neutral-800" />
+      <div className="rounded-lg border border-edge bg-surface-1 p-4">
+        <div className="h-5 w-20 animate-pulse rounded bg-surface-2" />
+        <div className="mt-3 h-4 w-32 animate-pulse rounded bg-surface-2" />
       </div>
     );
   }
@@ -66,23 +66,23 @@ export default function HealthCard() {
   const checks = normalizeChecks(health?.checks);
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+    <div className="rounded-lg border border-edge bg-surface-1 p-4">
       <div className="flex items-center gap-2">
         <StatusDot status={info.dot as 'ok' | 'warn' | 'error' | 'off'} size="md" decorative />
-        <h3 className="text-sm font-medium text-neutral-200">API Health</h3>
+        <h3 className="text-sm font-medium text-fg">API Health</h3>
       </div>
 
       <p className={`mt-2 text-xs font-medium ${info.color}`}>{info.label}</p>
 
       {health?.uptime != null ? (
-        <p className="mt-0.5 text-xs text-neutral-500">Uptime: {formatUptime(health.uptime)}</p>
+        <p className="mt-0.5 text-xs text-fg-subtle">Uptime: {formatUptime(health.uptime)}</p>
       ) : null}
 
       {checks.length > 0 ? (
         <div className="mt-2 space-y-1">
           {checks.map((check) => (
             <div key={check.name} className="flex items-center justify-between text-xs">
-              <span className="text-neutral-400">{check.name}</span>
+              <span className="text-fg-muted">{check.name}</span>
               <span className={`flex items-center gap-1 ${CHECK_COLOR_MAP[check.status]}`}>
                 <StatusDot status={CHECK_DOT_MAP[check.status]} size="sm" decorative />
                 {check.status}

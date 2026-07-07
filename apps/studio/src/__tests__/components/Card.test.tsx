@@ -11,14 +11,14 @@ describe('Card', () => {
   it('applies default variant styles', () => {
     const { container } = render(<Card>Content</Card>);
     const card = container.firstChild as HTMLElement;
-    expect(card.className).toContain('bg-neutral-900');
-    expect(card.className).toContain('border-neutral-800');
+    expect(card.className).toContain('bg-surface-1');
+    expect(card.className).toContain('border-edge');
   });
 
   it('applies elevated variant styles', () => {
     const { container } = render(<Card variant="elevated">Content</Card>);
     const card = container.firstChild as HTMLElement;
-    expect(card.className).toContain('border-neutral-700');
+    expect(card.className).toContain('border-edge-strong');
     expect(card.className).toContain('shadow-lg');
   });
 

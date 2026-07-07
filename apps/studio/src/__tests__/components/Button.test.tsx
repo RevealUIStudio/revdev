@@ -45,31 +45,31 @@ describe('Button', () => {
   it('applies primary variant styles', () => {
     render(<Button variant="primary">Primary</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('bg-orange-600');
+    expect(button.className).toContain('bg-brand');
   });
 
   it('applies secondary variant styles by default', () => {
     render(<Button>Default</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('bg-neutral-800');
+    expect(button.className).toContain('bg-surface-2');
   });
 
   it('applies ghost variant styles', () => {
     render(<Button variant="ghost">Ghost</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('text-neutral-400');
+    expect(button.className).toContain('text-fg-muted');
   });
 
   it('applies danger variant styles', () => {
     render(<Button variant="danger">Delete</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('text-red-400');
+    expect(button.className).toContain('text-error');
   });
 
   it('applies success variant styles', () => {
     render(<Button variant="success">Save</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('bg-green-700');
+    expect(button.className).toContain('bg-success');
   });
 
   it('applies size styles', () => {

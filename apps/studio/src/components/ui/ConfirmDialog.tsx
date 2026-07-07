@@ -67,7 +67,7 @@ export default function ConfirmDialog({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-300 hover:bg-neutral-800"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-fg-muted hover:bg-surface-2"
           >
             {cancelLabel}
           </button>
@@ -75,18 +75,18 @@ export default function ConfirmDialog({
             type="button"
             onClick={handleConfirm}
             disabled={confirmDisabled}
-            className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-md bg-error px-3 py-1.5 text-sm font-medium text-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {confirmLabel}
           </button>
         </>
       }
     >
-      <div className="space-y-3 text-sm text-neutral-300">
+      <div className="space-y-3 text-sm text-fg-muted">
         <div>{body}</div>
 
         {affectedItems && affectedItems.length > 0 && (
-          <ul className="max-h-40 list-inside list-disc overflow-y-auto rounded bg-neutral-900/60 p-2 font-mono text-xs text-neutral-400">
+          <ul className="max-h-40 list-inside list-disc overflow-y-auto rounded bg-surface-1/60 p-2 font-mono text-xs text-fg-muted">
             {affectedItems.map((item) => (
               <li key={item} className="truncate">
                 {item}
@@ -97,8 +97,8 @@ export default function ConfirmDialog({
 
         {needsTyping && (
           <label htmlFor={inputId} className="block space-y-1">
-            <span className="text-xs text-neutral-400">
-              Type <span className="font-mono text-neutral-200">{typeToConfirm}</span> to confirm:
+            <span className="text-xs text-fg-muted">
+              Type <span className="font-mono text-fg">{typeToConfirm}</span> to confirm:
             </span>
             <input
               id={inputId}
@@ -108,7 +108,7 @@ export default function ConfirmDialog({
               autoComplete="off"
               // biome-ignore lint/a11y/noAutofocus: focusing the gate input is the expected UX
               autoFocus
-              className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1 font-mono text-sm text-neutral-100 outline-none focus:border-red-500"
+              className="w-full rounded border border-edge bg-surface-1 px-2 py-1 font-mono text-sm text-fg outline-none focus:border-error"
             />
           </label>
         )}

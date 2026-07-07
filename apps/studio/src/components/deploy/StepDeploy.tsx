@@ -63,17 +63,6 @@ function buildApiEnvVars(data: WizardData): Record<string, string> {
     vars.EMAIL_FROM = data.emailFrom;
   }
 
-  // Supabase (when enabled)
-  if (data.supabaseUrl) {
-    vars.NEXT_PUBLIC_SUPABASE_URL = data.supabaseUrl;
-  }
-  if (data.supabasePublishableKey) {
-    vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = data.supabasePublishableKey;
-  }
-  if (data.supabaseSecretKey) {
-    vars.SUPABASE_SECRET_KEY = data.supabaseSecretKey;
-  }
-
   return vars;
 }
 
@@ -105,13 +94,6 @@ function buildAdminEnvVars(data: WizardData): Record<string, string> {
 
   // Signup control
   vars.REVEALUI_SIGNUP_OPEN = String(data.signupOpen);
-
-  // Supabase for admin AI features
-  if (data.supabaseUrl) {
-    vars.NEXT_PUBLIC_SUPABASE_URL = data.supabaseUrl;
-    if (data.supabasePublishableKey)
-      vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = data.supabasePublishableKey;
-  }
 
   return vars;
 }
@@ -279,28 +261,28 @@ export default function StepDeploy({ config, data, onNext }: StepDeployProps) {
 
 function AppCard({ name, state }: { name: AppName; state: AppState }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-neutral-700 bg-neutral-900/50 px-4 py-3">
+    <div className="flex items-center justify-between rounded-md border border-edge bg-surface-1/50 px-4 py-3">
       <div className="flex items-center gap-3">
         <StatusDot status={state.status} />
         <div>
-          <p className="text-sm font-medium text-neutral-200">{APP_LABELS[name]}</p>
-          {state.url && <p className="text-xs font-mono text-neutral-400">{state.url}</p>}
-          {state.error && <p className="text-xs text-red-400">{state.error}</p>}
+          <p className="text-sm font-medium text-fg">{APP_LABELS[name]}</p>
+          {state.url && <p className="text-xs font-mono text-fg-muted">{state.url}</p>}
+          {state.error && <p className="text-xs text-error">{state.error}</p>}
         </div>
       </div>
-      <span className="text-xs text-neutral-500">{STATUS_LABELS[state.status]}</span>
+      <span className="text-xs text-fg-subtle">{STATUS_LABELS[state.status]}</span>
     </div>
   );
 }
 
 function StatusDot({ status }: { status: AppStatus }): React.ReactElement {
   const colors: Record<AppStatus, string> = {
-    idle: 'bg-neutral-600',
-    'pushing-env': 'bg-yellow-500 animate-pulse',
-    deploying: 'bg-orange-500 animate-pulse',
-    polling: 'bg-amber-300 animate-pulse',
-    ready: 'bg-green-500',
-    error: 'bg-red-500',
+    idle: 'bg-surface-3',
+    'pushing-env': 'bg-warning animate-pulse',
+    deploying: 'bg-warning animate-pulse',
+    polling: 'bg-warning animate-pulse',
+    ready: 'bg-success',
+    error: 'bg-error',
   };
 
   return (

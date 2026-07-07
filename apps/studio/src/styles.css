@@ -1,9 +1,83 @@
 @import "tailwindcss";
 @import "@revealui/presentation/tokens.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/inter-tight";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* ── Tailwind v4 Theme — maps --rvui-* tokens to utility classes ────────── */
+@theme {
+  /* Colors — Surfaces */
+  --color-surface-0: var(--rvui-surface-0);
+  --color-surface-1: var(--rvui-surface-1);
+  --color-surface-2: var(--rvui-surface-2);
+  --color-surface-3: var(--rvui-surface-3);
+
+  /* Colors — Brand (Cobalt) */
+  --color-brand: var(--rvui-brand);
+  --color-brand-hover: var(--rvui-brand-hover);
+  --color-brand-strong: var(--rvui-brand-strong);
+  --color-brand-soft: var(--rvui-brand-soft);
+  --color-brand-subtle: var(--rvui-brand-subtle);
+  --color-brand-text: var(--rvui-brand-text);
+  --color-brand-glow: var(--rvui-brand-glow);
+
+  /* Colors — Accent (Solar Amber) */
+  --color-accent: var(--rvui-accent);
+  --color-accent-hover: var(--rvui-accent-hover);
+  --color-accent-strong: var(--rvui-accent-strong);
+  --color-accent-soft: var(--rvui-accent-soft);
+  --color-accent-glow: var(--rvui-accent-glow);
+
+  /* Colors — Foreground (text) */
+  --color-fg: var(--rvui-text-0);
+  --color-fg-muted: var(--rvui-text-1);
+  --color-fg-subtle: var(--rvui-text-2);
+  --color-on-brand: var(--rvui-text-on-brand);
+  --color-on-accent: var(--rvui-text-on-accent);
+
+  /* Colors — Border */
+  --color-edge: var(--rvui-border);
+  --color-edge-subtle: var(--rvui-border-subtle);
+  --color-edge-strong: var(--rvui-border-strong);
+
+  /* Colors — Status */
+  --color-success: var(--rvui-success);
+  --color-success-subtle: var(--rvui-success-subtle);
+  --color-warning: var(--rvui-warning);
+  --color-warning-subtle: var(--rvui-warning-subtle);
+  --color-warning-text: var(--rvui-warning-text);
+  --color-error: var(--rvui-error);
+  --color-error-subtle: var(--rvui-error-subtle);
+  --color-info: var(--rvui-info);
+  --color-info-subtle: var(--rvui-info-subtle);
+
+  /* Typography */
+  --font-sans: var(--rvui-font-sans);
+  --font-mono: var(--rvui-font-mono);
+  --font-display: var(--rvui-font-display);
+
+  /* Radius */
+  --radius-sm: var(--rvui-radius-sm);
+  --radius-md: var(--rvui-radius-md);
+  --radius-lg: var(--rvui-radius-lg);
+  --radius-xl: var(--rvui-radius-xl);
+  --radius-full: var(--rvui-radius-full);
+
+  /* Shadows */
+  --shadow-sm: var(--rvui-shadow-sm);
+  --shadow-md: var(--rvui-shadow-md);
+  --shadow-lg: var(--rvui-shadow-lg);
+  --shadow-glow: var(--rvui-shadow-glow);
+  --shadow-glow-accent: var(--rvui-shadow-glow-accent);
+
+  /* Easing */
+  --ease-default: var(--rvui-ease);
+  --ease-in: var(--rvui-ease-in);
+  --ease-out: var(--rvui-ease-out);
+  --ease-spring: var(--rvui-ease-spring);
+}
 
 /* ── CodeMirror MergeView layout ──────────────────────────────────────────── */
-/* Make MergeView fill the parent container height. Each side scrolls          */
-/* independently; the gutter column is fixed-width.                            */
 
 .cm-mergeView {
   height: 100%;
@@ -23,10 +97,6 @@
 }
 
 /* ── Visible scrollbars on Linux WebKit (WSLg + webkit2gtk) ──────────────── */
-/* webkit2gtk's default overlay scrollbars are nearly invisible on Linux,    */
-/* especially under WSLg. Force a visible custom scrollbar across all        */
-/* WebKit/Blink. Tailwind `overflow-y-auto` provides the scroll behavior;    */
-/* this just makes the indicator visible.                                     */
 
 ::-webkit-scrollbar {
   width: 10px;
@@ -34,25 +104,24 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(23 23 23 / 0.5); /* neutral-900/50 */
+  background: oklch(0.16 0.03 260 / 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(64 64 64); /* neutral-700 */
+  background: var(--rvui-surface-3);
   border-radius: 5px;
-  border: 2px solid rgb(23 23 23); /* neutral-900 — creates inset look */
+  border: 2px solid var(--rvui-surface-0);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(82 82 82); /* neutral-600 */
+  background: var(--rvui-border-strong);
 }
 
 ::-webkit-scrollbar-corner {
-  background: rgb(23 23 23); /* neutral-900 */
+  background: var(--rvui-surface-0);
 }
 
-/* Firefox fallback (if Studio ever ships in non-WebKit context) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(64 64 64) rgb(23 23 23 / 0.5);
+  scrollbar-color: var(--rvui-surface-3) oklch(0.16 0.03 260 / 0.5);
 }

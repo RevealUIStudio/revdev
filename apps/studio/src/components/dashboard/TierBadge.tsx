@@ -5,10 +5,10 @@ interface TierBadgeProps {
 export default function TierBadge({ tier }: TierBadgeProps) {
   const color =
     tier === 'T1'
-      ? 'bg-orange-600/20 text-orange-400 border-orange-600/30'
+      ? 'bg-accent/20 text-accent border-accent/30'
       : tier === 'T0'
-        ? 'bg-neutral-700/30 text-neutral-400 border-neutral-600/30'
-        : 'bg-neutral-800 text-neutral-500 border-neutral-700';
+        ? 'bg-surface-3/30 text-fg-muted border-edge-strong/30'
+        : 'bg-surface-2 text-fg-subtle border-edge';
 
   return (
     <span

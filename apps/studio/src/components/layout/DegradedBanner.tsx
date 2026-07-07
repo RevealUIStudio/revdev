@@ -15,7 +15,7 @@ export default function DegradedBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-xs font-medium text-amber-200"
+      className="flex items-center gap-2 border-b border-warning/40 bg-warning/15 px-3 py-1.5 text-xs font-medium text-warning-text"
     >
       <svg
         className="size-4 shrink-0"

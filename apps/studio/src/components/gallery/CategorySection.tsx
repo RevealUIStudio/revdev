@@ -30,7 +30,7 @@ export default function CategorySection({
         className="flex w-full items-center gap-2 py-2 text-left"
       >
         <svg
-          className={`size-3.5 shrink-0 text-neutral-500 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+          className={`size-3.5 shrink-0 text-fg-subtle transition-transform ${collapsed ? '' : 'rotate-90'}`}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -39,10 +39,10 @@ export default function CategorySection({
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">
           {category.label}
         </h2>
-        <span className="text-xs text-neutral-600">{tileCount}</span>
+        <span className="text-xs text-fg-subtle">{tileCount}</span>
       </button>
 
       {!collapsed && (

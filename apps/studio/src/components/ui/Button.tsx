@@ -1,11 +1,11 @@
 import type { ButtonHTMLAttributes } from 'react';
 
 const variantStyles = {
-  primary: 'bg-orange-600 text-white font-medium hover:bg-orange-500',
-  secondary: 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700',
-  ghost: 'text-neutral-400 hover:text-neutral-200',
-  danger: 'bg-red-900/40 text-red-400 hover:bg-red-900/60',
-  success: 'bg-green-700 text-white font-medium hover:bg-green-600',
+  primary: 'bg-brand text-on-brand font-medium hover:bg-brand-hover',
+  secondary: 'bg-surface-2 text-fg-muted hover:bg-surface-3',
+  ghost: 'text-fg-muted hover:text-fg',
+  danger: 'bg-error/40 text-error hover:bg-error/60',
+  success: 'bg-success text-fg font-medium hover:brightness-110',
 } as const;
 
 const sizeStyles = {

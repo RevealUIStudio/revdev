@@ -66,34 +66,6 @@ describe('StepDatabase', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders Supabase checkbox', () => {
-    render(
-      <StepDatabase
-        config={MOCK_CONFIG}
-        data={MOCK_DATA}
-        onUpdateData={vi.fn()}
-        onNext={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Enable AI features (requires Supabase)')).toBeInTheDocument();
-  });
-
-  it('shows Supabase fields when checkbox is checked', () => {
-    render(
-      <StepDatabase
-        config={MOCK_CONFIG}
-        data={MOCK_DATA}
-        onUpdateData={vi.fn()}
-        onNext={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByText('Enable AI features (requires Supabase)'));
-
-    expect(screen.getByPlaceholderText('https://your-project.supabase.co')).toBeInTheDocument();
-  });
-
   it('Connect button is disabled when postgres URL is empty', () => {
     render(
       <StepDatabase

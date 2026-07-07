@@ -173,22 +173,6 @@ export default function TileIcon({ tileId }: { tileId: string }) {
     );
   }
 
-  // Supabase
-  if (tileId.startsWith('supabase')) {
-    return (
-      <svg
-        className={cls}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        aria-hidden="true"
-      >
-        <path d="M13.5 21.3c-.4.5-1.2.1-1.2-.6V13h7.6c.9 0 1.3-1.1.7-1.7L11.5 2.7c-.4-.5-1.2-.1-1.2.6V11H2.7c-.9 0-1.3 1.1-.7 1.7l9 8.6Z" />
-      </svg>
-    );
-  }
-
   // Fallback: generic launch icon
   return (
     <svg

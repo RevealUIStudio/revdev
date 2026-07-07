@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import NamespaceFilter from '../../components/vault/NamespaceFilter';
 
 describe('NamespaceFilter', () => {
-  const namespaces = ['stripe', 'neon', 'supabase'];
+  const namespaces = ['stripe', 'neon', 'vercel'];
 
   it('renders "Namespaces" label', () => {
     render(<NamespaceFilter namespaces={namespaces} active={null} onChange={vi.fn()} />);
@@ -39,15 +39,15 @@ describe('NamespaceFilter', () => {
   it('highlights active namespace', () => {
     render(<NamespaceFilter namespaces={namespaces} active="neon" onChange={vi.fn()} />);
     const neonButton = screen.getByText('neon');
-    expect(neonButton.className).toContain('bg-neutral-800');
-    expect(neonButton.className).toContain('text-neutral-100');
+    expect(neonButton.className).toContain('bg-surface-2');
+    expect(neonButton.className).toContain('text-fg');
   });
 
   it('highlights "All" when active is null', () => {
     render(<NamespaceFilter namespaces={namespaces} active={null} onChange={vi.fn()} />);
     const allButton = screen.getByText('All');
-    expect(allButton.className).toContain('bg-neutral-800');
-    expect(allButton.className).toContain('text-neutral-100');
+    expect(allButton.className).toContain('bg-surface-2');
+    expect(allButton.className).toContain('text-fg');
   });
 
   it('shows "No namespaces" when list is empty', () => {

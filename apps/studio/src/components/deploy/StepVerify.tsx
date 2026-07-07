@@ -150,17 +150,17 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
           ))}
         </div>
 
-        <div className="rounded-md border border-yellow-700/50 bg-yellow-900/20 p-3 text-xs text-yellow-400">
+        <div className="rounded-md border border-warning/50 bg-warning-subtle p-3 text-xs text-warning">
           <p className="font-medium">Cron jobs</p>
-          <p className="mt-1 text-yellow-500">
+          <p className="mt-1 text-warning">
             Verify that <code>apps/api/vercel.json</code> contains cron entries for{' '}
             <code>support-renewal-check</code> (daily) and <code>report-agent-overage</code> (every
             5 min). Vercel reads cron config from the file at deploy time.
           </p>
         </div>
 
-        <div className="rounded-md border border-neutral-700 bg-neutral-900/50 p-3 text-xs text-neutral-500">
-          <p className="mb-1 font-medium text-neutral-400">Manual verification (after setup):</p>
+        <div className="rounded-md border border-edge bg-surface-1/50 p-3 text-xs text-fg-subtle">
+          <p className="mb-1 font-medium text-fg-muted">Manual verification (after setup):</p>
           <ul className="list-inside list-disc flex flex-col gap-0.5">
             <li>Stripe webhook test event fires and is received</li>
             <li>CORS allows admin → API requests</li>
@@ -181,19 +181,19 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
         )}
 
         {allPassed && (
-          <div className="rounded-md border border-green-800/50 bg-green-950/30 p-4">
-            <p className="mb-2 text-sm font-medium text-green-400">
+          <div className="rounded-md border border-success/50 bg-success-subtle p-4">
+            <p className="mb-2 text-sm font-medium text-success">
               All checks passed! Your RevealUI instance is live.
             </p>
-            <div className="flex flex-col gap-1 text-sm font-mono text-neutral-300">
+            <div className="flex flex-col gap-1 text-sm font-mono text-fg-muted">
               <p>
-                API: <span className="text-neutral-200">https://api.{domain}</span>
+                API: <span className="text-fg">https://api.{domain}</span>
               </p>
               <p>
-                Admin: <span className="text-neutral-200">https://admin.{domain}</span>
+                Admin: <span className="text-fg">https://admin.{domain}</span>
               </p>
               <p>
-                Site: <span className="text-neutral-200">https://{domain}</span>
+                Site: <span className="text-fg">https://{domain}</span>
               </p>
             </div>
           </div>
@@ -214,19 +214,19 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
 
 function CheckRow({ check }: { check: CheckState }) {
   const icons: Record<CheckStatus, { color: string; symbol: string }> = {
-    idle: { color: 'text-neutral-600', symbol: '\u25CB' },
-    checking: { color: 'text-orange-400 animate-pulse', symbol: '\u25CF' },
-    pass: { color: 'text-green-400', symbol: '\u2713' },
-    fail: { color: 'text-red-400', symbol: '\u2717' },
+    idle: { color: 'text-fg-subtle', symbol: '○' },
+    checking: { color: 'text-warning animate-pulse', symbol: '●' },
+    pass: { color: 'text-success', symbol: '✓' },
+    fail: { color: 'text-error', symbol: '✗' },
   };
 
   const icon = icons[check.status];
 
   return (
-    <div className="flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900/50 px-3 py-2">
+    <div className="flex items-center gap-2 rounded-md border border-edge bg-surface-1/50 px-3 py-2">
       <span className={`text-sm font-bold ${icon.color}`}>{icon.symbol}</span>
-      <span className="text-sm text-neutral-300">{check.label}</span>
-      {check.detail && <span className="ml-auto text-xs text-neutral-500">{check.detail}</span>}
+      <span className="text-sm text-fg-muted">{check.label}</span>
+      {check.detail && <span className="ml-auto text-xs text-fg-subtle">{check.detail}</span>}
     </div>
   );
 }

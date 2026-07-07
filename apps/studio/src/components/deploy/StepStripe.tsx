@@ -115,10 +115,10 @@ export default function StepStripe({
         />
 
         {phase !== 'input' && phase !== 'done' && (
-          <p className="text-sm text-orange-400">{PHASE_LABELS[phase]}</p>
+          <p className="text-sm text-warning">{PHASE_LABELS[phase]}</p>
         )}
 
-        {phase === 'done' && <p className="text-sm text-green-400">{PHASE_LABELS.done}</p>}
+        {phase === 'done' && <p className="text-sm text-success">{PHASE_LABELS.done}</p>}
 
         <div className="flex items-center gap-3">
           <Button

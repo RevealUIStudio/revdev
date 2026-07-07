@@ -40,7 +40,7 @@ export default function DevBoxPanel() {
         >
           Unmount
         </Button>
-        {operating && <span className="text-sm text-neutral-400">Working...</span>}
+        {operating && <span className="text-sm text-fg-muted">Working...</span>}
       </div>
 
       <ErrorAlert message={error} />

@@ -50,11 +50,11 @@ export default function AppShell({ currentPage, onNavigate, children, padless }:
           <DegradedBanner />
 
           {/* Mobile top bar with hamburger */}
-          <div className="flex items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-3 py-2 md:hidden">
+          <div className="flex items-center gap-3 border-b border-edge bg-surface-1 px-3 py-2 md:hidden">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+              className="rounded-md p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg"
               aria-label="Open menu"
             >
               <svg
@@ -68,7 +68,7 @@ export default function AppShell({ currentPage, onNavigate, children, padless }:
                 <path d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <span className="text-sm font-semibold text-neutral-100">RevealUI Studio</span>
+            <span className="text-sm font-semibold text-fg">RevealUI Studio</span>
           </div>
 
           <main className={`flex-1 ${padless ? 'overflow-hidden' : 'overflow-y-auto p-3 md:p-6'}`}>

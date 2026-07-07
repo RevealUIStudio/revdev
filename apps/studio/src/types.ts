@@ -241,9 +241,6 @@ export interface WizardData {
   vercelToken: string;
   vercelProjects: { api: string; admin: string; marketing: string };
   postgresUrl: string;
-  supabaseUrl?: string;
-  supabasePublishableKey?: string;
-  supabaseSecretKey?: string;
   stripeSecretKey: string;
   stripePublishableKey: string;
   stripeWebhookSecret: string;

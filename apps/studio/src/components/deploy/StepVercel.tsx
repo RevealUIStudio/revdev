@@ -93,7 +93,6 @@ export default function StepVercel({
             marketing: projectMap.marketing ?? '',
           },
           neonProjectId: config.deploy?.neonProjectId ?? null,
-          supabaseEnabled: config.deploy?.supabaseEnabled ?? false,
           emailProvider: config.deploy?.emailProvider ?? null,
         },
       });
@@ -135,7 +134,7 @@ export default function StepVercel({
           </Button>
 
           {validated && (
-            <span className="text-sm text-green-400">
+            <span className="text-sm text-success">
               Connected — {Object.keys(linkedProjects).length} project
               {Object.keys(linkedProjects).length !== 1 ? 's' : ''} linked
             </span>
@@ -146,7 +145,7 @@ export default function StepVercel({
           <ul className="mt-2 flex flex-col gap-1 text-sm text-zinc-300">
             {REQUIRED_PROJECTS.map((req) => (
               <li key={req.key} className="flex items-center gap-2">
-                <span className="text-green-400">&#10003;</span>
+                <span className="text-success">&#10003;</span>
                 <span className="font-mono">{req.name}</span>
               </li>
             ))}

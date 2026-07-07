@@ -33,16 +33,19 @@ describe('Sidebar', () => {
     render(<Sidebar currentPage="vault" onNavigate={vi.fn()} />);
 
     const vaultButton = screen.getByText('Vault').closest('button');
-    expect(vaultButton?.className).toContain('bg-neutral-800');
-    expect(vaultButton?.className).toContain('text-neutral-100');
+    const vaultClasses = vaultButton?.className.split(' ') ?? [];
+    expect(vaultClasses).toContain('bg-surface-3');
+    expect(vaultClasses).toContain('text-fg');
   });
 
   it('does not highlight non-current pages', () => {
     render(<Sidebar currentPage="vault" onNavigate={vi.fn()} />);
 
     const dashboardButton = screen.getByText('Dashboard').closest('button');
-    expect(dashboardButton?.className).toContain('text-neutral-400');
-    expect(dashboardButton?.className).not.toContain('text-neutral-100');
+    const dashboardClasses = dashboardButton?.className.split(' ') ?? [];
+    expect(dashboardClasses).toContain('text-fg-muted');
+    expect(dashboardClasses).not.toContain('bg-surface-3');
+    expect(dashboardClasses).not.toContain('text-fg');
   });
 
   it('navigates to each page', () => {

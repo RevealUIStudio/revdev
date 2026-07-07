@@ -18,18 +18,18 @@ const TIER_LABELS: Record<string, string> = {
 };
 
 const TIER_COLORS: Record<string, string> = {
-  free: 'text-neutral-400 bg-neutral-800 border-neutral-700',
-  pro: 'text-orange-400 bg-orange-600/20 border-orange-600/30',
-  max: 'text-amber-400 bg-amber-600/20 border-amber-600/30',
+  free: 'text-fg-muted bg-surface-2 border-edge',
+  pro: 'text-brand-text bg-brand/20 border-brand/30',
+  max: 'text-accent bg-accent/20 border-accent/30',
   enterprise: 'text-violet-400 bg-violet-600/20 border-violet-600/30',
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  active: { label: 'Active', color: 'text-emerald-400' },
-  past_due: { label: 'Past Due', color: 'text-amber-400' },
-  grace_period: { label: 'Grace Period', color: 'text-amber-400' },
-  canceled: { label: 'Canceled', color: 'text-red-400' },
-  expired: { label: 'Expired', color: 'text-red-400' },
+  active: { label: 'Active', color: 'text-success' },
+  past_due: { label: 'Past Due', color: 'text-warning' },
+  grace_period: { label: 'Grace Period', color: 'text-warning' },
+  canceled: { label: 'Canceled', color: 'text-error' },
+  expired: { label: 'Expired', color: 'text-error' },
 };
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -39,17 +39,17 @@ export default function SubscriptionCard() {
 
   if (loading && !subscription) {
     return (
-      <div className="col-span-full rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <div className="h-5 w-24 animate-pulse rounded bg-neutral-800" />
-        <div className="mt-3 h-4 w-48 animate-pulse rounded bg-neutral-800" />
+      <div className="col-span-full rounded-lg border border-edge bg-surface-1 p-4">
+        <div className="h-5 w-24 animate-pulse rounded bg-surface-2" />
+        <div className="mt-3 h-4 w-48 animate-pulse rounded bg-surface-2" />
       </div>
     );
   }
 
   if (error && !subscription) {
     return (
-      <div className="col-span-full rounded-lg border border-red-900/50 bg-red-950/20 p-4">
-        <p className="text-xs text-red-400">Unable to load billing: {error}</p>
+      <div className="col-span-full rounded-lg border border-error/50 bg-error-subtle p-4">
+        <p className="text-xs text-error">Unable to load billing: {error}</p>
       </div>
     );
   }
@@ -60,7 +60,7 @@ export default function SubscriptionCard() {
   const tierColor = TIER_COLORS[subscription.tier] ?? TIER_COLORS.free;
   const statusInfo = STATUS_LABELS[subscription.status] ?? {
     label: subscription.status,
-    color: 'text-neutral-400',
+    color: 'text-fg-muted',
   };
 
   const graceUntil = subscription.graceUntil ?? null;
@@ -73,7 +73,7 @@ export default function SubscriptionCard() {
   const isUnlimited = hasUsage && usage.quota === -1;
 
   return (
-    <div className="col-span-full rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+    <div className="col-span-full rounded-lg border border-edge bg-surface-1 p-4">
       {/* Header row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -85,7 +85,7 @@ export default function SubscriptionCard() {
           <span className={`text-xs font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
         </div>
         {subscription.expiresAt ? (
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-fg-subtle">
             Expires {new Date(subscription.expiresAt).toLocaleDateString()}
           </span>
         ) : null}
@@ -93,7 +93,7 @@ export default function SubscriptionCard() {
 
       {/* Grace period warning */}
       {graceUntil ? (
-        <div className="mt-2 rounded border border-amber-800/50 bg-amber-950/20 px-2.5 py-1.5 text-xs text-amber-400">
+        <div className="mt-2 rounded border border-warning/50 bg-warning-subtle px-2.5 py-1.5 text-xs text-warning">
           Grace period until {graceDate} — update your payment method to avoid losing access.
         </div>
       ) : null}
@@ -101,28 +101,24 @@ export default function SubscriptionCard() {
       {/* Usage bar */}
       {hasUsage ? (
         <div className="mt-3">
-          <div className="flex items-center justify-between text-xs text-neutral-400">
+          <div className="flex items-center justify-between text-xs text-fg-muted">
             <span>Agent Tasks</span>
             <span>
               {usage.used} / {isUnlimited ? '∞' : usage.quota}
             </span>
           </div>
           {isUnlimited ? null : (
-            <div className="mt-1 h-1.5 w-full rounded-full bg-neutral-800">
+            <div className="mt-1 h-1.5 w-full rounded-full bg-surface-2">
               <div
                 className={`h-full rounded-full transition-all ${
-                  usagePercent >= 90
-                    ? 'bg-red-500'
-                    : usagePercent >= 70
-                      ? 'bg-amber-500'
-                      : 'bg-orange-500'
+                  usagePercent >= 90 ? 'bg-error' : usagePercent >= 70 ? 'bg-warning' : 'bg-brand'
                 }`}
                 style={{ width: `${usagePercent}%` }}
               />
             </div>
           )}
           {usage.overage > 0 ? (
-            <p className="mt-1 text-xs text-red-400">{usage.overage} tasks over quota</p>
+            <p className="mt-1 text-xs text-error">{usage.overage} tasks over quota</p>
           ) : null}
         </div>
       ) : null}

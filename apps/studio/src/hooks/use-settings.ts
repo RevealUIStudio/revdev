@@ -6,10 +6,6 @@ export interface StudioSettings {
   theme: Theme;
   apiUrl: string;
   pollingIntervalMs: number;
-  /** Solana wallet public key for RVUI balance display. */
-  solanaWalletAddress: string;
-  /** Solana network for RVUI queries. */
-  solanaNetwork: 'devnet' | 'mainnet-beta';
   /**
    * Local mode: skip API sign-in and use Studio's local, self-contained
    * tools (terminal, shell, git) offline. Off by default. Account and
@@ -24,8 +20,6 @@ const DEFAULT_SETTINGS: StudioSettings = {
   theme: 'system',
   apiUrl: DEFAULT_API_URL,
   pollingIntervalMs: 30_000,
-  solanaWalletAddress: '',
-  solanaNetwork: 'devnet',
   localMode: false,
 };
 
@@ -51,14 +45,6 @@ function loadSettings(): StudioSettings {
         typeof obj.pollingIntervalMs === 'number' && obj.pollingIntervalMs >= 1_000
           ? obj.pollingIntervalMs
           : DEFAULT_SETTINGS.pollingIntervalMs,
-      solanaWalletAddress:
-        typeof obj.solanaWalletAddress === 'string'
-          ? obj.solanaWalletAddress
-          : DEFAULT_SETTINGS.solanaWalletAddress,
-      solanaNetwork:
-        obj.solanaNetwork === 'devnet' || obj.solanaNetwork === 'mainnet-beta'
-          ? obj.solanaNetwork
-          : DEFAULT_SETTINGS.solanaNetwork,
       localMode: typeof obj.localMode === 'boolean' ? obj.localMode : DEFAULT_SETTINGS.localMode,
     };
   } catch {

@@ -17,14 +17,14 @@ export default function Input({
   return (
     <div>
       {label && (
-        <label htmlFor={id} className="mb-1 block text-xs font-medium text-neutral-400">
+        <label htmlFor={id} className="mb-1 block text-xs font-medium text-fg-muted">
           {label}
-          {hint && <span className="ml-1 text-neutral-500">({hint})</span>}
+          {hint && <span className="ml-1 text-fg-subtle">({hint})</span>}
         </label>
       )}
       <input
         id={id}
-        className={`w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none ${mono ? 'font-mono' : ''} ${className}`}
+        className={`w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none ${mono ? 'font-mono' : ''} ${className}`}
         {...props}
       />
     </div>

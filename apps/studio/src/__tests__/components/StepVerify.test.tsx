@@ -29,7 +29,6 @@ const BASE_CONFIG: StudioConfig = {
     domain: null,
     apps: { api: 'prj-api-123', admin: 'prj-admin', marketing: 'prj-mkt' },
     neonProjectId: null,
-    supabaseEnabled: false,
     emailProvider: null,
   },
 };

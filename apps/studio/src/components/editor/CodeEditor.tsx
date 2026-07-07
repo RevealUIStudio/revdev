@@ -147,14 +147,14 @@ export default function CodeEditor({ repoPath, filePath, onClose }: Props) {
   const dirPath = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
 
   return (
-    <div className="flex h-full flex-col bg-neutral-950">
+    <div className="flex h-full flex-col bg-surface-0">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+            className="rounded p-1 text-fg-subtle hover:bg-surface-2 hover:text-fg-muted"
             title="Close editor"
           >
             <svg
@@ -174,29 +174,29 @@ export default function CodeEditor({ repoPath, filePath, onClose }: Props) {
         <div className="flex min-w-0 flex-1 items-center gap-1 text-sm">
           {dirPath && (
             <>
-              <span className="truncate text-neutral-500">{dirPath}</span>
-              <span className="text-neutral-600">/</span>
+              <span className="truncate text-fg-subtle">{dirPath}</span>
+              <span className="text-fg-subtle">/</span>
             </>
           )}
-          <span className="font-medium text-neutral-200">{fileName}</span>
+          <span className="font-medium text-fg">{fileName}</span>
           {isDirty && (
             <span
-              className="ml-1 size-2 shrink-0 rounded-full bg-orange-400"
+              className="ml-1 size-2 shrink-0 rounded-full bg-warning-subtle"
               title="Unsaved changes"
             />
           )}
         </div>
 
         {/* Save status */}
-        {saveStatus === 'saving' && <span className="text-xs text-neutral-500">Saving…</span>}
-        {saveStatus === 'saved' && <span className="text-xs text-emerald-400">Saved</span>}
-        {saveStatus === 'error' && <span className="text-xs text-red-400">Save failed</span>}
+        {saveStatus === 'saving' && <span className="text-xs text-fg-subtle">Saving…</span>}
+        {saveStatus === 'saved' && <span className="text-xs text-success">Saved</span>}
+        {saveStatus === 'error' && <span className="text-xs text-error">Save failed</span>}
 
         <button
           type="button"
           onClick={() => void save()}
           disabled={!isDirty || saveStatus === 'saving'}
-          className="rounded bg-neutral-800 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded bg-surface-2 px-2.5 py-1 text-xs text-fg-muted hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
           title="Save (Ctrl+S)"
         >
           Save
@@ -206,9 +206,9 @@ export default function CodeEditor({ repoPath, filePath, onClose }: Props) {
       {/* Editor or error */}
       {loadError ? (
         <div className="flex flex-1 items-center justify-center">
-          <div className="max-w-md rounded-lg border border-red-800/50 bg-red-900/10 p-4 text-sm text-red-400">
+          <div className="max-w-md rounded-lg border border-error/50 bg-error-subtle p-4 text-sm text-error">
             <p className="font-medium">Cannot open file</p>
-            <p className="mt-1 text-xs text-red-500">{loadError}</p>
+            <p className="mt-1 text-xs text-error">{loadError}</p>
           </div>
         </div>
       ) : (

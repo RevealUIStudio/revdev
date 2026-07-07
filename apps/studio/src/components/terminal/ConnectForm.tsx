@@ -93,34 +93,34 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
       {/* Bookmarks */}
       {bookmarks.length > 0 && showBookmarks && (
         <div className="space-y-2">
-          <span className="block text-xs font-medium text-neutral-400">Saved Connections</span>
+          <span className="block text-xs font-medium text-fg-muted">Saved Connections</span>
           <div className="space-y-1">
             {bookmarks.map((b) => (
               <div
                 key={b.id}
-                className="group flex items-center justify-between rounded-md border border-neutral-800 bg-neutral-800/50 px-3 py-2"
+                className="group flex items-center justify-between rounded-md border border-edge bg-surface-3 px-3 py-2"
               >
                 <button
                   type="button"
                   onClick={() => handleSelectBookmark(b)}
                   className="flex-1 text-left"
                 >
-                  <span className="text-sm text-neutral-200">{b.label}</span>
-                  <span className="ml-2 text-xs text-neutral-500">
+                  <span className="text-sm text-fg">{b.label}</span>
+                  <span className="ml-2 text-xs text-fg-subtle">
                     :{b.port} ({b.auth_method})
                   </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleDeleteBookmark(b.id)}
-                  className="ml-2 text-xs text-neutral-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                  className="ml-2 text-xs text-fg-subtle opacity-0 transition-opacity hover:text-error group-hover:opacity-100"
                 >
                   remove
                 </button>
               </div>
             ))}
           </div>
-          <div className="border-t border-neutral-800 pt-2">
+          <div className="border-t border-edge pt-2">
             <Button variant="ghost" size="sm" onClick={() => setShowBookmarks(false)}>
               New connection
             </Button>
@@ -169,15 +169,15 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
 
           {/* Auth method toggle */}
           <div>
-            <span className="mb-2 block text-xs font-medium text-neutral-400">Authentication</span>
-            <div className="flex gap-1 rounded-md border border-neutral-700 bg-neutral-800 p-1">
+            <span className="mb-2 block text-xs font-medium text-fg-muted">Authentication</span>
+            <div className="flex gap-1 rounded-md border border-edge bg-surface-2 p-1">
               <button
                 type="button"
                 onClick={() => setAuthMethod('key')}
                 className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                   authMethod === 'key'
-                    ? 'bg-neutral-700 text-neutral-100'
-                    : 'text-neutral-400 hover:text-neutral-300'
+                    ? 'bg-surface-3 text-fg'
+                    : 'text-fg-muted hover:text-fg-muted'
                 }`}
               >
                 SSH Key
@@ -187,8 +187,8 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
                 onClick={() => setAuthMethod('password')}
                 className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                   authMethod === 'password'
-                    ? 'bg-neutral-700 text-neutral-100'
-                    : 'text-neutral-400 hover:text-neutral-300'
+                    ? 'bg-surface-3 text-fg'
+                    : 'text-fg-muted hover:text-fg-muted'
                 }`}
               >
                 Password
@@ -209,7 +209,7 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
               <div>
                 <label
                   htmlFor="ssh-keypath"
-                  className="mb-1 block text-xs font-medium text-neutral-400"
+                  className="mb-1 block text-xs font-medium text-fg-muted"
                 >
                   Key file
                 </label>

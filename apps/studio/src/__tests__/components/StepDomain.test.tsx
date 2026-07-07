@@ -13,7 +13,6 @@ const MOCK_CONFIG: StudioConfig = {
     domain: null,
     apps: null,
     neonProjectId: null,
-    supabaseEnabled: false,
     emailProvider: null,
   },
 };

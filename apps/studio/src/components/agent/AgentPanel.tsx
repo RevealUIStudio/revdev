@@ -91,16 +91,16 @@ function relativeTime(iso: string): string {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    modified: { label: 'M', cls: 'bg-orange-600/20 text-orange-400' },
-    new: { label: 'A', cls: 'bg-green-600/20 text-green-400' },
-    deleted: { label: 'D', cls: 'bg-red-600/20 text-red-400' },
-    renamed: { label: 'R', cls: 'bg-blue-600/20 text-blue-400' },
-    untracked: { label: '?', cls: 'bg-neutral-600/20 text-neutral-400' },
-    conflicted: { label: '!', cls: 'bg-red-600/30 text-red-300' },
+    modified: { label: 'M', cls: 'bg-warning-subtle text-warning' },
+    new: { label: 'A', cls: 'bg-success-subtle text-success' },
+    deleted: { label: 'D', cls: 'bg-error-subtle text-error' },
+    renamed: { label: 'R', cls: 'bg-info-subtle text-info' },
+    untracked: { label: '?', cls: 'bg-surface-3/20 text-fg-muted' },
+    conflicted: { label: '!', cls: 'bg-error/30 text-error' },
   };
   const { label, cls } = map[status] ?? {
     label: status[0]?.toUpperCase() ?? '?',
-    cls: 'bg-neutral-700 text-neutral-300',
+    cls: 'bg-surface-3 text-fg-muted',
   };
   return (
     <span
@@ -126,14 +126,14 @@ function ChangeRow({ entry, staged, onStage, onUnstage, onDiscard }: ChangeRowPr
   const dir = entry.path.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/')) : '';
 
   return (
-    <div className="group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-800/50">
+    <div className="group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-surface-3">
       <StatusBadge status={entry.status} />
       <div className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-medium text-neutral-300">{name}</span>
-        {dir ? <span className="block truncate text-[10px] text-neutral-500">{dir}</span> : null}
+        <span className="block truncate text-xs font-medium text-fg-muted">{name}</span>
+        {dir ? <span className="block truncate text-[10px] text-fg-subtle">{dir}</span> : null}
       </div>
       {staged ? (
-        <span className="shrink-0 rounded bg-green-900/30 px-1.5 py-0.5 text-[10px] font-medium text-green-500">
+        <span className="shrink-0 rounded bg-success-subtle px-1.5 py-0.5 text-[10px] font-medium text-success">
           staged
         </span>
       ) : null}
@@ -143,7 +143,7 @@ function ChangeRow({ entry, staged, onStage, onUnstage, onDiscard }: ChangeRowPr
             type="button"
             title="Stage"
             onClick={onStage}
-            className="flex size-5 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-700 hover:text-neutral-200"
+            className="flex size-5 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
           >
             <PlusIcon />
           </button>
@@ -153,7 +153,7 @@ function ChangeRow({ entry, staged, onStage, onUnstage, onDiscard }: ChangeRowPr
             type="button"
             title="Unstage"
             onClick={onUnstage}
-            className="flex size-5 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-700 hover:text-neutral-200"
+            className="flex size-5 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
           >
             <MinusIcon />
           </button>
@@ -163,7 +163,7 @@ function ChangeRow({ entry, staged, onStage, onUnstage, onDiscard }: ChangeRowPr
             type="button"
             title="Discard"
             onClick={onDiscard}
-            className="flex size-5 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-red-900/40 hover:text-red-400"
+            className="flex size-5 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error"
           >
             <UndoIcon />
           </button>
@@ -180,31 +180,29 @@ function SessionCard({ session }: { session: AgentSession }) {
   const hasFiles = session.files !== '—' && session.files.trim() !== '';
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+    <div className="rounded-lg border border-edge bg-surface-1/60 p-2.5">
       <div className="flex items-center gap-2">
         <span
           className={`size-2 shrink-0 rounded-full ${
-            isIdle ? 'bg-neutral-600' : 'animate-pulse bg-green-500'
+            isIdle ? 'bg-surface-3' : 'animate-pulse bg-success'
           }`}
         />
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
-          {session.id}
-        </span>
-        <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-500">
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{session.id}</span>
+        <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">
           {session.env}
         </span>
       </div>
       {isIdle ? (
-        <p className="mt-1.5 text-[11px] italic text-neutral-600">starting up…</p>
+        <p className="mt-1.5 text-[11px] italic text-fg-subtle">starting up…</p>
       ) : (
-        <p className="mt-1.5 text-[11px] leading-snug text-neutral-400">{session.task}</p>
+        <p className="mt-1.5 text-[11px] leading-snug text-fg-muted">{session.task}</p>
       )}
       {hasFiles ? (
-        <p className="mt-1 truncate text-[10px] text-neutral-600" title={session.files}>
+        <p className="mt-1 truncate text-[10px] text-fg-subtle" title={session.files}>
           {session.files}
         </p>
       ) : null}
-      <p className="mt-1 text-[10px] text-neutral-600">updated {relativeTime(session.updated)}</p>
+      <p className="mt-1 text-[10px] text-fg-subtle">updated {relativeTime(session.updated)}</p>
     </div>
   );
 }
@@ -216,36 +214,32 @@ function HarnessSessionCard({ session }: { session: import('../../types').Harnes
   const hasFiles = session.files !== null && session.files.trim() !== '';
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+    <div className="rounded-lg border border-edge bg-surface-1/60 p-2.5">
       <div className="flex items-center gap-2">
         <span
           className={`size-2 shrink-0 rounded-full ${
-            isEnded ? 'bg-neutral-600' : 'animate-pulse bg-cyan-500'
+            isEnded ? 'bg-surface-3' : 'animate-pulse bg-cyan-500'
           }`}
         />
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
-          {session.id}
-        </span>
-        <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-500">
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{session.id}</span>
+        <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">
           {session.env}
         </span>
         {session.pid ? (
-          <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-600">
+          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">
             pid:{session.pid}
           </span>
         ) : null}
       </div>
-      <p className="mt-1.5 text-[11px] leading-snug text-neutral-400">{session.task}</p>
+      <p className="mt-1.5 text-[11px] leading-snug text-fg-muted">{session.task}</p>
       {hasFiles ? (
-        <p className="mt-1 truncate text-[10px] text-neutral-600" title={session.files ?? ''}>
+        <p className="mt-1 truncate text-[10px] text-fg-subtle" title={session.files ?? ''}>
           {session.files}
         </p>
       ) : null}
-      <p className="mt-1 text-[10px] text-neutral-600">
-        updated {relativeTime(session.updated_at)}
-      </p>
+      <p className="mt-1 text-[10px] text-fg-subtle">updated {relativeTime(session.updated_at)}</p>
       {session.exit_summary ? (
-        <p className="mt-1 text-[10px] text-green-600">{session.exit_summary}</p>
+        <p className="mt-1 text-[10px] text-success">{session.exit_summary}</p>
       ) : null}
     </div>
   );
@@ -271,7 +265,7 @@ function ChangeSection({
         className={`mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider ${accent}`}
       >
         <span>{title}</span>
-        <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-neutral-400">{count}</span>
+        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-fg-muted">{count}</span>
       </div>
       {children}
     </div>
@@ -452,11 +446,11 @@ export default function AgentPanel() {
   return (
     <div className="flex h-full flex-col overflow-hidden md:flex-row">
       {/* ── Left pane: sessions ── */}
-      <div className="flex w-full shrink-0 flex-col border-b border-neutral-800 bg-neutral-900 md:w-64 md:border-b-0 md:border-r">
-        <div className="border-b border-neutral-800 px-3 py-2.5">
+      <div className="flex w-full shrink-0 flex-col border-b border-edge bg-surface-1 md:w-64 md:border-b-0 md:border-r">
+        <div className="border-b border-edge px-3 py-2.5">
           <div className="mb-1.5 flex items-center gap-2">
             <AgentIcon />
-            <span className="text-xs font-semibold text-neutral-200">Agent Sessions</span>
+            <span className="text-xs font-semibold text-fg">Agent Sessions</span>
           </div>
           {editingWorkboard ? (
             <form
@@ -473,7 +467,7 @@ export default function AgentPanel() {
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setEditingWorkboard(false);
                 }}
-                className="w-full rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-[11px] text-neutral-200 focus:border-neutral-400 focus:outline-none"
+                className="w-full rounded border border-edge-strong bg-surface-2 px-2 py-1 text-[11px] text-fg focus:border-brand focus:outline-none"
               />
             </form>
           ) : (
@@ -483,7 +477,7 @@ export default function AgentPanel() {
                 setDraftWorkboard(workboardPath);
                 setEditingWorkboard(true);
               }}
-              className="max-w-full truncate text-left text-[10px] text-neutral-500 hover:text-neutral-300"
+              className="max-w-full truncate text-left text-[10px] text-fg-subtle hover:text-fg-muted"
               title="Change workboard path"
             >
               {workboardPath}
@@ -493,12 +487,12 @@ export default function AgentPanel() {
 
         <div className="max-h-48 flex-1 overflow-y-auto px-2 py-2 md:max-h-none">
           {workboardError ? (
-            <div className="rounded border border-red-800/50 bg-red-950/30 px-2.5 py-2 text-[10px] text-red-400">
+            <div className="rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">
               {workboardError}
             </div>
           ) : null}
           {!workboardError && sessions.length === 0 ? (
-            <p className="px-2 py-8 text-center text-xs text-neutral-600">No active sessions</p>
+            <p className="px-2 py-8 text-center text-xs text-fg-subtle">No active sessions</p>
           ) : null}
           <div className="flex flex-col gap-2">
             {sessions.map((s) => (
@@ -509,10 +503,10 @@ export default function AgentPanel() {
           {/* Harness daemon sessions */}
           {harness.connected ? (
             <div className="mt-4">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-green-400">
-                <span className="size-1.5 rounded-full bg-green-500" />
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-success">
+                <span className="size-1.5 rounded-full bg-success" />
                 <span>Harness Daemon</span>
-                <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-neutral-400">
+                <span className="rounded bg-surface-2 px-1.5 py-0.5 text-fg-muted">
                   {harness.sessions.length}
                 </span>
               </div>
@@ -523,7 +517,7 @@ export default function AgentPanel() {
               </div>
             </div>
           ) : (
-            <div className="mt-4 rounded border border-neutral-800 bg-neutral-900/40 px-2.5 py-2 text-[10px] text-neutral-600">
+            <div className="mt-4 rounded border border-edge bg-surface-1/40 px-2.5 py-2 text-[10px] text-fg-subtle">
               Harness daemon offline
             </div>
           )}
@@ -536,7 +530,7 @@ export default function AgentPanel() {
             <div className="mt-4">
               <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400">
                 <span>Cloud Agents</span>
-                <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-neutral-400">
+                <span className="rounded bg-surface-2 px-1.5 py-0.5 text-fg-muted">
                   {remoteAgents.length}
                 </span>
               </div>
@@ -551,21 +545,21 @@ export default function AgentPanel() {
       </div>
 
       {/* ── Right pane: tabbed (Changes / Chat) ── */}
-      <div className="flex min-w-0 flex-1 flex-col bg-neutral-950">
+      <div className="flex min-w-0 flex-1 flex-col bg-surface-0">
         {/* Tab bar — horizontally scrollable on mobile */}
-        <div className="flex items-center overflow-x-auto border-b border-neutral-800">
+        <div className="flex items-center overflow-x-auto border-b border-edge">
           <button
             type="button"
             onClick={() => setRightTab('changes')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'changes'
-                ? 'border-b-2 border-blue-500 text-blue-400'
-                : 'text-neutral-500 hover:text-neutral-300'
+                ? 'border-b-2 border-info text-info'
+                : 'text-fg-subtle hover:text-fg-muted'
             }`}
           >
             Changes
             {totalChanges > 0 ? (
-              <span className="ml-1.5 rounded-full bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400">
+              <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-muted">
                 {totalChanges}
               </span>
             ) : null}
@@ -575,8 +569,8 @@ export default function AgentPanel() {
             onClick={() => setRightTab('chat')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'chat'
-                ? 'border-b-2 border-blue-500 text-blue-400'
-                : 'text-neutral-500 hover:text-neutral-300'
+                ? 'border-b-2 border-info text-info'
+                : 'text-fg-subtle hover:text-fg-muted'
             }`}
           >
             Agent Chat
@@ -586,13 +580,13 @@ export default function AgentPanel() {
             onClick={() => setRightTab('messages')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'messages'
-                ? 'border-b-2 border-blue-500 text-blue-400'
-                : 'text-neutral-500 hover:text-neutral-300'
+                ? 'border-b-2 border-info text-info'
+                : 'text-fg-subtle hover:text-fg-muted'
             }`}
           >
             Messages
             {harness.messages.filter((m) => !m.read).length > 0 ? (
-              <span className="ml-1.5 rounded-full bg-blue-600/20 px-1.5 py-0.5 text-[10px] text-blue-400">
+              <span className="ml-1.5 rounded-full bg-info-subtle px-1.5 py-0.5 text-[10px] text-info">
                 {harness.messages.filter((m) => !m.read).length}
               </span>
             ) : null}
@@ -602,8 +596,8 @@ export default function AgentPanel() {
             onClick={() => setRightTab('tasks')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'tasks'
-                ? 'border-b-2 border-blue-500 text-blue-400'
-                : 'text-neutral-500 hover:text-neutral-300'
+                ? 'border-b-2 border-info text-info'
+                : 'text-fg-subtle hover:text-fg-muted'
             }`}
           >
             Tasks
@@ -613,13 +607,13 @@ export default function AgentPanel() {
             onClick={() => setRightTab('reservations')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'reservations'
-                ? 'border-b-2 border-blue-500 text-blue-400'
-                : 'text-neutral-500 hover:text-neutral-300'
+                ? 'border-b-2 border-info text-info'
+                : 'text-fg-subtle hover:text-fg-muted'
             }`}
           >
             Files
             {harness.reservations.length > 0 ? (
-              <span className="ml-1.5 rounded-full bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400">
+              <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-muted">
                 {harness.reservations.length}
               </span>
             ) : null}
@@ -631,7 +625,7 @@ export default function AgentPanel() {
                   type="button"
                   onClick={() => void stageAll()}
                   disabled={stagingAll}
-                  className="rounded bg-neutral-800 px-2 py-1 text-[10px] text-neutral-300 transition-colors hover:bg-neutral-700 disabled:opacity-40"
+                  className="rounded bg-surface-2 px-2 py-1 text-[10px] text-fg-muted transition-colors hover:bg-surface-3 disabled:opacity-40"
                 >
                   {stagingAll ? 'Staging…' : 'Stage All'}
                 </button>
@@ -641,7 +635,7 @@ export default function AgentPanel() {
                   type="button"
                   onClick={() => setConfirmDiscardAll(true)}
                   disabled={discardingAll}
-                  className="rounded px-2 py-1 text-[10px] text-neutral-500 transition-colors hover:bg-red-900/30 hover:text-red-400 disabled:opacity-40"
+                  className="rounded px-2 py-1 text-[10px] text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error disabled:opacity-40"
                 >
                   {discardingAll ? 'Discarding…' : 'Discard All'}
                 </button>
@@ -651,7 +645,7 @@ export default function AgentPanel() {
                 onClick={() => void refresh()}
                 disabled={loading}
                 title="Refresh"
-                className="flex size-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300 disabled:opacity-40"
+                className="flex size-6 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg-muted disabled:opacity-40"
               >
                 <RefreshIcon spinning={loading} />
               </button>
@@ -663,7 +657,7 @@ export default function AgentPanel() {
         {rightTab === 'changes' ? (
           <div className="flex flex-1 flex-col overflow-hidden">
             {/* Repo path header */}
-            <div className="border-b border-neutral-800 px-3 py-2">
+            <div className="border-b border-edge px-3 py-2">
               {editingRepo ? (
                 <form
                   onSubmit={(e) => {
@@ -679,7 +673,7 @@ export default function AgentPanel() {
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') setEditingRepo(false);
                     }}
-                    className="w-full rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-[11px] text-neutral-200 focus:border-neutral-400 focus:outline-none"
+                    className="w-full rounded border border-edge-strong bg-surface-2 px-2 py-1 text-[11px] text-fg focus:border-brand focus:outline-none"
                   />
                 </form>
               ) : (
@@ -689,14 +683,14 @@ export default function AgentPanel() {
                     setDraftRepo(repoPath);
                     setEditingRepo(true);
                   }}
-                  className="max-w-full truncate text-left text-[10px] text-neutral-500 hover:text-neutral-300"
+                  className="max-w-full truncate text-left text-[10px] text-fg-subtle hover:text-fg-muted"
                   title="Change repository path"
                 >
                   {repoPath}
                 </button>
               )}
               {gitState ? (
-                <p className="mt-0.5 text-[10px] text-neutral-600">
+                <p className="mt-0.5 text-[10px] text-fg-subtle">
                   {totalChanges === 0
                     ? `working tree clean · ${gitState.branch}`
                     : `${totalChanges} file${totalChanges !== 1 ? 's' : ''} changed · ${gitState.branch}`}
@@ -707,18 +701,18 @@ export default function AgentPanel() {
             {/* File list */}
             <div className="flex-1 overflow-y-auto px-3 py-2">
               {gitError ? (
-                <div className="rounded border border-red-800/50 bg-red-950/30 px-2.5 py-2 text-[10px] text-red-400">
+                <div className="rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">
                   {gitError}
                 </div>
               ) : null}
               {!(gitError || gitState || loading) ? (
-                <p className="py-8 text-center text-xs text-neutral-600">No repository loaded</p>
+                <p className="py-8 text-center text-xs text-fg-subtle">No repository loaded</p>
               ) : null}
               {loading && !gitState ? (
-                <p className="py-8 text-center text-xs text-neutral-600">Loading…</p>
+                <p className="py-8 text-center text-xs text-fg-subtle">Loading…</p>
               ) : null}
               {gitState && totalChanges === 0 ? (
-                <p className="py-8 text-center text-xs text-neutral-600">
+                <p className="py-8 text-center text-xs text-fg-subtle">
                   Nothing to review — working tree clean
                 </p>
               ) : null}
@@ -728,7 +722,7 @@ export default function AgentPanel() {
                   <ChangeSection
                     title="Staged"
                     count={gitState.staged.length}
-                    accent="text-green-500"
+                    accent="text-success"
                   >
                     {gitState.staged.map((entry) => (
                       <ChangeRow
@@ -743,7 +737,7 @@ export default function AgentPanel() {
                   <ChangeSection
                     title="Changes"
                     count={gitState.unstaged.length}
-                    accent="text-orange-500"
+                    accent="text-warning"
                   >
                     {gitState.unstaged.map((entry) => (
                       <ChangeRow
@@ -758,7 +752,7 @@ export default function AgentPanel() {
                   <ChangeSection
                     title="Untracked"
                     count={gitState.untracked.length}
-                    accent="text-neutral-500"
+                    accent="text-fg-subtle"
                   >
                     {gitState.untracked.map((entry) => (
                       <ChangeRow
@@ -829,20 +823,18 @@ export default function AgentPanel() {
 function RemoteAgentCard({ agent }: { agent: AgentCard }) {
   const skillCount = agent.skills?.length ?? 0;
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+    <div className="rounded-lg border border-edge bg-surface-1/60 p-2.5">
       <div className="flex items-center gap-2">
         <span className="size-2 shrink-0 rounded-full bg-violet-500" />
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
-          {agent.name}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{agent.name}</span>
         {agent.version ? (
-          <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-500">
+          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">
             v{agent.version}
           </span>
         ) : null}
       </div>
-      <p className="mt-1.5 text-[11px] leading-snug text-neutral-400">{agent.description}</p>
-      <div className="mt-1 flex items-center gap-2 text-[10px] text-neutral-600">
+      <p className="mt-1.5 text-[11px] leading-snug text-fg-muted">{agent.description}</p>
+      <div className="mt-1 flex items-center gap-2 text-[10px] text-fg-subtle">
         {skillCount > 0 ? (
           <span>
             {skillCount} skill{skillCount !== 1 ? 's' : ''}
@@ -859,7 +851,7 @@ function RemoteAgentCard({ agent }: { agent: AgentCard }) {
 function AgentIcon() {
   return (
     <svg
-      className="size-4 shrink-0 text-neutral-400"
+      className="size-4 shrink-0 text-fg-muted"
       aria-hidden="true"
       fill="none"
       viewBox="0 0 24 24"

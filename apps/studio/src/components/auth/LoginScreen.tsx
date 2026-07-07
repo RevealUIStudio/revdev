@@ -73,19 +73,19 @@ export default function LoginScreen() {
   const resendBlocked = resendCooldown > 0;
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-neutral-950">
-      <div className="w-full max-w-sm space-y-6 rounded-xl border border-neutral-800 bg-neutral-900 p-8">
+    <div className="flex h-screen w-screen items-center justify-center bg-surface-0">
+      <div className="w-full max-w-sm space-y-6 rounded-xl border border-edge bg-surface-1 p-8">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-lg font-semibold text-neutral-100">RevealUI Studio</h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <h1 className="text-lg font-semibold text-fg">RevealUI Studio</h1>
+          <p className="mt-1 text-sm text-fg-muted">
             {showOtp ? 'Enter verification code' : 'Sign in to your account'}
           </p>
         </div>
 
         {/* Error */}
         {error ? (
-          <div className="rounded-md border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-400">
+          <div className="rounded-md border border-error/40 bg-error-subtle px-3 py-2 text-xs text-error">
             {error}
           </div>
         ) : null}
@@ -112,8 +112,8 @@ export default function LoginScreen() {
         {/* OTP Step */}
         {showOtp ? (
           <form onSubmit={handleVerify} className="space-y-4">
-            <p className="text-xs text-neutral-500">
-              We sent a 6-digit code to <span className="text-neutral-300">{email}</span>
+            <p className="text-xs text-fg-subtle">
+              We sent a 6-digit code to <span className="text-fg-muted">{email}</span>
             </p>
             <Input
               id="otp-code"
@@ -144,7 +144,7 @@ export default function LoginScreen() {
                 type="button"
                 onClick={handleResend}
                 disabled={loading || resendBlocked}
-                className="text-neutral-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="text-fg-subtle hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {resendBlocked ? `Resend in ${resendCooldown}s` : 'Resend code'}
               </button>
@@ -154,7 +154,7 @@ export default function LoginScreen() {
                   setOtpSent(false);
                   setCode('');
                 }}
-                className="text-neutral-500 hover:text-neutral-300"
+                className="text-fg-subtle hover:text-fg-muted"
               >
                 Use different email
               </button>
@@ -164,15 +164,15 @@ export default function LoginScreen() {
 
         {/* Local mode escape hatch (email step only) */}
         {showOtp ? null : (
-          <div className="space-y-2 border-t border-neutral-800 pt-4">
+          <div className="space-y-2 border-t border-edge pt-4">
             <button
               type="button"
               onClick={() => updateSettings({ localMode: true })}
-              className="w-full rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+              className="w-full rounded-md border border-edge px-3 py-2 text-sm text-fg-muted transition-colors hover:border-brand hover:text-fg"
             >
               Continue in local mode
             </button>
-            <p className="text-center text-[11px] text-neutral-600">
+            <p className="text-center text-[11px] text-fg-subtle">
               Use local tools (terminal, shell, git) without signing in. Account features stay
               disabled until you sign in.
             </p>
@@ -180,7 +180,7 @@ export default function LoginScreen() {
         )}
 
         {/* Footer */}
-        <p className="text-center text-[11px] text-neutral-600">Connecting to {settings.apiUrl}</p>
+        <p className="text-center text-[11px] text-fg-subtle">Connecting to {settings.apiUrl}</p>
       </div>
     </div>
   );

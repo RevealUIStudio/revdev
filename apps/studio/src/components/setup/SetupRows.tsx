@@ -33,7 +33,7 @@ interface SetupRowProps {
 
 export function SetupRow({ label, done, doneText, pendingText, action }: SetupRowProps) {
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+    <div className="rounded-lg border border-edge bg-surface-1 px-4 py-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <StatusDot status={done ? 'ok' : 'off'} size="md" />
@@ -41,7 +41,7 @@ export function SetupRow({ label, done, doneText, pendingText, action }: SetupRo
         </div>
         {action}
       </div>
-      <p className="mt-1 text-xs text-neutral-500">{done ? doneText : pendingText}</p>
+      <p className="mt-1 text-xs text-fg-subtle">{done ? doneText : pendingText}</p>
     </div>
   );
 }
@@ -139,7 +139,7 @@ export function DevPodRow({ setup }: SetupStepsProps) {
 
 export function GitIdentityRow({ setup }: SetupStepsProps) {
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-4">
+    <div className="rounded-lg border border-edge bg-surface-1 px-4 py-4">
       <div className="mb-3 flex items-center gap-2">
         <StatusDot
           status={setup.status?.git_name && setup.status?.git_email ? 'ok' : 'off'}
@@ -176,7 +176,7 @@ export function VaultRow() {
   const { vaultInitialized, vaultLoading, vaultError, handleInitVault } = useVaultSetup();
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+    <div className="rounded-lg border border-edge bg-surface-1 px-4 py-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <StatusDot status={vaultInitialized === true ? 'ok' : 'off'} size="md" />
@@ -188,7 +188,7 @@ export function VaultRow() {
           </Button>
         )}
       </div>
-      <p className="mt-1 text-xs text-neutral-500">
+      <p className="mt-1 text-xs text-fg-subtle">
         {vaultInitialized === true
           ? 'Passage-store ready at ~/.revealui/passage-store/'
           : vaultInitialized === false
@@ -216,7 +216,7 @@ export function ProjectSetupRow() {
   };
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+    <div className="rounded-lg border border-edge bg-surface-1 px-4 py-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <StatusDot status={done ? 'ok' : 'off'} size="md" />
@@ -228,7 +228,7 @@ export function ProjectSetupRow() {
           </Button>
         )}
       </div>
-      <p className="mt-1 text-xs text-neutral-500">
+      <p className="mt-1 text-xs text-fg-subtle">
         {done ? (
           'Environment variables configured.'
         ) : (
@@ -237,7 +237,7 @@ export function ProjectSetupRow() {
       </p>
       {!done && (
         <div className="mt-2 flex items-center gap-2">
-          <code className="rounded bg-neutral-800 px-2 py-1 font-mono text-xs text-neutral-300">
+          <code className="rounded bg-surface-2 px-2 py-1 font-mono text-xs text-fg-muted">
             {SETUP_CMD}
           </code>
           <Button variant="ghost" size="sm" onClick={copy}>
@@ -298,30 +298,30 @@ export function TerminalProfileRow() {
 
   if (loading && profiles.length === 0) {
     return (
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+      <div className="rounded-lg border border-edge bg-surface-1 px-4 py-3">
         <div className="flex items-center gap-2">
           <StatusDot status="off" size="md" />
           <span className="text-sm font-medium">Terminal Profiles</span>
-          <span className="text-xs text-neutral-500">Detecting terminals...</span>
+          <span className="text-xs text-fg-subtle">Detecting terminals...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+    <div className="rounded-lg border border-edge bg-surface-1 px-4 py-3">
       <div className="flex items-center gap-2">
         <StatusDot status={allInstalled ? 'ok' : 'off'} size="md" />
         <span className="text-sm font-medium">Terminal Profiles</span>
       </div>
-      <p className="mt-1 text-xs text-neutral-500">
+      <p className="mt-1 text-xs text-fg-subtle">
         {allInstalled
           ? 'RevealUI color scheme installed for all detected terminals.'
           : 'Install the RevealUI dark theme for your terminal emulators.'}
       </p>
       {error && <ErrorAlert message={error} className="mt-2" />}
       {profiles.length === 0 && !loading && (
-        <p className="mt-2 text-xs text-neutral-600">No supported terminal emulators detected.</p>
+        <p className="mt-2 text-xs text-fg-subtle">No supported terminal emulators detected.</p>
       )}
       {profiles.length > 0 && (
         <div className="mt-2 space-y-1.5">
@@ -330,10 +330,10 @@ export function TerminalProfileRow() {
               <div className="flex items-center gap-2">
                 <span
                   className={`inline-block size-1.5 rounded-full ${
-                    profile.installed ? 'bg-emerald-500' : 'bg-neutral-600'
+                    profile.installed ? 'bg-success' : 'bg-surface-2'
                   }`}
                 />
-                <span className="text-xs text-neutral-300">{profile.name}</span>
+                <span className="text-xs text-fg-muted">{profile.name}</span>
               </div>
               {!profile.installed && profile.config_file && (
                 <Button
@@ -345,7 +345,7 @@ export function TerminalProfileRow() {
                   {installing === profile.id ? 'Installing...' : 'Install'}
                 </Button>
               )}
-              {profile.installed && <span className="text-xs text-emerald-500">Installed</span>}
+              {profile.installed && <span className="text-xs text-success">Installed</span>}
             </div>
           ))}
         </div>
@@ -411,14 +411,14 @@ export function InferenceSnapsRow() {
   };
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+    <div className="rounded-lg border border-edge bg-surface-1 px-4 py-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <StatusDot status={hasAnyInstalled ? 'ok' : 'off'} size="md" />
           <span className="text-sm font-medium">AI Inference</span>
         </div>
       </div>
-      <p className="mt-1 text-xs text-neutral-500">
+      <p className="mt-1 text-xs text-fg-subtle">
         {loading
           ? 'Detecting inference snaps...'
           : hasAnyInstalled
@@ -431,14 +431,14 @@ export function InferenceSnapsRow() {
           {models.map((model) => (
             <div
               key={model.name}
-              className="flex items-center justify-between rounded border border-neutral-700 bg-neutral-800/50 px-3 py-2"
+              className="flex items-center justify-between rounded border border-edge bg-surface-3 px-3 py-2"
             >
               <div>
-                <span className="text-sm font-medium text-neutral-200">{model.name}</span>
-                <p className="text-xs text-neutral-500">{model.description}</p>
+                <span className="text-sm font-medium text-fg">{model.name}</span>
+                <p className="text-xs text-fg-subtle">{model.description}</p>
               </div>
               {model.installed ? (
-                <span className="text-xs font-medium text-green-400">Installed</span>
+                <span className="text-xs font-medium text-success">Installed</span>
               ) : (
                 <Button
                   size="sm"
@@ -456,7 +456,7 @@ export function InferenceSnapsRow() {
 
       {!(hasAnyInstalled || loading) && (
         <div className="mt-2 flex items-center gap-2">
-          <code className="rounded bg-neutral-800 px-2 py-1 font-mono text-xs text-neutral-300">
+          <code className="rounded bg-surface-2 px-2 py-1 font-mono text-xs text-fg-muted">
             {installCmd}
           </code>
           <Button variant="ghost" size="sm" onClick={copyCmd}>

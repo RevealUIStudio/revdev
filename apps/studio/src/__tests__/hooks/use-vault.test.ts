@@ -19,7 +19,7 @@ const { vaultInit, vaultIsInitialized, vaultList, vaultGet, vaultSet, vaultDelet
 const MOCK_SECRETS: SecretInfo[] = [
   { path: 'stripe/secret_key', namespace: 'stripe' },
   { path: 'neon/database_url', namespace: 'neon' },
-  { path: 'supabase/anon_key', namespace: 'supabase' },
+  { path: 'vercel/api_token', namespace: 'vercel' },
 ];
 
 function flushPromises(): Promise<void> {
@@ -165,7 +165,7 @@ describe('useVault', () => {
       await flushPromises();
     });
 
-    expect(result.current.namespaces).toEqual(['neon', 'stripe', 'supabase']);
+    expect(result.current.namespaces).toEqual(['neon', 'stripe', 'vercel']);
   });
 
   it('sets search query', async () => {
