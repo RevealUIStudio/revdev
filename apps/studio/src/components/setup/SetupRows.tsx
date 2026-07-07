@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 const COPY_FEEDBACK_MS = 2_000;
 
 import type { useSetup } from '../../hooks/use-setup';
-import { useTunnel } from '../../hooks/use-tunnel';
 import {
   inferenceSnapInstall,
   inferenceSnapList,
@@ -198,19 +197,6 @@ export function VaultRow() {
       </p>
       <ErrorAlert message={vaultError} />
     </div>
-  );
-}
-
-export function TailscaleRow() {
-  const { status: tunnelStatus } = useTunnel();
-
-  return (
-    <SetupRow
-      label="Tailscale"
-      done={tunnelStatus?.running ?? false}
-      doneText={`Connected — ${tunnelStatus?.ip ?? 'no IP'} (${tunnelStatus?.hostname ?? 'unknown'})`}
-      pendingText="Tailscale not running — start it to enable VPN tunnel to your tailnet"
-    />
   );
 }
 

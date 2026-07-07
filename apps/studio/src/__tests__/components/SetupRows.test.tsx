@@ -10,25 +10,12 @@ vi.mock('../../lib/invoke', () => ({
   vaultIsInitialized: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('../../hooks/use-tunnel', () => ({
-  useTunnel: vi.fn().mockReturnValue({
-    status: null,
-    loading: false,
-    error: null,
-    toggling: false,
-    up: vi.fn(),
-    down: vi.fn(),
-    refresh: vi.fn(),
-  }),
-}));
-
 import {
   DevPodRow,
   GitIdentityRow,
   NixRow,
   ProjectSetupRow,
   SetupRow,
-  TailscaleRow,
   VaultRow,
   WslRow,
 } from '../../components/setup/SetupRows';
@@ -132,13 +119,6 @@ describe('VaultRow', () => {
   it('renders Vault label', () => {
     render(<VaultRow />);
     expect(screen.getByText('Vault')).toBeInTheDocument();
-  });
-});
-
-describe('TailscaleRow', () => {
-  it('renders Tailscale label', () => {
-    render(<TailscaleRow />);
-    expect(screen.getByText('Tailscale')).toBeInTheDocument();
   });
 });
 

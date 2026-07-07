@@ -10,7 +10,6 @@ describe('Sidebar', () => {
     expect(screen.getByText('Vault')).toBeInTheDocument();
     expect(screen.getByText('Infrastructure')).toBeInTheDocument();
     expect(screen.getByText('Sync')).toBeInTheDocument();
-    expect(screen.getByText('Tunnel')).toBeInTheDocument();
     expect(screen.getByText('Terminal')).toBeInTheDocument();
     expect(screen.getByText('Setup')).toBeInTheDocument();
   });
@@ -50,8 +49,8 @@ describe('Sidebar', () => {
     const onNavigate = vi.fn();
     render(<Sidebar currentPage="dashboard" onNavigate={onNavigate} />);
 
-    const pages = ['Dashboard', 'Vault', 'Infrastructure', 'Sync', 'Tunnel', 'Terminal', 'Setup'];
-    const pageIds = ['dashboard', 'vault', 'infrastructure', 'sync', 'tunnel', 'terminal', 'setup'];
+    const pages = ['Dashboard', 'Vault', 'Infrastructure', 'Sync', 'Terminal', 'Setup'];
+    const pageIds = ['dashboard', 'vault', 'infrastructure', 'sync', 'terminal', 'setup'];
 
     for (let i = 0; i < pages.length; i++) {
       fireEvent.click(screen.getByText(pages[i]));

@@ -17,7 +17,6 @@ import SetupPage from './components/setup/SetupPage';
 import SetupWizard from './components/setup/SetupWizard';
 import SyncPanel from './components/sync/SyncPanel';
 import TerminalPanel from './components/terminal/TerminalPanel';
-import TunnelPanel from './components/tunnel/TunnelPanel';
 import VaultPanel from './components/vault/VaultPanel';
 import { AuthContext, useAuth } from './hooks/use-auth';
 import { useConfig } from './hooks/use-config';
@@ -125,7 +124,6 @@ function MainApp() {
           {page === 'vault' ? <VaultPanel /> : null}
           {page === 'infrastructure' ? <InfrastructurePanel /> : null}
           {page === 'sync' ? <SyncPanel /> : null}
-          {page === 'tunnel' ? <TunnelPanel /> : null}
           {page === 'terminal' ? <TerminalPanel /> : null}
           {page === 'git' ? <GitPanel onOpenEditor={openInEditor} /> : null}
           {page === 'editor' && editorTarget ? (
@@ -175,7 +173,6 @@ function MainApp() {
       {page === 'vault' ? <VaultPanel /> : null}
       {page === 'infrastructure' ? <InfrastructurePanel /> : null}
       {page === 'sync' ? <SyncPanel /> : null}
-      {page === 'tunnel' ? <TunnelPanel /> : null}
       {page === 'terminal' ? <TerminalPanel /> : null}
       {page === 'git' ? <GitPanel onOpenEditor={openInEditor} /> : null}
       {page === 'editor' && editorTarget ? (

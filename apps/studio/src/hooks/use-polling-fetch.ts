@@ -3,7 +3,7 @@
  * with full abort + isMounted hygiene.
  *
  * Why: every studio polling hook (useStatus, useHealth, useSubscription,
- * useRvuiBalance, useTunnel, …) was hand-rolling an initial fetch + a
+ * useRvuiBalance, …) was hand-rolling an initial fetch + a
  * setInterval, with no AbortController and no isMounted guard. Initial
  * fetches that resolved post-unmount (e.g. inside a Vitest jsdom
  * teardown, or a real user closing a window mid-fetch) called setState

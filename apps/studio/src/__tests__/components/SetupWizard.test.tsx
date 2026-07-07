@@ -27,18 +27,6 @@ vi.mock('../../hooks/use-setup', () => ({
   markSetupComplete: vi.fn(),
 }));
 
-vi.mock('../../hooks/use-tunnel', () => ({
-  useTunnel: vi.fn().mockReturnValue({
-    status: null,
-    loading: false,
-    error: null,
-    toggling: false,
-    up: vi.fn(),
-    down: vi.fn(),
-    refresh: vi.fn(),
-  }),
-}));
-
 vi.mock('@tauri-apps/plugin-shell', () => ({
   open: vi.fn(),
 }));
@@ -85,7 +73,6 @@ describe('SetupWizard', () => {
     expect(screen.getByText('DevPod')).toBeInTheDocument();
     expect(screen.getByText('Git Identity')).toBeInTheDocument();
     expect(screen.getByText('Vault')).toBeInTheDocument();
-    expect(screen.getByText('Tailscale')).toBeInTheDocument();
     expect(screen.getByText('Project Setup')).toBeInTheDocument();
   });
 
