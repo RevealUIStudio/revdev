@@ -3,7 +3,6 @@ import Button from '../ui/Button';
 import ErrorAlert from '../ui/ErrorAlert';
 import PanelHeader from '../ui/PanelHeader';
 import HealthCard from './HealthCard';
-import RvuiBalanceCard from './RvuiBalanceCard';
 import ServiceCard from './ServiceCard';
 import SubscriptionCard from './SubscriptionCard';
 import TierBadge from './TierBadge';
@@ -66,7 +65,6 @@ export default function Dashboard() {
           }
           detail={system?.systemd_status ?? 'Unknown'}
         />
-        <RvuiBalanceCard />
         <HealthCard />
         <SubscriptionCard />
       </div>

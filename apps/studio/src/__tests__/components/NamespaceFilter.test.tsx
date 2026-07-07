@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import NamespaceFilter from '../../components/vault/NamespaceFilter';
 
 describe('NamespaceFilter', () => {
-  const namespaces = ['stripe', 'neon', 'supabase'];
+  const namespaces = ['stripe', 'neon', 'vercel'];
 
   it('renders "Namespaces" label', () => {
     render(<NamespaceFilter namespaces={namespaces} active={null} onChange={vi.fn()} />);

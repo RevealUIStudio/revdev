@@ -58,7 +58,6 @@ export default function StepDomain({
           domain: cleanDomain,
           apps: config.deploy?.apps ?? null,
           neonProjectId: config.deploy?.neonProjectId ?? null,
-          supabaseEnabled: config.deploy?.supabaseEnabled ?? false,
           emailProvider: config.deploy?.emailProvider ?? null,
         },
       });

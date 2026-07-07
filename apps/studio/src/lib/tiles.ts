@@ -76,12 +76,6 @@ const URL_TILES: TileDefinition[] = [
     category: 'accounts',
     action: { type: 'url', url: 'https://console.neon.tech' },
   },
-  {
-    id: 'supabase-account',
-    label: 'Supabase',
-    category: 'accounts',
-    action: { type: 'url', url: 'https://supabase.com/dashboard' },
-  },
   // Dashboards
   {
     id: 'vercel-dashboard',
@@ -100,12 +94,6 @@ const URL_TILES: TileDefinition[] = [
     label: 'NeonDB Console',
     category: 'dashboards',
     action: { type: 'url', url: 'https://console.neon.tech' },
-  },
-  {
-    id: 'supabase-dashboard',
-    label: 'Supabase Console',
-    category: 'dashboards',
-    action: { type: 'url', url: 'https://supabase.com/dashboard' },
   },
 ];
 

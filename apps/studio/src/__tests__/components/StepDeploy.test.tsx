@@ -23,7 +23,6 @@ const MOCK_CONFIG: StudioConfig = {
     domain: null,
     apps: { api: 'prj-api', admin: 'prj-admin', marketing: 'prj-mkt' },
     neonProjectId: null,
-    supabaseEnabled: false,
     emailProvider: null,
   },
 };
@@ -38,7 +37,6 @@ const MOCK_CONFIG_NO_IDS: StudioConfig = {
     domain: null,
     apps: null,
     neonProjectId: null,
-    supabaseEnabled: false,
     emailProvider: null,
   },
 };
@@ -138,45 +136,6 @@ describe('StepDeploy', () => {
 
     // Retry button appears on failure
     expect(screen.getByText('Retry Failed')).toBeInTheDocument();
-  });
-
-  it('builds API env vars with Supabase when provided', async () => {
-    mockVercelSetEnv.mockResolvedValue(undefined);
-    mockVercelDeploy.mockResolvedValue('mock-deploy-id');
-    mockVercelGetDeployment.mockResolvedValue({
-      id: 'mock',
-      url: 'test.vercel.app',
-      state: 'READY',
-      createdAt: 0,
-    });
-
-    const dataWithSupabase: WizardData = {
-      ...MOCK_DATA,
-      supabaseUrl: 'https://abc.supabase.co',
-      supabasePublishableKey: 'anon_key_123',
-      supabaseSecretKey: 'service_key_123',
-    };
-
-    render(<StepDeploy config={MOCK_CONFIG} data={dataWithSupabase} onNext={vi.fn()} />);
-
-    fireEvent.click(screen.getByText('Deploy All'));
-
-    await waitFor(() => {
-      expect(screen.getByText('Next')).not.toBeDisabled();
-    });
-
-    // Check that Supabase vars were pushed for the API app
-    const setEnvCalls = mockVercelSetEnv.mock.calls;
-    const apiSupabaseCalls = setEnvCalls.filter(
-      (c: unknown[]) => c[1] === 'prj-api' && (c[2] as string).includes('SUPABASE'),
-    );
-    expect(apiSupabaseCalls).toHaveLength(3); // URL, ANON_KEY, SERVICE_ROLE_KEY
-
-    // Check Admin also gets Supabase URL + anon key
-    const adminSupabaseCalls = setEnvCalls.filter(
-      (c: unknown[]) => c[1] === 'prj-admin' && (c[2] as string).includes('SUPABASE'),
-    );
-    expect(adminSupabaseCalls).toHaveLength(2); // URL, ANON_KEY
   });
 
   it('builds Admin env vars with email (resend) and signup control', async () => {

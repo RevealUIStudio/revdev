@@ -95,7 +95,7 @@ const MOCK_DATA: Record<string, unknown> = {
   vault_list: [
     { path: 'stripe/secret_key', namespace: 'stripe' },
     { path: 'neon/database_url', namespace: 'neon' },
-    { path: 'supabase/anon_key', namespace: 'supabase' },
+    { path: 'vercel/api_token', namespace: 'vercel' },
   ] satisfies SecretInfo[],
   vault_search: [] satisfies SecretInfo[],
   vault_get: '••••••••',

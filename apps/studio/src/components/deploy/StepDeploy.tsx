@@ -63,17 +63,6 @@ function buildApiEnvVars(data: WizardData): Record<string, string> {
     vars.EMAIL_FROM = data.emailFrom;
   }
 
-  // Supabase (when enabled)
-  if (data.supabaseUrl) {
-    vars.NEXT_PUBLIC_SUPABASE_URL = data.supabaseUrl;
-  }
-  if (data.supabasePublishableKey) {
-    vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = data.supabasePublishableKey;
-  }
-  if (data.supabaseSecretKey) {
-    vars.SUPABASE_SECRET_KEY = data.supabaseSecretKey;
-  }
-
   return vars;
 }
 
@@ -105,13 +94,6 @@ function buildAdminEnvVars(data: WizardData): Record<string, string> {
 
   // Signup control
   vars.REVEALUI_SIGNUP_OPEN = String(data.signupOpen);
-
-  // Supabase for admin AI features
-  if (data.supabaseUrl) {
-    vars.NEXT_PUBLIC_SUPABASE_URL = data.supabaseUrl;
-    if (data.supabasePublishableKey)
-      vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = data.supabasePublishableKey;
-  }
 
   return vars;
 }

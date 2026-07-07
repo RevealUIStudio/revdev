@@ -51,7 +51,6 @@ export default function StepEmail({
           domain: config.deploy?.domain ?? null,
           apps: config.deploy?.apps ?? null,
           neonProjectId: config.deploy?.neonProjectId ?? null,
-          supabaseEnabled: config.deploy?.supabaseEnabled ?? false,
           emailProvider: 'gmail',
         },
       });

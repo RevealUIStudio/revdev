@@ -4,12 +4,11 @@ import { useSettingsContext } from '../../hooks/use-settings';
 import Card from '../ui/Card';
 import PanelHeader from '../ui/PanelHeader';
 
-type SettingsTab = 'appearance' | 'connection' | 'wallet' | 'about';
+type SettingsTab = 'appearance' | 'connection' | 'about';
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'appearance', label: 'Appearance' },
   { key: 'connection', label: 'Connection' },
-  { key: 'wallet', label: 'Wallet' },
   { key: 'about', label: 'About' },
 ];
 
@@ -164,50 +163,6 @@ export default function SettingsPanel() {
                 Skip sign-in and use local tools (terminal, shell, git) offline. Account and
                 API-backed features stay disabled until you sign in.
               </span>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {activeTab === 'wallet' && (
-        <Card
-          header={<h2 className="text-sm font-semibold text-neutral-100">RevealCoin Wallet</h2>}
-        >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="settings-solana-wallet" className="text-sm text-neutral-400">
-                Solana Wallet Address
-              </label>
-              <input
-                id="settings-solana-wallet"
-                type="text"
-                value={settings.solanaWalletAddress}
-                onChange={(e) => updateSettings({ solanaWalletAddress: e.target.value.trim() })}
-                placeholder="e.g., BzFDXRj56Qki..."
-                className="rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm font-mono text-neutral-300 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none"
-              />
-              <span className="text-xs text-neutral-500">
-                Your Solana public key for displaying RVUI balance on the dashboard.
-              </span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-sm text-neutral-400">Network</span>
-              <div className="flex gap-2">
-                {(['devnet', 'mainnet-beta'] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => updateSettings({ solanaNetwork: option })}
-                    className={`rounded-md px-4 py-2 text-sm transition-colors ${
-                      settings.solanaNetwork === option
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
         </Card>

@@ -93,7 +93,6 @@ export default function StepVercel({
             marketing: projectMap.marketing ?? '',
           },
           neonProjectId: config.deploy?.neonProjectId ?? null,
-          supabaseEnabled: config.deploy?.supabaseEnabled ?? false,
           emailProvider: config.deploy?.emailProvider ?? null,
         },
       });
