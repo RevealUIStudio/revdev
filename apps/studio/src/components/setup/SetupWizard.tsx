@@ -10,7 +10,6 @@ import {
   InferenceSnapsRow,
   NixRow,
   ProjectSetupRow,
-  TailscaleRow,
   TerminalProfileRow,
   VaultRow,
   WslRow,
@@ -75,7 +74,6 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
           <DevPodRow setup={setup} />
           <GitIdentityRow setup={setup} />
           <VaultRow />
-          <TailscaleRow />
           <InferenceSnapsRow />
           <ProjectSetupRow />
           <TerminalProfileRow />

@@ -151,25 +151,6 @@ describe('invoke bridge (browser mode)', () => {
     await expect(vaultCopy('secret')).resolves.toBeUndefined();
   });
 
-  it('getTailscaleStatus returns mock status', async () => {
-    const { getTailscaleStatus } = await import('../../lib/invoke');
-    const result = await getTailscaleStatus();
-    expect(result).toHaveProperty('running');
-    expect(result).toHaveProperty('peers');
-  });
-
-  it('tailscaleUp returns mock string', async () => {
-    const { tailscaleUp } = await import('../../lib/invoke');
-    const result = await tailscaleUp();
-    expect(typeof result).toBe('string');
-  });
-
-  it('tailscaleDown returns mock string', async () => {
-    const { tailscaleDown } = await import('../../lib/invoke');
-    const result = await tailscaleDown();
-    expect(typeof result).toBe('string');
-  });
-
   it('sshConnect returns mock session id', async () => {
     const { sshConnect } = await import('../../lib/invoke');
     const result = await sshConnect({

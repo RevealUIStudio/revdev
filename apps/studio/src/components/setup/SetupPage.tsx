@@ -8,7 +8,6 @@ import {
   InferenceSnapsRow,
   NixRow,
   ProjectSetupRow,
-  TailscaleRow,
   TerminalProfileRow,
   VaultRow,
   WslRow,
@@ -37,7 +36,6 @@ export default function SetupPage() {
         <DevPodRow setup={setup} />
         <GitIdentityRow setup={setup} />
         <VaultRow />
-        <TailscaleRow />
         <InferenceSnapsRow />
         <ProjectSetupRow />
         <TerminalProfileRow />
