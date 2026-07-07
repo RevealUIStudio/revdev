@@ -38,15 +38,6 @@ pub trait PlatformOps {
 
     /// Set git global user.name and user.email in WSL.
     fn set_git_identity(&self, name: &str, email: &str) -> Result<(), String>;
-
-    /// Get Tailscale connection status and peer list.
-    fn get_tailscale_status(&self) -> Result<TailscaleStatus, String>;
-
-    /// Bring Tailscale up (connect to the tailnet).
-    fn tailscale_up(&self) -> Result<String, String>;
-
-    /// Bring Tailscale down (disconnect from the tailnet).
-    fn tailscale_down(&self) -> Result<String, String>;
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -114,20 +105,3 @@ pub struct SetupStatus {
     pub git_email: String,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "bindings/")]
-pub struct TailscaleStatus {
-    pub running: bool,
-    pub ip: Option<String>,
-    pub hostname: Option<String>,
-    pub peers: Vec<TailscalePeer>,
-}
-
-#[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "bindings/")]
-pub struct TailscalePeer {
-    pub hostname: String,
-    pub ip: String,
-    pub online: bool,
-    pub os: String,
-}

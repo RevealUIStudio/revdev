@@ -15,5 +15,4 @@ pub mod ssh;
 pub mod status;
 pub mod sync;
 pub mod terminal;
-pub mod tunnel;
 pub mod vault;

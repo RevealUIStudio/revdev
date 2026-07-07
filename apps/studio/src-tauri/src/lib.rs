@@ -19,7 +19,7 @@ mod updater;
 use commands::{
     agent as agent_cmds, apps, config as config_cmds, deploy, git as git_cmds,
     harness as harness_cmds, inference as inference_cmds, launcher, local_shell as shell_cmds,
-    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, tunnel, vault,
+    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, vault,
 };
 use config::ConfigState;
 use local_shell::LocalShellState;
@@ -86,9 +86,6 @@ pub fn run() {
             vault::vault_delete,
             vault::vault_search,
             vault::vault_copy,
-            tunnel::get_tailscale_status,
-            tunnel::tailscale_up,
-            tunnel::tailscale_down,
             shell_cmds::shell_open,
             shell_cmds::shell_close,
             shell_cmds::shell_send,
