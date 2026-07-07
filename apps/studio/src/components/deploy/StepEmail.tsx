@@ -68,7 +68,7 @@ export default function StepEmail({
       error={error}
     >
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 rounded-md border border-neutral-700 bg-neutral-900/50 p-4">
+        <div className="flex flex-col gap-3 rounded-md border border-edge bg-surface-1/50 p-4">
           <Input
             id="google-service-account-email"
             label="Service Account Email"
@@ -103,7 +103,7 @@ export default function StepEmail({
           />
         </div>
 
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-fg-muted">
           In-wizard test send is not wired yet — verify delivery from the Admin app after
           deployment.
         </p>

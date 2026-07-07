@@ -23,15 +23,15 @@ export default function AppsPanel() {
       {apps.length === 0 && loading && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-lg bg-neutral-800/50" />
+            <div key={i} className="h-24 animate-pulse rounded-lg bg-surface-3" />
           ))}
         </div>
       )}
 
       {apps.length === 0 && !loading && !error && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-sm text-neutral-600">No apps yet</p>
-          <p className="mt-1 text-xs text-neutral-700">
+          <p className="text-sm text-fg-subtle">No apps yet</p>
+          <p className="mt-1 text-xs text-fg-subtle">
             Apps configured in your harness will appear here.
           </p>
         </div>

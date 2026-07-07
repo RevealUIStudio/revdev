@@ -56,10 +56,10 @@ export default function AppCard({ status, isOperating, onStart, onStop }: AppCar
             <StatusDot status={running ? 'ok' : 'off'} size="sm" pulse={isOperating} />
             <h3 className="text-sm font-medium">{app.display_name}</h3>
           </div>
-          <span className="text-xs text-neutral-500">:{app.port}</span>
+          <span className="text-xs text-fg-subtle">:{app.port}</span>
         </div>
 
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs text-fg-subtle">
           {isOperating
             ? running
               ? 'Stopping...'
@@ -91,8 +91,8 @@ export default function AppCard({ status, isOperating, onStart, onStop }: AppCar
       </div>
 
       {showLogs && running && (
-        <div className="border-t border-neutral-800">
-          <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap p-3 font-mono text-xs text-neutral-400">
+        <div className="border-t border-edge">
+          <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap p-3 font-mono text-xs text-fg-muted">
             {logContent || 'No log output yet...'}
           </pre>
         </div>

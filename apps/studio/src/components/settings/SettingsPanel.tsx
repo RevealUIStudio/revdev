@@ -53,21 +53,19 @@ export default function SettingsPanel() {
       <PanelHeader title="Settings" />
 
       {/* Tab bar */}
-      <div className="flex gap-1 rounded-lg bg-neutral-900 p-1">
+      <div className="flex gap-1 rounded-lg bg-surface-1 p-1">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             type="button"
             onClick={() => setActiveTab(tab.key)}
             className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'bg-neutral-800 text-neutral-100'
-                : 'text-neutral-500 hover:text-neutral-300'
+              activeTab === tab.key ? 'bg-surface-2 text-fg' : 'text-fg-subtle hover:text-fg-muted'
             }`}
           >
             {tab.label}
             {tab.key === 'connection' && settings.localMode && (
-              <span className="ml-1.5 inline-block rounded bg-amber-600 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
+              <span className="ml-1.5 inline-block rounded bg-accent px-1 py-0.5 text-[10px] font-semibold leading-none text-fg">
                 LOCAL
               </span>
             )}
@@ -77,9 +75,9 @@ export default function SettingsPanel() {
 
       {/* Tab content */}
       {activeTab === 'appearance' && (
-        <Card header={<h2 className="text-sm font-semibold text-neutral-100">Appearance</h2>}>
+        <Card header={<h2 className="text-sm font-semibold text-fg">Appearance</h2>}>
           <div className="flex flex-col gap-3">
-            <span className="text-sm text-neutral-400">Theme</span>
+            <span className="text-sm text-fg-muted">Theme</span>
             <div className="flex gap-2">
               {(['dark', 'light', 'system'] as const).map((option) => (
                 <button
@@ -88,8 +86,8 @@ export default function SettingsPanel() {
                   onClick={() => updateSettings({ theme: option as Theme })}
                   className={`rounded-md px-4 py-2 text-sm capitalize transition-colors ${
                     settings.theme === option
-                      ? 'bg-orange-600 text-white'
-                      : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                      ? 'bg-brand text-on-brand'
+                      : 'bg-surface-2 text-fg-muted hover:bg-surface-3 hover:text-fg'
                   }`}
                 >
                   {option}
@@ -101,10 +99,10 @@ export default function SettingsPanel() {
       )}
 
       {activeTab === 'connection' && (
-        <Card header={<h2 className="text-sm font-semibold text-neutral-100">Connection</h2>}>
+        <Card header={<h2 className="text-sm font-semibold text-fg">Connection</h2>}>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
-              <label htmlFor="settings-api-url" className="text-sm text-neutral-400">
+              <label htmlFor="settings-api-url" className="text-sm text-fg-muted">
                 API URL
               </label>
               <input
@@ -112,11 +110,11 @@ export default function SettingsPanel() {
                 type="text"
                 value={settings.apiUrl}
                 onChange={(e) => updateSettings({ apiUrl: e.target.value })}
-                className="rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-300 focus:border-neutral-500 focus:outline-none"
+                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-fg-muted focus:border-edge focus:outline-none"
               />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-sm text-neutral-400">Polling interval</span>
+              <span className="text-sm text-fg-muted">Polling interval</span>
               <div className="flex gap-2">
                 {POLLING_OPTIONS.map((opt) => (
                   <button
@@ -125,8 +123,8 @@ export default function SettingsPanel() {
                     onClick={() => updateSettings({ pollingIntervalMs: opt.value })}
                     className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
                       settings.pollingIntervalMs === opt.value
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        ? 'bg-brand text-on-brand'
+                        : 'bg-surface-2 text-fg-muted hover:bg-surface-3 hover:text-fg'
                     }`}
                   >
                     {opt.label}
@@ -136,9 +134,9 @@ export default function SettingsPanel() {
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-neutral-400">Local mode</span>
+                <span className="text-sm text-fg-muted">Local mode</span>
                 {settings.localMode && (
-                  <span className="rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-white">
+                  <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-fg">
                     Active
                   </span>
                 )}
@@ -151,15 +149,15 @@ export default function SettingsPanel() {
                     onClick={() => updateSettings({ localMode: opt.value })}
                     className={`rounded-md px-4 py-2 text-sm transition-colors ${
                       settings.localMode === opt.value
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        ? 'bg-brand text-on-brand'
+                        : 'bg-surface-2 text-fg-muted hover:bg-surface-3 hover:text-fg'
                     }`}
                   >
                     {opt.label}
                   </button>
                 ))}
               </div>
-              <span className="text-xs text-neutral-500">
+              <span className="text-xs text-fg-subtle">
                 Skip sign-in and use local tools (terminal, shell, git) offline. Account and
                 API-backed features stay disabled until you sign in.
               </span>
@@ -169,29 +167,29 @@ export default function SettingsPanel() {
       )}
 
       {activeTab === 'about' && (
-        <Card header={<h2 className="text-sm font-semibold text-neutral-100">About</h2>}>
+        <Card header={<h2 className="text-sm font-semibold text-fg">About</h2>}>
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-neutral-400">Version</span>
-              <span className="text-sm text-neutral-300">{appVersion}</span>
+              <span className="text-sm text-fg-muted">Version</span>
+              <span className="text-sm text-fg-muted">{appVersion}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-neutral-400">Documentation</span>
-              <span className="text-sm text-neutral-500">docs.revealui.com</span>
+              <span className="text-sm text-fg-muted">Documentation</span>
+              <span className="text-sm text-fg-subtle">docs.revealui.com</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-neutral-400">GitHub</span>
-              <span className="text-sm text-neutral-500">github.com/RevealUIStudio/revealui</span>
+              <span className="text-sm text-fg-muted">GitHub</span>
+              <span className="text-sm text-fg-subtle">github.com/RevealUIStudio/revealui</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-neutral-400">Community</span>
-              <span className="text-sm text-neutral-500">revnation.discourse.group</span>
+              <span className="text-sm text-fg-muted">Community</span>
+              <span className="text-sm text-fg-subtle">revnation.discourse.group</span>
             </div>
-            <div className="pt-2 border-t border-neutral-800">
+            <div className="pt-2 border-t border-edge">
               <button
                 type="button"
                 onClick={resetSettings}
-                className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors"
+                className="text-sm text-fg-subtle hover:text-fg-muted transition-colors"
               >
                 Reset all settings to defaults
               </button>

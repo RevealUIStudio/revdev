@@ -146,9 +146,9 @@ export default function AgentTerminalPane() {
   return (
     <div className="flex h-full flex-col overflow-hidden md:flex-row">
       {/* Sidebar — session list */}
-      <div className="flex w-full flex-col border-b border-neutral-800 md:w-56 md:border-r md:border-b-0">
-        <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-          <span className="text-sm font-medium text-neutral-300">
+      <div className="flex w-full flex-col border-b border-edge md:w-56 md:border-r md:border-b-0">
+        <div className="flex items-center justify-between border-b border-edge px-3 py-2">
+          <span className="text-sm font-medium text-fg-muted">
             Agents {runningCount > 0 && `(${runningCount})`}
           </span>
           <Button size="sm" onClick={spawnAgent} disabled={spawning}>
@@ -158,7 +158,7 @@ export default function AgentTerminalPane() {
 
         <div className="flex-1 overflow-y-auto">
           {sessions.length === 0 && (
-            <p className="px-3 py-4 text-xs text-neutral-500">
+            <p className="px-3 py-4 text-xs text-fg-subtle">
               No agent sessions. Click "+ New" to spawn an agent.
             </p>
           )}
@@ -167,8 +167,8 @@ export default function AgentTerminalPane() {
               key={s.id}
               type="button"
               onClick={() => setActiveSession(s.id)}
-              className={`flex w-full items-center gap-2 border-b border-neutral-800/50 px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-800/50 ${
-                activeSession === s.id ? 'bg-neutral-800' : ''
+              className={`flex w-full items-center gap-2 border-b border-edge/50 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2/50 ${
+                activeSession === s.id ? 'bg-surface-2' : ''
               }`}
             >
               <StatusDot
@@ -176,8 +176,8 @@ export default function AgentTerminalPane() {
                 decorative
               />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-neutral-200">{s.name}</div>
-                <div className="truncate text-xs text-neutral-500">
+                <div className="truncate text-fg">{s.name}</div>
+                <div className="truncate text-xs text-fg-subtle">
                   {s.backend} · {s.status}
                 </div>
               </div>
@@ -188,7 +188,7 @@ export default function AgentTerminalPane() {
                     e.stopPropagation();
                     stopSession(s.id);
                   }}
-                  className="rounded px-1 text-xs text-neutral-500 hover:bg-red-900/30 hover:text-red-400"
+                  className="rounded px-1 text-xs text-fg-subtle hover:bg-error-subtle hover:text-error"
                   aria-label="Stop agent"
                 >
                   <span aria-hidden="true">■</span>
@@ -204,7 +204,7 @@ export default function AgentTerminalPane() {
         {activeSession ? (
           <TerminalView onData={handleData} onResize={handleResize} terminalRef={terminalRef} />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-neutral-500">
+          <div className="flex flex-1 items-center justify-center text-fg-subtle">
             <div className="text-center">
               <p className="text-lg">No session selected</p>
               <p className="mt-1 text-sm">

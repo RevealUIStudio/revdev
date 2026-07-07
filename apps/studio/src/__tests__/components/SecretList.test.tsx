@@ -67,7 +67,7 @@ describe('SecretList', () => {
         onDelete={vi.fn()}
       />,
     );
-    const selectedRow = container.querySelector('.bg-neutral-800.text-neutral-100');
+    const selectedRow = container.querySelector('.bg-surface-2.text-fg');
     expect(selectedRow).not.toBeNull();
   });
 });

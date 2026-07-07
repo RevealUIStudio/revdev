@@ -45,8 +45,8 @@ function AuthGatedApp() {
   return (
     <AuthContext.Provider value={auth}>
       {auth.loading && auth.step === 'idle' ? (
-        <div className="flex h-screen items-center justify-center bg-neutral-950">
-          <div className="text-neutral-400">Loading...</div>
+        <div className="flex h-screen items-center justify-center bg-surface-0">
+          <div className="text-fg-muted">Loading...</div>
         </div>
       ) : auth.step !== 'authenticated' ? (
         <LoginScreen />
@@ -85,8 +85,8 @@ function MainApp() {
 
   if (loading || !config) {
     return (
-      <div className="flex h-screen items-center justify-center bg-neutral-950">
-        <div className="text-neutral-400">Loading...</div>
+      <div className="flex h-screen items-center justify-center bg-surface-0">
+        <div className="text-fg-muted">Loading...</div>
       </div>
     );
   }
@@ -134,7 +134,7 @@ function MainApp() {
             />
           ) : null}
           {page === 'editor' && !editorTarget ? (
-            <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+            <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
               No file selected — open a file from the Git panel
             </div>
           ) : null}
@@ -183,7 +183,7 @@ function MainApp() {
         />
       ) : null}
       {page === 'editor' && !editorTarget ? (
-        <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+        <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
           No file selected — open a file from the Git panel
         </div>
       ) : null}

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 
 const variantStyles = {
-  default: 'bg-neutral-900 border border-neutral-800 rounded-lg',
-  elevated: 'bg-neutral-900 border border-neutral-700 rounded-lg shadow-lg',
-  ghost: 'bg-transparent border border-neutral-800/50 rounded-lg',
+  default: 'bg-surface-1 border border-edge rounded-lg',
+  elevated: 'bg-surface-1 border border-edge-strong rounded-lg shadow-lg',
+  ghost: 'bg-transparent border border-edge-subtle rounded-lg',
 } as const;
 
 const paddingStyles = {
@@ -33,7 +33,7 @@ export default function Card({
 }: CardProps) {
   return (
     <div className={`${variantStyles[variant]} ${paddingStyles[padding]} ${className}`}>
-      {header && <div className="mb-3 border-b border-neutral-800 pb-3">{header}</div>}
+      {header && <div className="mb-3 border-b border-edge pb-3">{header}</div>}
       {children}
     </div>
   );

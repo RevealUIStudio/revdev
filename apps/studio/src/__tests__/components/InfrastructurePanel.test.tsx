@@ -72,13 +72,13 @@ describe('InfrastructurePanel', () => {
     // asserted on App Launcher, which silently went stale when the
     // default flipped — tracked under the chore that fixed it.
     const daemonTab = screen.getAllByText('Daemon')[0].closest('button');
-    expect(daemonTab?.className).toContain('border-orange-500');
+    expect(daemonTab?.className).toContain('border-brand');
   });
 
   it('switches tab highlight when clicking DevPod', () => {
     render(<InfrastructurePanel />);
     const devPodButton = screen.getByRole('button', { name: 'DevPod' });
     fireEvent.click(devPodButton);
-    expect(devPodButton.className).toContain('border-orange-500');
+    expect(devPodButton.className).toContain('border-brand');
   });
 });

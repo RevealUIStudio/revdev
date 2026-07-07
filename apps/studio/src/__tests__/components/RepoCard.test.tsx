@@ -48,19 +48,19 @@ describe('RepoCard', () => {
   it('applies green style for ok status', () => {
     render(<RepoCard result={OK_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     const statusEl = screen.getByText('OK');
-    expect(statusEl.className).toContain('text-green-400');
+    expect(statusEl.className).toContain('text-success');
   });
 
   it('applies yellow style for dirty status', () => {
     render(<RepoCard result={DIRTY_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     const statusEl = screen.getByText('DIRTY');
-    expect(statusEl.className).toContain('text-yellow-400');
+    expect(statusEl.className).toContain('text-warning');
   });
 
   it('applies red style for error status', () => {
     render(<RepoCard result={ERROR_RESULT} onSync={vi.fn()} syncing={false} error={null} />);
     const statusEl = screen.getByText('ERROR');
-    expect(statusEl.className).toContain('text-red-400');
+    expect(statusEl.className).toContain('text-error');
   });
 
   it('renders a per-repo error message when one is set', () => {

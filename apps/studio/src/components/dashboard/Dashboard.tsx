@@ -33,7 +33,7 @@ export default function Dashboard() {
       {system ? (
         <div className="flex items-center gap-3">
           <TierBadge tier={system.tier} />
-          <span className="text-sm text-neutral-400">
+          <span className="text-sm text-fg-muted">
             {system.distribution} &mdash; systemd: {system.systemd_status}
           </span>
         </div>
@@ -75,10 +75,10 @@ export default function Dashboard() {
 function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="h-7 w-32 animate-pulse rounded bg-neutral-800" />
+      <div className="h-7 w-32 animate-pulse rounded bg-surface-2" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-28 animate-pulse rounded-lg bg-neutral-800/50" />
+          <div key={i} className="h-28 animate-pulse rounded-lg bg-surface-3" />
         ))}
       </div>
     </div>

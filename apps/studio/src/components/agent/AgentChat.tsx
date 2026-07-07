@@ -172,10 +172,10 @@ function ToolBadge({
 
   const statusColor =
     status === 'running'
-      ? 'border-blue-600/40 bg-blue-950/30 text-blue-400'
+      ? 'border-info/40 bg-info-subtle text-info'
       : status === 'success'
-        ? 'border-emerald-600/40 bg-emerald-950/30 text-emerald-400'
-        : 'border-red-600/40 bg-red-950/30 text-red-400';
+        ? 'border-success/40 bg-success-subtle text-success'
+        : 'border-error/40 bg-error-subtle text-error';
 
   return (
     <div className="my-1">
@@ -185,12 +185,12 @@ function ToolBadge({
         className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] font-medium ${statusColor} ${result ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}`}
       >
         {status === 'running' ? (
-          <span className="size-1.5 animate-pulse rounded-full bg-blue-400" />
+          <span className="size-1.5 animate-pulse rounded-full bg-info" />
         ) : null}
         {label}
       </button>
       {expanded && result ? (
-        <pre className="mt-1 max-h-32 overflow-auto rounded border border-neutral-800 bg-neutral-950 p-2 text-[10px] text-neutral-400">
+        <pre className="mt-1 max-h-32 overflow-auto rounded border border-edge bg-surface-0 p-2 text-[10px] text-fg-muted">
           {result}
         </pre>
       ) : null}
@@ -315,7 +315,7 @@ export default function AgentChat() {
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-fg-subtle">
                 {mode === 'coding'
                   ? 'Ask about code, run commands, make changes...'
                   : 'Manage content, users, and settings...'}
@@ -328,9 +328,7 @@ export default function AgentChat() {
           <div
             key={msg.id}
             className={`rounded-lg px-3 py-2 text-xs leading-relaxed ${
-              msg.role === 'user'
-                ? 'ml-8 bg-blue-950/40 text-blue-100'
-                : 'mr-8 bg-neutral-800/60 text-neutral-200'
+              msg.role === 'user' ? 'ml-8 bg-info-subtle text-fg' : 'mr-8 bg-surface-2/60 text-fg'
             }`}
           >
             {msg.role === 'assistant' && msg.toolCalls?.length ? (
@@ -347,7 +345,7 @@ export default function AgentChat() {
         ))}
 
         {stream.error ? (
-          <div className="rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-[11px] text-red-400">
+          <div className="rounded-lg border border-error/40 bg-error-subtle px-3 py-2 text-[11px] text-error">
             {stream.error}
           </div>
         ) : null}
@@ -356,17 +354,17 @@ export default function AgentChat() {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-neutral-800 px-3 py-2.5">
+      <div className="border-t border-edge px-3 py-2.5">
         <div className="mb-2 flex items-center gap-2">
-          <div className="flex items-center rounded border border-neutral-700">
+          <div className="flex items-center rounded border border-edge">
             <button
               type="button"
               onClick={() => setMode('coding')}
               disabled={stream.isStreaming}
               className={`rounded-l px-2 py-0.5 text-[10px] font-medium transition-colors ${
                 mode === 'coding'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-neutral-800 text-neutral-500 hover:text-neutral-300'
+                  ? 'bg-brand text-on-brand'
+                  : 'bg-surface-2 text-fg-subtle hover:text-fg-muted'
               }`}
             >
               Coding
@@ -377,14 +375,14 @@ export default function AgentChat() {
               disabled={stream.isStreaming}
               className={`rounded-r px-2 py-0.5 text-[10px] font-medium transition-colors ${
                 mode === 'content'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-neutral-800 text-neutral-500 hover:text-neutral-300'
+                  ? 'bg-brand text-on-brand'
+                  : 'bg-surface-2 text-fg-subtle hover:text-fg-muted'
               }`}
             >
               admin
             </button>
           </div>
-          <span className="text-[10px] text-neutral-600">
+          <span className="text-[10px] text-fg-subtle">
             {mode === 'coding' ? 'Code + admin tools' : 'admin tools only'}
           </span>
         </div>
@@ -398,13 +396,13 @@ export default function AgentChat() {
             rows={1}
             placeholder={mode === 'coding' ? 'Ask about code...' : 'Ask the assistant...'}
             disabled={stream.isStreaming}
-            className="flex-1 resize-none rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-500"
+            className="flex-1 resize-none rounded-lg border border-edge bg-surface-2 px-3 py-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-brand"
           />
           {stream.isStreaming ? (
             <button
               type="button"
               onClick={stream.abort}
-              className="shrink-0 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-500"
+              className="shrink-0 rounded-lg bg-error px-3 py-2 text-xs font-medium text-on-brand hover:brightness-110"
             >
               Stop
             </button>
@@ -412,13 +410,13 @@ export default function AgentChat() {
             <button
               type="submit"
               disabled={!input.trim()}
-              className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-medium text-on-brand hover:bg-brand-hover disabled:opacity-40"
             >
               Send
             </button>
           )}
         </form>
-        <p className="mt-1.5 text-center text-[10px] text-neutral-600">
+        <p className="mt-1.5 text-center text-[10px] text-fg-subtle">
           Enter to send &middot; Shift+Enter for new line &middot; Esc to stop
         </p>
       </div>

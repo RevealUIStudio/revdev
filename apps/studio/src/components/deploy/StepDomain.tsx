@@ -90,8 +90,8 @@ export default function StepDomain({
         />
 
         {cleanDomain && (
-          <div className="rounded-md border border-neutral-700 bg-neutral-900/50 p-4">
-            <p className="mb-2 text-xs font-medium text-neutral-400">Derived URLs</p>
+          <div className="rounded-md border border-edge bg-surface-1/50 p-4">
+            <p className="mb-2 text-xs font-medium text-fg-muted">Derived URLs</p>
             <div className="flex flex-col gap-1 text-sm font-mono">
               <DerivedUrl label="API" url={`https://${apiUrl}`} />
               <DerivedUrl label="Admin" url={`https://${adminUrl}`} />
@@ -101,17 +101,17 @@ export default function StepDomain({
         )}
 
         {cleanDomain && (
-          <div className="rounded-md border border-neutral-700 bg-neutral-900/50 p-4">
-            <p className="mb-2 text-xs font-medium text-neutral-400">DNS Records</p>
+          <div className="rounded-md border border-edge bg-surface-1/50 p-4">
+            <p className="mb-2 text-xs font-medium text-fg-muted">DNS Records</p>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs text-neutral-500">
+                <tr className="text-left text-xs text-fg-subtle">
                   <th className="pb-1 pr-4">Type</th>
                   <th className="pb-1 pr-4">Name</th>
                   <th className="pb-1">Value</th>
                 </tr>
               </thead>
-              <tbody className="font-mono text-neutral-300">
+              <tbody className="font-mono text-fg-muted">
                 <tr>
                   <td className="pr-4 py-0.5">CNAME</td>
                   <td className="pr-4 py-0.5">{apiUrl}</td>
@@ -132,7 +132,7 @@ export default function StepDomain({
           </div>
         )}
 
-        <label className="flex items-center gap-2 text-sm text-neutral-300 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-fg-muted cursor-pointer">
           <input
             type="checkbox"
             checked={signupOpen}
@@ -141,7 +141,7 @@ export default function StepDomain({
               setSaved(false);
             }}
             disabled={saved}
-            className="rounded border-neutral-600 bg-neutral-800 text-orange-500 focus:ring-orange-500"
+            className="rounded border-edge-strong bg-surface-2 text-brand focus:ring-brand"
           />
           Allow public signups (REVEALUI_SIGNUP_OPEN)
         </label>
@@ -207,7 +207,7 @@ export default function StepDomain({
           >
             Save Configuration
           </Button>
-          {saved && <span className="text-sm text-green-400">Configuration saved</span>}
+          {saved && <span className="text-sm text-success">Configuration saved</span>}
         </div>
 
         <Button variant="primary" onClick={onNext} disabled={!saved} className="mt-2 self-end">
@@ -221,8 +221,8 @@ export default function StepDomain({
 function DerivedUrl({ label, url }: { label: string; url: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="w-20 text-neutral-500">{label}:</span>
-      <span className="text-neutral-200">{url}</span>
+      <span className="w-20 text-fg-subtle">{label}:</span>
+      <span className="text-fg">{url}</span>
     </div>
   );
 }

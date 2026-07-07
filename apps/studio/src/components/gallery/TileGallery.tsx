@@ -32,7 +32,7 @@ export default function TileGallery() {
       {/* Search bar */}
       <div className="relative">
         <svg
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-500"
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -47,13 +47,13 @@ export default function TileGallery() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search tiles..."
-          className="w-full rounded-lg border border-neutral-800 bg-neutral-900 py-2 pl-10 pr-3 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-orange-500 focus:outline-none"
+          className="w-full rounded-lg border border-edge bg-surface-1 py-2 pl-10 pr-3 text-sm text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
         />
         {query && (
           <button
             type="button"
             onClick={() => setQuery('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg-muted"
           >
             <svg
               className="size-4"
@@ -73,7 +73,7 @@ export default function TileGallery() {
       {/* Recent launches */}
       {recentTiles.length > 0 && !query && !editing && (
         <section>
-          <h2 className="py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+          <h2 className="py-2 text-xs font-semibold uppercase tracking-wider text-fg-subtle">
             Recent
           </h2>
           <div className="grid grid-cols-2 gap-2 pb-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -105,13 +105,13 @@ export default function TileGallery() {
           ))}
         </div>
       ) : (
-        <div className="py-12 text-center text-sm text-neutral-500">
+        <div className="py-12 text-center text-sm text-fg-subtle">
           {query ? `No tiles matching "${query}"` : 'No tiles configured'}
         </div>
       )}
 
       {editing && (
-        <p className="text-xs text-neutral-600">
+        <p className="text-xs text-fg-subtle">
           Click the eye icon to show or hide tiles. Changes are saved automatically.
         </p>
       )}

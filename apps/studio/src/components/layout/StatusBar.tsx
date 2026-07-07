@@ -12,11 +12,11 @@ export default function StatusBar() {
   const { system, mount, loading, error, refresh } = useStatusContext();
 
   return (
-    <footer className="flex items-center gap-3 border-t border-neutral-800 bg-neutral-900 px-4 py-1.5 text-xs text-neutral-400">
+    <footer className="flex items-center gap-3 border-t border-edge bg-surface-1 px-4 py-1.5 text-xs text-fg-muted">
       {error ? (
         <>
           <StatusDot status="error" pulse />
-          <span className="text-red-400" title={error}>
+          <span className="text-error" title={error}>
             {truncate(error, ERROR_TRUNCATE_LENGTH)}
           </span>
         </>
@@ -32,16 +32,16 @@ export default function StatusBar() {
             <StatusDot status={system?.wsl_running ? 'ok' : 'off'} />
             <span>WSL {system?.wsl_running ? 'Running' : 'Stopped'}</span>
             {system?.systemd_status ? (
-              <span className="text-neutral-500">({system.systemd_status})</span>
+              <span className="text-fg-subtle">({system.systemd_status})</span>
             ) : null}
           </div>
 
-          <span className="text-neutral-700">|</span>
+          <span className="text-fg-subtle">|</span>
 
           {/* Tier */}
-          <span className="font-medium text-neutral-300">{system?.tier ?? '?'}</span>
+          <span className="font-medium text-fg-muted">{system?.tier ?? '?'}</span>
 
-          <span className="text-neutral-700">|</span>
+          <span className="text-fg-subtle">|</span>
 
           {/* Studio drive */}
           <div className="flex items-center gap-2">
@@ -52,7 +52,7 @@ export default function StatusBar() {
       )}
       <button
         type="button"
-        className="ml-auto text-neutral-500 transition-colors hover:text-neutral-300"
+        className="ml-auto text-fg-subtle transition-colors hover:text-fg-muted"
         onClick={refresh}
         aria-label="Refresh status"
         title="Refresh status"

@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 
 const variantClasses = {
   default: 'bg-white/5 text-zinc-400',
-  success: 'bg-green-500/10 text-green-400',
-  warning: 'bg-yellow-400/10 text-yellow-300',
-  error: 'bg-red-500/10 text-red-400',
-  info: 'bg-blue-500/15 text-blue-400',
+  success: 'bg-success-subtle text-success',
+  warning: 'bg-warning-subtle text-warning',
+  error: 'bg-error-subtle text-error',
+  info: 'bg-info/15 text-info',
   brand: 'bg-emerald-500/10 text-emerald-400',
 } as const;
 
