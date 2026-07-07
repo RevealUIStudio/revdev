@@ -104,7 +104,7 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: oklch(0.16 0.030 260 / 0.5);
+  background: oklch(0.16 0.03 260 / 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -123,5 +123,5 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--rvui-surface-3) oklch(0.16 0.030 260 / 0.5);
+  scrollbar-color: var(--rvui-surface-3) oklch(0.16 0.03 260 / 0.5);
 }
