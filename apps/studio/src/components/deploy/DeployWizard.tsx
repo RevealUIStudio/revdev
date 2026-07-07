@@ -46,8 +46,8 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
 
   if (!config) {
     return (
-      <div className="flex h-screen items-center justify-center bg-neutral-950">
-        <div className="text-neutral-400">Loading...</div>
+      <div className="flex h-screen items-center justify-center bg-surface-0">
+        <div className="text-fg-muted">Loading...</div>
       </div>
     );
   }
@@ -97,9 +97,9 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-neutral-950">
-      <div className="w-64 border-r border-neutral-800 bg-neutral-900 p-4">
-        <h1 className="mb-6 text-lg font-bold text-white">Deploy RevealUI</h1>
+    <div className="fixed inset-0 z-50 flex bg-surface-0">
+      <div className="w-64 border-r border-edge bg-surface-1 p-4">
+        <h1 className="mb-6 text-lg font-bold text-fg">Deploy RevealUI</h1>
         <nav aria-label="Deploy progress" className="flex flex-col gap-1">
           {wizard.steps.map((s, i) => {
             const done = wizard.isStepDone(s.id);
@@ -112,19 +112,19 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
                 aria-current={active ? 'step' : undefined}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
                   active
-                    ? 'bg-neutral-800 text-white'
+                    ? 'bg-surface-2 text-fg'
                     : done
-                      ? 'text-green-400 hover:bg-neutral-800'
-                      : 'text-neutral-500 hover:bg-neutral-800'
+                      ? 'text-success hover:bg-surface-2'
+                      : 'text-fg-subtle hover:bg-surface-2'
                 }`}
               >
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs transition ${
                     done
-                      ? 'border-0 bg-green-600 text-white'
+                      ? 'border-0 bg-success text-fg'
                       : active
-                        ? 'border-2 border-blue-500 text-blue-500'
-                        : 'border border-neutral-600 text-neutral-500'
+                        ? 'border-2 border-brand text-brand'
+                        : 'border border-edge-strong text-fg-subtle'
                   }`}
                 >
                   {done ? (
@@ -146,7 +146,7 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
             );
           })}
         </nav>
-        <div className="mt-auto pt-4 text-center text-xs text-neutral-500">
+        <div className="mt-auto pt-4 text-center text-xs text-fg-subtle">
           Step {wizard.currentStep + 1} of {wizard.steps.length}
         </div>
       </div>
@@ -156,7 +156,7 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
           {wizard.step && stepComponents[wizard.step.id]}
         </div>
 
-        <div className="mt-6 flex items-center border-t border-neutral-800 pt-4">
+        <div className="mt-6 flex items-center border-t border-edge pt-4">
           <Button variant="ghost" disabled={wizard.isFirst} onClick={wizard.back}>
             Back
           </Button>

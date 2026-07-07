@@ -25,10 +25,10 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
       }}
       className={`group flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-all ${
         hidden
-          ? 'border-neutral-800/50 bg-neutral-900/30 text-neutral-600'
+          ? 'border-edge/50 bg-surface-1/30 text-fg-subtle'
           : running
-            ? 'border-emerald-800/60 bg-neutral-900 text-neutral-300 hover:border-emerald-700 hover:bg-neutral-800 hover:text-neutral-100'
-            : 'border-neutral-800 bg-neutral-900 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-100'
+            ? 'border-emerald-800/60 bg-surface-1 text-fg-muted hover:border-emerald-700 hover:bg-surface-2 hover:text-fg'
+            : 'border-edge bg-surface-1 text-fg-muted hover:border-edge hover:bg-surface-2 hover:text-fg'
       }`}
       title={
         editing
@@ -45,7 +45,7 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
       <span className="relative">
         <span
           className={
-            hidden ? 'opacity-40' : 'text-neutral-400 group-hover:text-orange-400 transition-colors'
+            hidden ? 'opacity-40' : 'text-fg-muted group-hover:text-warning transition-colors'
           }
         >
           <TileIcon tileId={tile.id} />
@@ -59,7 +59,7 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
         <span className="ml-auto shrink-0">
           {hidden ? (
             <svg
-              className="size-4 text-neutral-600"
+              className="size-4 text-fg-subtle"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -72,7 +72,7 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
             </svg>
           ) : (
             <svg
-              className="size-4 text-neutral-500"
+              className="size-4 text-fg-subtle"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"

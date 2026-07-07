@@ -8,30 +8,30 @@ interface DriveInfoProps {
 export default function DriveInfo({ mount }: DriveInfoProps) {
   return (
     <Card variant="default" padding="md">
-      <h2 className="text-sm font-medium text-neutral-200">Drive Info</h2>
+      <h2 className="text-sm font-medium text-fg">Drive Info</h2>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <dt className="text-neutral-500">Status</dt>
-        <dd className={mount.mounted ? 'text-green-400' : 'text-neutral-400'}>
+        <dt className="text-fg-subtle">Status</dt>
+        <dd className={mount.mounted ? 'text-success' : 'text-fg-muted'}>
           {mount.mounted ? 'Mounted' : 'Not Mounted'}
         </dd>
-        <dt className="text-neutral-500">Mount Point</dt>
-        <dd className="text-neutral-300">{mount.mount_point}</dd>
+        <dt className="text-fg-subtle">Mount Point</dt>
+        <dd className="text-fg-muted">{mount.mount_point}</dd>
         {mount.device && (
           <>
-            <dt className="text-neutral-500">Device</dt>
-            <dd className="font-mono text-neutral-300">{mount.device}</dd>
+            <dt className="text-fg-subtle">Device</dt>
+            <dd className="font-mono text-fg-muted">{mount.device}</dd>
           </>
         )}
         {mount.size_total && (
           <>
-            <dt className="text-neutral-500">Total</dt>
-            <dd className="text-neutral-300">{mount.size_total}</dd>
-            <dt className="text-neutral-500">Used</dt>
-            <dd className="text-neutral-300">
+            <dt className="text-fg-subtle">Total</dt>
+            <dd className="text-fg-muted">{mount.size_total}</dd>
+            <dt className="text-fg-subtle">Used</dt>
+            <dd className="text-fg-muted">
               {mount.size_used} ({mount.use_percent})
             </dd>
-            <dt className="text-neutral-500">Available</dt>
-            <dd className="text-neutral-300">{mount.size_available}</dd>
+            <dt className="text-fg-subtle">Available</dt>
+            <dd className="text-fg-muted">{mount.size_available}</dd>
           </>
         )}
       </dl>

@@ -10,7 +10,6 @@ describe('Sidebar', () => {
     expect(screen.getByText('Vault')).toBeInTheDocument();
     expect(screen.getByText('Infrastructure')).toBeInTheDocument();
     expect(screen.getByText('Sync')).toBeInTheDocument();
-    expect(screen.getByText('Tunnel')).toBeInTheDocument();
     expect(screen.getByText('Terminal')).toBeInTheDocument();
     expect(screen.getByText('Setup')).toBeInTheDocument();
   });
@@ -34,24 +33,27 @@ describe('Sidebar', () => {
     render(<Sidebar currentPage="vault" onNavigate={vi.fn()} />);
 
     const vaultButton = screen.getByText('Vault').closest('button');
-    expect(vaultButton?.className).toContain('bg-neutral-800');
-    expect(vaultButton?.className).toContain('text-neutral-100');
+    const vaultClasses = vaultButton?.className.split(' ') ?? [];
+    expect(vaultClasses).toContain('bg-surface-3');
+    expect(vaultClasses).toContain('text-fg');
   });
 
   it('does not highlight non-current pages', () => {
     render(<Sidebar currentPage="vault" onNavigate={vi.fn()} />);
 
     const dashboardButton = screen.getByText('Dashboard').closest('button');
-    expect(dashboardButton?.className).toContain('text-neutral-400');
-    expect(dashboardButton?.className).not.toContain('text-neutral-100');
+    const dashboardClasses = dashboardButton?.className.split(' ') ?? [];
+    expect(dashboardClasses).toContain('text-fg-muted');
+    expect(dashboardClasses).not.toContain('bg-surface-3');
+    expect(dashboardClasses).not.toContain('text-fg');
   });
 
   it('navigates to each page', () => {
     const onNavigate = vi.fn();
     render(<Sidebar currentPage="dashboard" onNavigate={onNavigate} />);
 
-    const pages = ['Dashboard', 'Vault', 'Infrastructure', 'Sync', 'Tunnel', 'Terminal', 'Setup'];
-    const pageIds = ['dashboard', 'vault', 'infrastructure', 'sync', 'tunnel', 'terminal', 'setup'];
+    const pages = ['Dashboard', 'Vault', 'Infrastructure', 'Sync', 'Terminal', 'Setup'];
+    const pageIds = ['dashboard', 'vault', 'infrastructure', 'sync', 'terminal', 'setup'];
 
     for (let i = 0; i < pages.length; i++) {
       fireEvent.click(screen.getByText(pages[i]));

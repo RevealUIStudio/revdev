@@ -29,8 +29,6 @@ export type { SshOutputEvent } from './generated/SshOutputEvent';
 export type { StudioConfig } from './generated/StudioConfig';
 export type { SyncResult } from './generated/SyncResult';
 export type { SystemStatus } from './generated/SystemStatus';
-export type { TailscalePeer } from './generated/TailscalePeer';
-export type { TailscaleStatus } from './generated/TailscaleStatus';
 export type { VercelDeployment } from './generated/VercelDeployment';
 export type { VercelProject } from './generated/VercelProject';
 
@@ -45,7 +43,6 @@ export type Page =
   | 'vault'
   | 'infrastructure'
   | 'sync'
-  | 'tunnel'
   | 'terminal'
   | 'git'
   | 'editor'
@@ -244,9 +241,6 @@ export interface WizardData {
   vercelToken: string;
   vercelProjects: { api: string; admin: string; marketing: string };
   postgresUrl: string;
-  supabaseUrl?: string;
-  supabasePublishableKey?: string;
-  supabaseSecretKey?: string;
   stripeSecretKey: string;
   stripePublishableKey: string;
   stripeWebhookSecret: string;

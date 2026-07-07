@@ -1,11 +1,10 @@
 use std::process::Command;
 
 use super::trait_defs::{
-    AppStatus, MountStatus, PlatformOps, SetupStatus, SyncResult, SystemStatus, TailscalePeer,
-    TailscaleStatus,
+    AppStatus, MountStatus, PlatformOps, SetupStatus, SyncResult, SystemStatus,
 };
 
-/// Linux implementation — WSL-specific features unsupported; Tailscale and git run natively.
+/// Linux implementation — WSL-specific features unsupported; git runs natively.
 pub struct LinuxPlatform;
 
 impl LinuxPlatform {
@@ -112,88 +111,4 @@ impl PlatformOps for LinuxPlatform {
         Ok(())
     }
 
-    fn get_tailscale_status(&self) -> Result<TailscaleStatus, String> {
-        let output = Command::new("tailscale")
-            .args(["status", "--peers", "--self"])
-            .output();
-
-        let Ok(out) = output else {
-            return Ok(TailscaleStatus {
-                running: false,
-                ip: None,
-                hostname: None,
-                peers: vec![],
-            });
-        };
-
-        if !out.status.success() {
-            return Ok(TailscaleStatus {
-                running: false,
-                ip: None,
-                hostname: None,
-                peers: vec![],
-            });
-        }
-
-        // Parse plain-text `tailscale status` output.
-        // First line is self: "100.x.y.z  hostname  user  active; ..."
-        let text = String::from_utf8_lossy(&out.stdout);
-        let mut lines = text.lines();
-        let mut ip = None;
-        let mut hostname = None;
-        let mut peers = vec![];
-
-        if let Some(self_line) = lines.next() {
-            let parts: Vec<&str> = self_line.split_whitespace().collect();
-            ip = parts.first().map(|s| s.to_string());
-            hostname = parts.get(1).map(|s| s.to_string());
-        }
-
-        for line in lines {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 3 {
-                continue;
-            }
-            let peer_ip = parts[0].to_string();
-            let peer_hostname = parts[1].to_string();
-            let online = parts.get(3).map(|s| s.starts_with("active")).unwrap_or(false);
-            peers.push(TailscalePeer {
-                hostname: peer_hostname,
-                ip: peer_ip,
-                online,
-                os: "unknown".to_string(),
-            });
-        }
-
-        Ok(TailscaleStatus {
-            running: ip.is_some(),
-            ip,
-            hostname,
-            peers,
-        })
-    }
-
-    fn tailscale_up(&self) -> Result<String, String> {
-        let out = Command::new("tailscale")
-            .arg("up")
-            .output()
-            .map_err(|e| format!("tailscale up failed: {e}"))?;
-        if out.status.success() {
-            Ok("Connected".to_string())
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-        }
-    }
-
-    fn tailscale_down(&self) -> Result<String, String> {
-        let out = Command::new("tailscale")
-            .arg("down")
-            .output()
-            .map_err(|e| format!("tailscale down failed: {e}"))?;
-        if out.status.success() {
-            Ok("Disconnected".to_string())
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-        }
-    }
 }

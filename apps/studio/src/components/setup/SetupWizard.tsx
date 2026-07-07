@@ -10,7 +10,6 @@ import {
   InferenceSnapsRow,
   NixRow,
   ProjectSetupRow,
-  TailscaleRow,
   TerminalProfileRow,
   VaultRow,
   WslRow,
@@ -65,7 +64,7 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
       >
         <div className="space-y-4">
           {setup.loading && !setup.status && (
-            <p className="text-sm text-neutral-400">Checking environment...</p>
+            <p className="text-sm text-fg-muted">Checking environment...</p>
           )}
 
           <ErrorAlert message={setup.error} />
@@ -75,7 +74,6 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
           <DevPodRow setup={setup} />
           <GitIdentityRow setup={setup} />
           <VaultRow />
-          <TailscaleRow />
           <InferenceSnapsRow />
           <ProjectSetupRow />
           <TerminalProfileRow />

@@ -70,10 +70,10 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
 
   const statusColor =
     harnessStatus === 'connected'
-      ? 'bg-green-500'
+      ? 'bg-success'
       : harnessStatus === 'connecting'
-        ? 'bg-yellow-500 animate-pulse'
-        : 'bg-red-500';
+        ? 'bg-warning animate-pulse'
+        : 'bg-error';
 
   const statusLabel =
     harnessStatus === 'connected'
@@ -96,8 +96,8 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
       {/* Status indicator */}
       <div className="flex items-center gap-3">
         <span className={`inline-block h-3 w-3 rounded-full ${statusColor}`} />
-        <span className="text-sm font-medium text-neutral-200">{statusLabel}</span>
-        {status?.pid && <span className="text-xs text-neutral-500">PID {status.pid}</span>}
+        <span className="text-sm font-medium text-fg">{statusLabel}</span>
+        {status?.pid && <span className="text-xs text-fg-subtle">PID {status.pid}</span>}
       </div>
 
       {/* Controls */}
@@ -107,7 +107,7 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
             type="button"
             onClick={handleStart}
             disabled={loading}
-            className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-50"
+            className="rounded bg-success px-3 py-1.5 text-xs font-medium text-fg hover:brightness-110 disabled:opacity-50"
           >
             {loading ? 'Starting...' : 'Start Daemon'}
           </button>
@@ -117,7 +117,7 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
               type="button"
               onClick={() => setPendingAction('restart')}
               disabled={loading}
-              className="rounded bg-yellow-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-600 disabled:opacity-50"
+              className="rounded bg-warning px-3 py-1.5 text-xs font-medium text-fg hover:brightness-110 disabled:opacity-50"
             >
               {loading && pendingAction === null ? 'Restarting...' : 'Restart'}
             </button>
@@ -125,7 +125,7 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
               type="button"
               onClick={() => setPendingAction('stop')}
               disabled={loading}
-              className="rounded bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-50"
+              className="rounded bg-error px-3 py-1.5 text-xs font-medium text-fg hover:brightness-110 disabled:opacity-50"
             >
               {loading && pendingAction === null ? 'Stopping...' : 'Stop'}
             </button>
@@ -134,11 +134,11 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
       </div>
 
       {/* Error display */}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-error">{error}</p>}
 
       {/* Daemon info */}
       {status?.reachable && (
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-xs text-neutral-400">
+        <div className="rounded border border-edge bg-surface-1 p-3 text-xs text-fg-muted">
           <div>Process: {status.running ? 'Running' : 'Stopped'}</div>
           <div>Socket: {status.reachable ? 'Reachable' : 'Unreachable'}</div>
           {status.pid && <div>PID: {status.pid}</div>}

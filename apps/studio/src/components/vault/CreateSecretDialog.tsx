@@ -68,7 +68,7 @@ export default function CreateSecretDialog({ onConfirm, onClose }: CreateSecretD
         />
 
         <div>
-          <label htmlFor="secret-value" className="mb-1 block text-xs font-medium text-neutral-400">
+          <label htmlFor="secret-value" className="mb-1 block text-xs font-medium text-fg-muted">
             Value
           </label>
           <textarea
@@ -77,7 +77,7 @@ export default function CreateSecretDialog({ onConfirm, onClose }: CreateSecretD
             onChange={(e) => setValue(e.target.value)}
             placeholder="Secret value..."
             rows={3}
-            className="w-full resize-none rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 font-mono text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            className="w-full resize-none rounded-md border border-edge bg-surface-2 px-3 py-2 font-mono text-sm text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
           />
         </div>
       </form>

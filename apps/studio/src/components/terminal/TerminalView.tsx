@@ -120,7 +120,7 @@ export default function TerminalView({
   return (
     <div
       ref={containerRef}
-      className="h-full w-full rounded-md border border-neutral-800 bg-[#171717] p-1"
+      className="h-full w-full rounded-md border border-edge bg-surface-1 p-1"
     />
   );
 }

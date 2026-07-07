@@ -16,7 +16,7 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
 
   if (secrets.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-neutral-500">
+      <div className="flex flex-1 items-center justify-center text-sm text-fg-subtle">
         No secrets found
       </div>
     );
@@ -30,8 +30,8 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
             key={secret.path}
             className={`group flex items-center justify-between rounded px-3 py-2 transition-colors ${
               selectedPath === secret.path
-                ? 'bg-neutral-800 text-neutral-100'
-                : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+                ? 'bg-surface-2 text-fg'
+                : 'text-fg-muted hover:bg-surface-3 hover:text-fg'
             }`}
           >
             <button
@@ -40,7 +40,7 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
               onClick={() => onSelect(secret.path)}
             >
               <p className="truncate text-sm font-medium">{secret.path.split('/').pop()}</p>
-              <p className="truncate text-xs text-neutral-500">{secret.path}</p>
+              <p className="truncate text-xs text-fg-subtle">{secret.path}</p>
             </button>
             <button
               type="button"
@@ -48,7 +48,7 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
                 e.stopPropagation();
                 setPendingDelete(secret.path);
               }}
-              className="ml-2 hidden rounded p-1 text-neutral-600 transition-colors hover:bg-red-950/50 hover:text-red-400 group-hover:flex"
+              className="ml-2 hidden rounded p-1 text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error group-hover:flex"
               aria-label={`Delete ${secret.path}`}
             >
               <svg
@@ -71,8 +71,8 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
         title="Delete secret"
         body={
           <>
-            Permanently delete <span className="font-mono text-neutral-100">{pendingDelete}</span>?
-            This destroys the stored value with no undo.
+            Permanently delete <span className="font-mono text-fg">{pendingDelete}</span>? This
+            destroys the stored value with no undo.
           </>
         }
         confirmLabel="Delete secret"

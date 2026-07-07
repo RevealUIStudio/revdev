@@ -25,7 +25,6 @@ pub struct DeployConfig {
     pub domain: Option<String>,
     pub apps: Option<DeployApps>,
     pub neon_project_id: Option<String>,
-    pub supabase_enabled: bool,
     pub email_provider: Option<String>,
 }
 

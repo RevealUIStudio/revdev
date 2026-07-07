@@ -34,7 +34,6 @@ import type {
   StudioConfig,
   SyncResult,
   SystemStatus,
-  TailscaleStatus,
   TerminalProfile,
 } from '../types';
 
@@ -92,17 +91,11 @@ const MOCK_DATA: Record<string, unknown> = {
     },
   ] satisfies AppStatus[],
   sync_all_repos: [] satisfies SyncResult[],
-  get_tailscale_status: {
-    running: false,
-    ip: null,
-    hostname: null,
-    peers: [],
-  } satisfies TailscaleStatus,
   vault_is_initialized: true,
   vault_list: [
     { path: 'stripe/secret_key', namespace: 'stripe' },
     { path: 'neon/database_url', namespace: 'neon' },
-    { path: 'supabase/anon_key', namespace: 'supabase' },
+    { path: 'vercel/api_token', namespace: 'vercel' },
   ] satisfies SecretInfo[],
   vault_search: [] satisfies SecretInfo[],
   vault_get: '••••••••',
@@ -111,8 +104,6 @@ const MOCK_DATA: Record<string, unknown> = {
   unmount_devbox: 'Unmounted (mock)',
   start_app: 'Started (mock)',
   stop_app: 'Stopped (mock)',
-  tailscale_up: 'Connected (mock)',
-  tailscale_down: 'Disconnected (mock)',
   ssh_connect: 'mock-session-id',
   set_git_identity: undefined,
   vault_init: undefined,
@@ -568,20 +559,6 @@ export function vaultSearch(query: string): Promise<SecretInfo[]> {
 
 export function vaultCopy(value: string): Promise<void> {
   return invoke<void>('vault_copy', { value });
-}
-
-// ── Tunnel ─────────────────────────────────────────────────────────────────
-
-export function getTailscaleStatus(): Promise<TailscaleStatus> {
-  return invoke<TailscaleStatus>('get_tailscale_status');
-}
-
-export function tailscaleUp(): Promise<string> {
-  return invoke<string>('tailscale_up');
-}
-
-export function tailscaleDown(): Promise<string> {
-  return invoke<string>('tailscale_down');
 }
 
 // ── SSH Terminal ──────────────────────────────────────────────────────────────

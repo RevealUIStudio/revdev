@@ -11,18 +11,18 @@ describe('TierBadge', () => {
   it('applies T1 styling for T1 tier', () => {
     render(<TierBadge tier="T1" />);
     const badge = screen.getByText('T1');
-    expect(badge.className).toContain('text-orange-400');
+    expect(badge.className).toContain('text-accent');
   });
 
   it('applies T0 styling for T0 tier', () => {
     render(<TierBadge tier="T0" />);
     const badge = screen.getByText('T0');
-    expect(badge.className).toContain('text-neutral-400');
+    expect(badge.className).toContain('text-fg-muted');
   });
 
   it('applies default styling for unknown tier', () => {
     render(<TierBadge tier="custom" />);
     const badge = screen.getByText('custom');
-    expect(badge.className).toContain('bg-neutral-800');
+    expect(badge.className).toContain('bg-surface-2');
   });
 });

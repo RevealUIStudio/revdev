@@ -37,9 +37,9 @@ export default function VaultPanel() {
   if (!initialized) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
-        <div className="flex size-12 items-center justify-center rounded-xl bg-neutral-800">
+        <div className="flex size-12 items-center justify-center rounded-xl bg-surface-2">
           <svg
-            className="size-6 text-neutral-400"
+            className="size-6 text-fg-muted"
             aria-hidden="true"
             fill="none"
             viewBox="0 0 24 24"
@@ -51,8 +51,8 @@ export default function VaultPanel() {
           </svg>
         </div>
         <div className="text-center">
-          <h3 className="text-base font-semibold text-neutral-200">Vault not initialized</h3>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h3 className="text-base font-semibold text-fg">Vault not initialized</h3>
+          <p className="mt-1 text-sm text-fg-subtle">
             Initialize the passage-store to start managing secrets
           </p>
         </div>
@@ -89,8 +89,8 @@ export default function VaultPanel() {
       <ErrorAlert message={error} />
 
       {/* Three-column layout: Namespace | List | Detail */}
-      <div className="flex flex-1 gap-0 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/30">
-        <div className="w-44 flex-shrink-0 border-r border-neutral-800 p-3">
+      <div className="flex flex-1 gap-0 overflow-hidden rounded-lg border border-edge bg-surface-0/30">
+        <div className="w-44 flex-shrink-0 border-r border-edge p-3">
           <NamespaceFilter
             namespaces={namespaces}
             active={activeNamespace}
@@ -98,7 +98,7 @@ export default function VaultPanel() {
           />
         </div>
 
-        <div className="flex w-64 flex-shrink-0 flex-col border-r border-neutral-800 p-3">
+        <div className="flex w-64 flex-shrink-0 flex-col border-r border-edge p-3">
           <SecretList
             secrets={secrets}
             selectedPath={selectedPath}
@@ -121,21 +121,21 @@ function VaultSkeleton() {
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center gap-3">
-        <div className="h-9 flex-1 animate-pulse rounded-md bg-neutral-800" />
-        <div className="h-9 w-28 animate-pulse rounded-md bg-neutral-800" />
+        <div className="h-9 flex-1 animate-pulse rounded-md bg-surface-2" />
+        <div className="h-9 w-28 animate-pulse rounded-md bg-surface-2" />
       </div>
-      <div className="flex flex-1 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/30">
-        <div className="w-44 border-r border-neutral-800 p-3">
+      <div className="flex flex-1 overflow-hidden rounded-lg border border-edge bg-surface-0/30">
+        <div className="w-44 border-r border-edge p-3">
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-7 animate-pulse rounded bg-neutral-800/50" />
+              <div key={i} className="h-7 animate-pulse rounded bg-surface-3" />
             ))}
           </div>
         </div>
-        <div className="w-64 border-r border-neutral-800 p-3">
+        <div className="w-64 border-r border-edge p-3">
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-neutral-800/50" />
+              <div key={i} className="h-10 animate-pulse rounded bg-surface-3" />
             ))}
           </div>
         </div>

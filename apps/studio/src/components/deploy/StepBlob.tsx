@@ -42,20 +42,20 @@ export default function StepBlob({ data, onUpdateData, onNext }: StepBlobProps) 
   return (
     <WizardStep title="Blob Storage" description="Configure file storage for uploads.">
       <div className="flex flex-col gap-4">
-        <div className="rounded-md border border-neutral-700 bg-neutral-900/50 p-4 text-sm text-neutral-400">
-          <p className="mb-2 font-medium text-neutral-300">Setup instructions:</p>
+        <div className="rounded-md border border-edge bg-surface-1/50 p-4 text-sm text-fg-muted">
+          <p className="mb-2 font-medium text-fg-muted">Setup instructions:</p>
           <ol className="list-inside list-decimal flex flex-col gap-1">
             <li>Open your Vercel project dashboard</li>
             <li>
-              Go to <span className="text-neutral-200">Storage</span> tab
+              Go to <span className="text-fg">Storage</span> tab
             </li>
             <li>
-              Click <span className="text-neutral-200">Create Database</span> and select{' '}
-              <span className="text-neutral-200">Blob</span>
+              Click <span className="text-fg">Create Database</span> and select{' '}
+              <span className="text-fg">Blob</span>
             </li>
             <li>
-              Copy the <span className="text-neutral-200">BLOB_READ_WRITE_TOKEN</span> from the
-              environment variables
+              Copy the <span className="text-fg">BLOB_READ_WRITE_TOKEN</span> from the environment
+              variables
             </li>
           </ol>
         </div>
@@ -75,7 +75,7 @@ export default function StepBlob({ data, onUpdateData, onNext }: StepBlobProps) 
           mono
         />
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-error">{error}</p>}
 
         <div className="flex items-center gap-3">
           <Button
@@ -87,7 +87,7 @@ export default function StepBlob({ data, onUpdateData, onNext }: StepBlobProps) 
             Save Token
           </Button>
 
-          {saved && <span className="text-sm text-green-400">Token saved</span>}
+          {saved && <span className="text-sm text-success">Token saved</span>}
         </div>
 
         <Button variant="primary" onClick={onNext} disabled={!saved} className="mt-2 self-end">

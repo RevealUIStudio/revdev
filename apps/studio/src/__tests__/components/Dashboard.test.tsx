@@ -41,8 +41,6 @@ const defaultSettings = {
     theme: 'system' as const,
     apiUrl: 'http://localhost:3004',
     pollingIntervalMs: 30_000,
-    solanaWalletAddress: '',
-    solanaNetwork: 'devnet' as const,
     localMode: false,
   },
   updateSettings: vi.fn(),

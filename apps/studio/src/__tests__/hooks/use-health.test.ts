@@ -42,8 +42,6 @@ const DEFAULT_SETTINGS: SettingsContextValue = {
     theme: 'dark',
     apiUrl: 'http://localhost:3004',
     pollingIntervalMs: 30_000,
-    solanaWalletAddress: '',
-    solanaNetwork: 'devnet',
     localMode: false,
   },
   updateSettings: vi.fn(),

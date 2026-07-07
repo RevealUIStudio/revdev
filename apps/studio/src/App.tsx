@@ -17,7 +17,6 @@ import SetupPage from './components/setup/SetupPage';
 import SetupWizard from './components/setup/SetupWizard';
 import SyncPanel from './components/sync/SyncPanel';
 import TerminalPanel from './components/terminal/TerminalPanel';
-import TunnelPanel from './components/tunnel/TunnelPanel';
 import VaultPanel from './components/vault/VaultPanel';
 import { AuthContext, useAuth } from './hooks/use-auth';
 import { useConfig } from './hooks/use-config';
@@ -46,8 +45,8 @@ function AuthGatedApp() {
   return (
     <AuthContext.Provider value={auth}>
       {auth.loading && auth.step === 'idle' ? (
-        <div className="flex h-screen items-center justify-center bg-neutral-950">
-          <div className="text-neutral-400">Loading...</div>
+        <div className="flex h-screen items-center justify-center bg-surface-0">
+          <div className="text-fg-muted">Loading...</div>
         </div>
       ) : auth.step !== 'authenticated' ? (
         <LoginScreen />
@@ -86,8 +85,8 @@ function MainApp() {
 
   if (loading || !config) {
     return (
-      <div className="flex h-screen items-center justify-center bg-neutral-950">
-        <div className="text-neutral-400">Loading...</div>
+      <div className="flex h-screen items-center justify-center bg-surface-0">
+        <div className="text-fg-muted">Loading...</div>
       </div>
     );
   }
@@ -125,7 +124,6 @@ function MainApp() {
           {page === 'vault' ? <VaultPanel /> : null}
           {page === 'infrastructure' ? <InfrastructurePanel /> : null}
           {page === 'sync' ? <SyncPanel /> : null}
-          {page === 'tunnel' ? <TunnelPanel /> : null}
           {page === 'terminal' ? <TerminalPanel /> : null}
           {page === 'git' ? <GitPanel onOpenEditor={openInEditor} /> : null}
           {page === 'editor' && editorTarget ? (
@@ -136,7 +134,7 @@ function MainApp() {
             />
           ) : null}
           {page === 'editor' && !editorTarget ? (
-            <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+            <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
               No file selected — open a file from the Git panel
             </div>
           ) : null}
@@ -175,7 +173,6 @@ function MainApp() {
       {page === 'vault' ? <VaultPanel /> : null}
       {page === 'infrastructure' ? <InfrastructurePanel /> : null}
       {page === 'sync' ? <SyncPanel /> : null}
-      {page === 'tunnel' ? <TunnelPanel /> : null}
       {page === 'terminal' ? <TerminalPanel /> : null}
       {page === 'git' ? <GitPanel onOpenEditor={openInEditor} /> : null}
       {page === 'editor' && editorTarget ? (
@@ -186,7 +183,7 @@ function MainApp() {
         />
       ) : null}
       {page === 'editor' && !editorTarget ? (
-        <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+        <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
           No file selected — open a file from the Git panel
         </div>
       ) : null}

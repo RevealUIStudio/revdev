@@ -18,7 +18,7 @@ export default function TerminalPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-3 flex items-center gap-1 border-b border-neutral-800 pb-2">
+      <div className="mb-3 flex items-center gap-1 border-b border-edge pb-2">
         <TabButton active={mode === 'local'} onClick={() => setMode('local')}>
           Local
         </TabButton>
@@ -47,9 +47,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-        active
-          ? 'bg-neutral-800 text-neutral-100'
-          : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
+        active ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-1 hover:text-fg'
       }`}
     >
       {children}
@@ -145,7 +143,7 @@ function SshTerminalPanel() {
         {!connected ? (
           <div className="mx-auto w-full max-w-md pt-12">
             <Card variant="default" padding="lg">
-              <h2 className="mb-4 text-sm font-medium text-neutral-300">SSH Connection</h2>
+              <h2 className="mb-4 text-sm font-medium text-fg-muted">SSH Connection</h2>
               <ConnectForm onConnect={handleConnect} connecting={connecting} />
             </Card>
           </div>
@@ -166,8 +164,8 @@ function SshTerminalPanel() {
 
             {/* Connection status strip */}
             {lastParams && (
-              <div className="flex items-center justify-between rounded-md border border-neutral-800 bg-neutral-900 px-3 py-1.5">
-                <div className="flex items-center gap-2 text-xs text-neutral-400">
+              <div className="flex items-center justify-between rounded-md border border-edge bg-surface-1 px-3 py-1.5">
+                <div className="flex items-center gap-2 text-xs text-fg-muted">
                   <StatusDot status="ok" size="sm" />
                   <span className="font-mono">
                     {lastParams.username}@{lastParams.host}:{lastParams.port}
@@ -208,7 +206,7 @@ function SessionTimer({ startTime }: { startTime: number }) {
     return () => clearInterval(id);
   }, [startTime]);
 
-  return <span className="text-neutral-500">{elapsed}</span>;
+  return <span className="text-fg-subtle">{elapsed}</span>;
 }
 
 function HostKeyBanner({ event, onDismiss }: { event: SshHostKeyEvent; onDismiss: () => void }) {
@@ -217,8 +215,8 @@ function HostKeyBanner({ event, onDismiss }: { event: SshHostKeyEvent; onDismiss
     <div
       className={`rounded-md border px-4 py-3 text-sm ${
         isMismatch
-          ? 'border-red-900/50 bg-red-950/30 text-red-400'
-          : 'border-yellow-900/50 bg-yellow-950/30 text-yellow-400'
+          ? 'border-error/50 bg-error-subtle text-error'
+          : 'border-warning/50 bg-warning-subtle text-warning'
       }`}
     >
       <div className="flex items-start justify-between gap-3">

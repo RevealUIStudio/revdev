@@ -87,9 +87,9 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
   const isFormValid = host && username;
 
   return (
-    <div className="flex h-full w-64 flex-col border-r border-neutral-800 bg-neutral-950">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-        <span className="text-xs font-medium text-neutral-400">Bookmarks</span>
+    <div className="flex h-full w-64 flex-col border-r border-edge bg-surface-0">
+      <div className="flex items-center justify-between border-b border-edge px-3 py-2">
+        <span className="text-xs font-medium text-fg-muted">Bookmarks</span>
         <Button variant="ghost" size="sm" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancel' : 'Add'}
         </Button>
@@ -97,7 +97,7 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
 
       {/* Add bookmark form */}
       {showForm && (
-        <div className="border-b border-neutral-800 p-3">
+        <div className="border-b border-edge p-3">
           <form onSubmit={handleAdd} className="space-y-2">
             <Input
               id="bm-label"
@@ -158,13 +158,13 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
         {loading && bookmarks.length === 0 && (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 animate-pulse rounded-lg bg-neutral-800/50" />
+              <div key={i} className="h-16 animate-pulse rounded-lg bg-surface-3" />
             ))}
           </div>
         )}
 
         {!loading && bookmarks.length === 0 && !showForm && (
-          <p className="px-2 py-4 text-center text-xs text-neutral-500">No saved bookmarks.</p>
+          <p className="px-2 py-4 text-center text-xs text-fg-subtle">No saved bookmarks.</p>
         )}
 
         <div className="space-y-1.5">
@@ -172,8 +172,8 @@ export default function SshBookmarkSidebar({ onSelect }: SshBookmarkSidebarProps
             <Card key={bookmark.id} variant="default" padding="sm" className="group">
               <div className="flex items-start justify-between gap-1">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-neutral-200">{bookmark.label}</p>
-                  <p className="truncate font-mono text-xs text-neutral-500">
+                  <p className="truncate text-sm font-medium text-fg">{bookmark.label}</p>
+                  <p className="truncate font-mono text-xs text-fg-subtle">
                     {bookmark.username}@{bookmark.host}:{bookmark.port}
                   </p>
                   <Badge

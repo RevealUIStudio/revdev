@@ -110,17 +110,17 @@ export default function DeployDashboard() {
           ))}
         </div>
       ) : configLoaded ? (
-        <p className="py-6 text-center text-xs text-neutral-600">
+        <p className="py-6 text-center text-xs text-fg-subtle">
           No services configured.{' '}
-          <span className="text-neutral-500">
+          <span className="text-fg-subtle">
             Add a deploy domain in settings to enable health monitoring.
           </span>
         </p>
       ) : null}
 
       {domain && (
-        <div className="rounded-md border border-neutral-700 bg-neutral-900/50 p-4">
-          <p className="mb-3 text-xs font-medium text-neutral-400">Quick Links</p>
+        <div className="rounded-md border border-edge bg-surface-1/50 p-4">
+          <p className="mb-3 text-xs font-medium text-fg-muted">Quick Links</p>
           <div className="flex flex-col gap-2">
             <QuickLink label="Admin Dashboard" url={`https://admin.${domain}/admin`} />
             <QuickLink label="API Docs" url={`https://api.${domain}/docs`} />
@@ -148,7 +148,7 @@ const statusLabels: Record<ServiceStatus, string> = {
 
 function HealthCard({ service }: { service: ServiceState }) {
   return (
-    <div className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4">
+    <div className="rounded-lg border border-edge bg-surface-1/50 p-4">
       <div className="flex items-center gap-2 mb-2">
         <StatusDot
           status={domainStatusMap[service.status]}
@@ -156,10 +156,10 @@ function HealthCard({ service }: { service: ServiceState }) {
           pulse={service.status === 'checking'}
           decorative
         />
-        <span className="text-sm font-medium text-neutral-200">{service.label}</span>
+        <span className="text-sm font-medium text-fg">{service.label}</span>
       </div>
-      <p className="text-xs text-neutral-500">{statusLabels[service.status]}</p>
-      <p className="mt-1 text-xs font-mono text-neutral-400 truncate">{service.url}</p>
+      <p className="text-xs text-fg-subtle">{statusLabels[service.status]}</p>
+      <p className="mt-1 text-xs font-mono text-fg-muted truncate">{service.url}</p>
     </div>
   );
 }
@@ -170,11 +170,11 @@ function QuickLink({ label, url }: { label: string; url: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300 transition-colors"
+      className="flex items-center gap-2 text-sm text-brand-text hover:text-brand transition-colors"
     >
       <span>{'→'}</span>
       <span>{label}</span>
-      <span className="font-mono text-xs text-neutral-500">{url}</span>
+      <span className="font-mono text-xs text-fg-subtle">{url}</span>
     </a>
   );
 }

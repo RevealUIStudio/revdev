@@ -6,7 +6,7 @@ import type { SecretInfo } from '../../types';
 const SECRETS: SecretInfo[] = [
   { path: 'stripe/secret_key', namespace: 'stripe' },
   { path: 'neon/database_url', namespace: 'neon' },
-  { path: 'supabase/anon_key', namespace: 'supabase' },
+  { path: 'vercel/api_token', namespace: 'vercel' },
 ];
 
 describe('SecretList', () => {
@@ -21,7 +21,7 @@ describe('SecretList', () => {
     );
     expect(screen.getByText('secret_key')).toBeInTheDocument();
     expect(screen.getByText('database_url')).toBeInTheDocument();
-    expect(screen.getByText('anon_key')).toBeInTheDocument();
+    expect(screen.getByText('api_token')).toBeInTheDocument();
   });
 
   it('displays full path as secondary text', () => {
@@ -38,7 +38,7 @@ describe('SecretList', () => {
       <SecretList secrets={SECRETS} selectedPath={null} onSelect={onSelect} onDelete={vi.fn()} />,
     );
     // Click the button element that contains the secret text
-    const buttons = screen.getAllByRole('button', { name: /secret_key|database_url|anon_key/i });
+    const buttons = screen.getAllByRole('button', { name: /secret_key|database_url|api_token/i });
     fireEvent.click(buttons[0]);
     expect(onSelect).toHaveBeenCalledWith('stripe/secret_key');
   });
@@ -67,7 +67,7 @@ describe('SecretList', () => {
         onDelete={vi.fn()}
       />,
     );
-    const selectedRow = container.querySelector('.bg-neutral-800.text-neutral-100');
+    const selectedRow = container.querySelector('.bg-surface-2.text-fg');
     expect(selectedRow).not.toBeNull();
   });
 });
