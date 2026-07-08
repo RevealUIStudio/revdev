@@ -11,8 +11,8 @@ describe('Badge', () => {
   it('applies default variant styles', () => {
     render(<Badge>Default</Badge>);
     const badge = screen.getByText('Default');
-    expect(badge.className).toContain('bg-white/5');
-    expect(badge.className).toContain('text-zinc-400');
+    expect(badge.className).toContain('bg-surface-2');
+    expect(badge.className).toContain('text-fg-subtle');
   });
 
   it('applies success variant styles', () => {
@@ -42,7 +42,7 @@ describe('Badge', () => {
   it('applies brand variant styles', () => {
     render(<Badge variant="brand">Pro</Badge>);
     const badge = screen.getByText('Pro');
-    expect(badge.className).toContain('text-emerald-400');
+    expect(badge.className).toContain('text-brand-text');
   });
 
   it('applies sm size styles', () => {
