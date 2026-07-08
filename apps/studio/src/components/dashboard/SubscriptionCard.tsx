@@ -14,14 +14,14 @@ const TIER_LABELS: Record<string, string> = {
   free: 'Free',
   pro: 'Pro',
   max: 'Max',
-  enterprise: 'Forge',
+  enterprise: 'Enterprise',
 };
 
 const TIER_COLORS: Record<string, string> = {
   free: 'text-fg-muted bg-surface-2 border-edge',
   pro: 'text-brand-text bg-brand/20 border-brand/30',
   max: 'text-accent bg-accent/20 border-accent/30',
-  enterprise: 'text-violet-400 bg-violet-600/20 border-violet-600/30',
+  enterprise: 'text-accent bg-accent-soft border-accent/30',
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
