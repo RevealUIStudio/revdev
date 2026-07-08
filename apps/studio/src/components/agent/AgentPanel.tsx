@@ -218,7 +218,7 @@ function HarnessSessionCard({ session }: { session: import('../../types').Harnes
       <div className="flex items-center gap-2">
         <span
           className={`size-2 shrink-0 rounded-full ${
-            isEnded ? 'bg-surface-3' : 'animate-pulse bg-cyan-500'
+            isEnded ? 'bg-surface-3' : 'animate-pulse bg-info'
           }`}
         />
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{session.id}</span>
@@ -528,7 +528,7 @@ export default function AgentPanel() {
           {/* Remote agents */}
           {remoteAgents.length > 0 ? (
             <div className="mt-4">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
                 <span>Cloud Agents</span>
                 <span className="rounded bg-surface-2 px-1.5 py-0.5 text-fg-muted">
                   {remoteAgents.length}
@@ -825,7 +825,7 @@ function RemoteAgentCard({ agent }: { agent: AgentCard }) {
   return (
     <div className="rounded-lg border border-edge bg-surface-1/60 p-2.5">
       <div className="flex items-center gap-2">
-        <span className="size-2 shrink-0 rounded-full bg-violet-500" />
+        <span className="size-2 shrink-0 rounded-full bg-accent" />
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{agent.name}</span>
         {agent.version ? (
           <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">

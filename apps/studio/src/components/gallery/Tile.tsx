@@ -27,7 +27,7 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
         hidden
           ? 'border-edge/50 bg-surface-1/30 text-fg-subtle'
           : running
-            ? 'border-emerald-800/60 bg-surface-1 text-fg-muted hover:border-emerald-700 hover:bg-surface-2 hover:text-fg'
+            ? 'border-success/60 bg-surface-1 text-fg-muted hover:border-success hover:bg-surface-2 hover:text-fg'
             : 'border-edge bg-surface-1 text-fg-muted hover:border-edge hover:bg-surface-2 hover:text-fg'
       }`}
       title={
@@ -51,7 +51,7 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
           <TileIcon tileId={tile.id} />
         </span>
         {running && !editing && (
-          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-emerald-500" />
+          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-success" />
         )}
       </span>
       <span className="truncate font-medium">{tile.label}</span>

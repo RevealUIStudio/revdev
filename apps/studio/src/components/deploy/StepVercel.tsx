@@ -142,7 +142,7 @@ export default function StepVercel({
         </div>
 
         {validated && Object.keys(linkedProjects).length > 0 && (
-          <ul className="mt-2 flex flex-col gap-1 text-sm text-zinc-300">
+          <ul className="mt-2 flex flex-col gap-1 text-sm text-fg-muted">
             {REQUIRED_PROJECTS.map((req) => (
               <li key={req.key} className="flex items-center gap-2">
                 <span className="text-success">&#10003;</span>
