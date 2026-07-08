@@ -42,6 +42,15 @@ function AuthGatedApp() {
   const { settings } = useSettingsContext();
   const auth = useAuth(settings.apiUrl, settings.localMode);
 
+  useEffect(() => {
+    const el = document.documentElement;
+    if (settings.theme === 'system') {
+      el.removeAttribute('data-theme');
+    } else {
+      el.setAttribute('data-theme', settings.theme);
+    }
+  }, [settings.theme]);
+
   return (
     <AuthContext.Provider value={auth}>
       {auth.loading && auth.step === 'idle' ? (
