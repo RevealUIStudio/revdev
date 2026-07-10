@@ -508,6 +508,9 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       command: z.string().min(1).max(MAX_PATH_LENGTH),
       args: z.array(z.string().max(MAX_PATH_LENGTH)).max(128).optional(),
+      // Required: the registered project root the caller owns or was granted.
+      // Without it the handler cannot authorize where the command runs.
+      repoPath: z.string().min(1).max(MAX_PATH_LENGTH),
       cwd: z.string().max(MAX_PATH_LENGTH).optional(),
       cols: z.number().int().min(1).max(1000).optional(),
       rows: z.number().int().min(1).max(500).optional(),
