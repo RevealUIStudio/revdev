@@ -88,6 +88,7 @@ jobs:
             --manifest-path apps/studio/src-tauri/Cargo.toml \
             --test harness_integration \
             --test daemon_ctl_integration \
+            --test ssh_output_pump \
             -- --test-threads=1
 
   relay:

@@ -11,7 +11,7 @@ mod local_shell;
 mod platform;
 pub mod signing;
 mod spawner;
-mod ssh;
+pub mod ssh;
 mod state;
 mod tray;
 mod updater;
