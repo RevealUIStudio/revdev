@@ -422,6 +422,8 @@ export async function pairWithDaemon(daemonUrl: string, code: string): Promise<s
 
 let rpcId = 1;
 
+const HTTP_RPC_TIMEOUT_MS = 30_000;
+
 /** Make a JSON-RPC call to the daemon's HTTP gateway */
 async function httpRpc<T>(method: string, params: Record<string, unknown>): Promise<T> {
   const url = getDaemonUrl();
@@ -431,11 +433,25 @@ async function httpRpc<T>(method: string, params: Record<string, unknown>): Prom
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${url}/rpc`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), HTTP_RPC_TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${url}/rpc`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('The daemon did not respond in time.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (res.status === 401 || res.status === 403) {
     throw new Error('Authentication required — pair with daemon first');

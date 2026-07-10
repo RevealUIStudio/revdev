@@ -8,11 +8,29 @@
 import { useRef, useState } from 'react';
 import { useSpawner } from '../../hooks/use-spawner';
 import type { AgentBackend } from '../../types';
+import ConfirmDialog from '../ui/ConfirmDialog';
+
+interface PendingAction {
+  kind: 'stop' | 'remove';
+  id: string;
+  name: string;
+}
 
 export default function SpawnerPanel() {
   const { sessions, output, error, spawn, stop, remove } = useSpawner();
   const [showSpawn, setShowSpawn] = useState(false);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+
+  function handleConfirmAction(): void {
+    if (pendingAction === null) return;
+    if (pendingAction.kind === 'stop') {
+      void stop(pendingAction.id);
+    } else {
+      void remove(pendingAction.id);
+    }
+    setPendingAction(null);
+  }
 
   return (
     <div className="mt-4">
@@ -86,7 +104,7 @@ export default function SpawnerPanel() {
               {s.status === 'running' ? (
                 <button
                   type="button"
-                  onClick={() => void stop(s.id)}
+                  onClick={() => setPendingAction({ kind: 'stop', id: s.id, name: s.name })}
                   className="rounded bg-error-subtle px-2 py-0.5 text-[10px] text-error transition-colors hover:bg-error-subtle/70"
                 >
                   Stop
@@ -94,7 +112,7 @@ export default function SpawnerPanel() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => void remove(s.id)}
+                  onClick={() => setPendingAction({ kind: 'remove', id: s.id, name: s.name })}
                   className="rounded bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface-3"
                 >
                   Remove
@@ -113,6 +131,27 @@ export default function SpawnerPanel() {
       {sessions.length === 0 && !showSpawn ? (
         <p className="px-2 py-4 text-center text-[11px] text-fg-subtle">No local agents running</p>
       ) : null}
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={pendingAction?.kind === 'stop' ? 'Stop agent' : 'Remove agent'}
+        body={
+          pendingAction?.kind === 'stop' ? (
+            <>
+              Stop the agent session <strong className="text-fg">{pendingAction.name}</strong>?
+            </>
+          ) : (
+            <>
+              Remove the agent session <strong className="text-fg">{pendingAction?.name}</strong>?
+              It will disappear from this list.
+            </>
+          )
+        }
+        affectedItems={pendingAction ? [pendingAction.id] : undefined}
+        confirmLabel={pendingAction?.kind === 'stop' ? 'Stop' : 'Remove'}
+        onConfirm={handleConfirmAction}
+        onClose={() => setPendingAction(null)}
+      />
     </div>
   );
 }

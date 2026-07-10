@@ -5,7 +5,7 @@
  * for device-based OTP authentication.
  */
 
-import { HttpError, httpRequest } from './http';
+import { HttpError, type HttpErrorKind, httpRequest } from './http';
 
 // ── Response types ──────────────────────────────────────────────────────────
 
@@ -33,6 +33,8 @@ export interface RefreshResponse {
   token?: string;
   expiresAt?: string;
   error?: string;
+  /** Categorized failure reason, set only when `success` is false. */
+  kind?: HttpErrorKind;
 }
 
 export interface StatusResponse {
@@ -138,12 +140,26 @@ export async function verifyDevice(
 
 /**
  * Rotate the bearer token. Returns a new token.
+ *
+ * On failure, `kind` carries the {@link HttpError} category so callers can
+ * distinguish a rejected/expired token (`client`) — which should sign the
+ * user out — from a transient network or server failure, which should not.
  */
 export async function refreshToken(apiUrl: string, token: string): Promise<RefreshResponse> {
-  return requestResult<RefreshResponse>(apiUrl, '/refresh', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  try {
+    return await httpRequest<RefreshResponse>(
+      endpoint(apiUrl, '/refresh'),
+      jsonInit({
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    );
+  } catch (err) {
+    if (err instanceof HttpError) {
+      return { success: false, error: err.message, kind: err.kind };
+    }
+    throw err;
+  }
 }
 
 /**

@@ -45,7 +45,10 @@ export async function vercelSetEnv(
 }
 
 export async function vercelDeploy(token: string, projectId: string): Promise<string> {
-  if (!isTauri()) return 'mock-deploy-id';
+  if (!isTauri()) {
+    markDegraded('Demo mode. No deployment actually ran, this deploy id is a fake placeholder.');
+    return 'MOCK_DEPLOY_ID_DO_NOT_USE';
+  }
   return tauriInvoke<string>('vercel_deploy', { token, projectId });
 }
 
@@ -54,6 +57,7 @@ export async function vercelGetDeployment(
   deploymentId: string,
 ): Promise<VercelDeployment> {
   if (!isTauri()) {
+    markDegraded('Demo mode. This deployment status is fake, nothing is actually live.');
     return {
       uid: deploymentId,
       url: 'mock.vercel.app',

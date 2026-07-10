@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { StudioConfig } from '../types';
+import { markDegraded } from './degraded-mode';
 
 function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -17,6 +18,7 @@ let cachedConfig: StudioConfig | null = null;
 
 export async function getConfig(): Promise<StudioConfig> {
   if (!isTauri()) {
+    markDegraded('Demo mode. Settings are not persisted, they reset on reload.');
     return cachedConfig ?? { ...DEFAULT_CONFIG };
   }
   const config = await tauriInvoke<StudioConfig>('get_config');
@@ -26,7 +28,10 @@ export async function getConfig(): Promise<StudioConfig> {
 
 export async function setConfig(config: StudioConfig): Promise<void> {
   cachedConfig = config;
-  if (!isTauri()) return;
+  if (!isTauri()) {
+    markDegraded('Demo mode. Settings are not persisted, they reset on reload.');
+    return;
+  }
   await tauriInvoke<void>('set_config', { config });
 }
 
