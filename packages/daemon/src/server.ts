@@ -209,6 +209,14 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'agent.input',
   'agent.resize',
   'agent.output',
+  // session.end fans out to notifyAgentEnded, which evicts the target's project
+  // roots and kills every PTY it owns. It used to take a caller-supplied target
+  // and sat OUTSIDE this set, so any socket peer could end an arbitrary agent's
+  // session unsigned: the identity gate is satisfied by a bare `actorAgentId`
+  // string, while the handler read `sessionId`. Signature-REQUIRED so the target
+  // is the verified signer and nothing else. Cross-language contract: signing.rs
+  // requires_signature() must mark this too.
+  'session.end',
 ]);
 
 // ---------------------------------------------------------------------------
