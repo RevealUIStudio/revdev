@@ -551,7 +551,12 @@ describe('adversarial agent isolation (B6 §6)', () => {
       await writeFile(anchor, `${anchorContent}${victimId}:${fpVictim}\n`);
 
       const rpcVictim = (method: string, params: Record<string, unknown>) =>
-        rpcFrame(socketPath, method, params, signFor(victimId, didVictim, fpVictim, kpVictim, method, params));
+        rpcFrame(
+          socketPath,
+          method,
+          params,
+          signFor(victimId, didVictim, fpVictim, kpVictim, method, params),
+        );
 
       try {
         await rpcFrame(socketPath, 'session.register', {
@@ -594,7 +599,12 @@ describe('adversarial agent isolation (B6 §6)', () => {
       await writeFile(anchor, `${anchorContent}${victimId}:${fpVictim}\n`);
 
       const rpcVictim = (method: string, params: Record<string, unknown>) =>
-        rpcFrame(socketPath, method, params, signFor(victimId, didVictim, fpVictim, kpVictim, method, params));
+        rpcFrame(
+          socketPath,
+          method,
+          params,
+          signFor(victimId, didVictim, fpVictim, kpVictim, method, params),
+        );
 
       try {
         await rpcFrame(socketPath, 'session.register', {
