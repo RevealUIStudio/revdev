@@ -110,3 +110,67 @@ jobs:
       # tests drive the real built binary against a mock socket.
       - name: Build + test the WSL relay
         run: cargo test --manifest-path apps/studio/relay/Cargo.toml --release
+
+  # Prove-red for the Rust surface (verification-enforcement lane item 1d). Lives
+  # here rather than in ci.yml because it reuses this workflow's heavy Rust/tauri
+  # toolchain + path filter: it only runs when the Rust surface (or the daemon it
+  # talks to) changes, and it self-skips inside the script unless the PR touches
+  # BOTH Rust source and a Rust integration test. Like the ci.yml prove-red jobs
+  # it is a NON-required check (the required-check flip is lane item 1c, owner-gated).
+  prove-red-rust:
+    name: Prove-Red (Rust changed tests must fail against base)
+    runs-on: ubuntu-latest
+    # PR-only: a merge-base is meaningless on a direct push to test/main.
+    if: github.event_name == 'pull_request'
+    steps:
+      # PR head + full history so prove-red.mjs can compute the merge base.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: apps/studio/src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      # A changed test that legitimately compiles + runs green against base needs
+      # the daemon it spawns; build it so green-detection is faithful (a failing
+      # test still reds at compile/assert without it).
+      - name: Build daemon (integration tests spawn packages/daemon/dist/cli.js)
+        run: |
+          pnpm --filter @revdev/protocol build
+          pnpm --filter @revdev/daemon build
+
+      # tauri-build's codegen requires the configured frontendDist path to exist.
+      - name: Satisfy tauri-build frontendDist
+        run: mkdir -p apps/studio/dist
+
+      # Reverts the changed Rust source to base, then runs each changed
+      # integration test (`cargo test --test <name>`) and requires >=1 red.
+      - name: Prove changed Rust tests are red against base
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          PROVE_RED_LANGS: rust
+        run: node scripts/ci/prove-red.mjs
