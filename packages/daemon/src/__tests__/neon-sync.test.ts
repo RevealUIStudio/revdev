@@ -16,9 +16,43 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { formatDid } from '@revdev/protocol/did';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  computeFingerprint,
+  generateAgentKeypair,
+  generateNonce,
+  hashParams,
+  serializeEnvelope,
+  signEnvelope,
+} from '../agent-identity-crypto.js';
 import { _resetForTesting, setNeonClientForTesting } from '../neon.js';
 import { startDaemon } from '../server.js';
+
+/**
+ * `session.end` is signature-required (it evicts roots and kills PTYs), so the
+ * test that exercises its Neon dual-write has to sign like a real client.
+ */
+function makeSigner(agentId: string) {
+  const kp = generateAgentKeypair();
+  const fingerprint = computeFingerprint(kp.publicKeyRaw);
+  const did = formatDid(agentId, fingerprint);
+  const sign = (method: string, params: Record<string, unknown>): string =>
+    serializeEnvelope(
+      signEnvelope(
+        {
+          did,
+          kid: fingerprint,
+          nonce: generateNonce(),
+          ts: Math.floor(Date.now() / 1000),
+          method,
+          paramsHash: hashParams(method, params),
+        },
+        kp.privateKeyPem,
+      ),
+    );
+  return { agentId, fingerprint, publicKeyPem: kp.publicKeyPem, sign };
+}
 
 function rpc(
   socketPath: string,
