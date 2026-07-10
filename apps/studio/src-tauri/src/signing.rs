@@ -520,6 +520,7 @@ mod tests {
         assert!(requires_signature("agent.input"));
         assert!(requires_signature("agent.resize"));
         assert!(requires_signature("agent.output"));
+        assert!(requires_signature("session.end"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
     }
