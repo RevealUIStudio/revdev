@@ -332,14 +332,30 @@ describe('agent.spawn authorization (project grant)', () => {
     ).rejects.toThrow(/not registered/);
   });
 
-  it('rejects a cwd that escapes the authorized root via ..', async () => {
+  // `join()` normalizes the `..` away, so this string never contains one: the
+  // schema's safePath refinement cannot see it and the HANDLER's within() check
+  // is what rejects it. Pinned to that message so it cannot pass for some other
+  // reason (e.g. a missing directory).
+  it('rejects a cwd that resolves outside the authorized root', async () => {
     await expect(
       signedRpc(owner, 'agent.spawn', {
         command: 'bash',
         repoPath: repoRoot,
         cwd: join(repoRoot, '..'),
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/escapes project root/);
+  });
+
+  // The unnormalized form does carry a literal `..`, and is refused earlier, at
+  // schema validation. Both layers are exercised.
+  it('rejects a literal .. in cwd at the schema boundary', async () => {
+    await expect(
+      signedRpc(owner, 'agent.spawn', {
+        command: 'bash',
+        repoPath: repoRoot,
+        cwd: `${repoRoot}/../etc`,
+      }),
+    ).rejects.toThrow(/Invalid params/);
   });
 
   it('rejects a cwd symlink pointing outside the authorized root', async () => {
