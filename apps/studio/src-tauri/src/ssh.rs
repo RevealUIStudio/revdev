@@ -265,6 +265,41 @@ impl client::Handler for SshClientHandler {
     }
 }
 
+// ── Output pump ──────────────────────────────────────────────────────────────
+
+/// A decoded message from a session's output stream.
+pub enum PumpEvent {
+    /// Base64-encoded bytes from the remote shell (stdout or stderr).
+    Output(String),
+    /// The remote side closed the channel.
+    Disconnected(String),
+}
+
+/// Drive a channel's read half to completion, handing each decoded message to
+/// `on_event`.
+///
+/// Takes the read half by value: nothing else can hold it, so a `wait()` parked
+/// on an idle prompt can never block a concurrent `data()` / `window_change()`
+/// on the write half. Keeping the two halves unshared is what makes the SSH
+/// terminal responsive while the remote shell is silent, so do not reintroduce
+/// a lock around either one.
+pub async fn pump_output<F: Fn(PumpEvent)>(mut read_half: ChannelReadHalf, on_event: F) {
+    loop {
+        match read_half.wait().await {
+            Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
+                on_event(PumpEvent::Output(BASE64.encode(&*data)));
+            }
+            Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => {
+                on_event(PumpEvent::Disconnected(
+                    "Connection closed by server".to_string(),
+                ));
+                break;
+            }
+            _ => {}
+        }
+    }
+}
+
 // ── Connect ──────────────────────────────────────────────────────────────────
 
 /// Connect to an SSH server, open a PTY and shell. Returns session ID.
@@ -340,7 +375,7 @@ pub async fn connect(
         .await
         .map_err(|e| format!("Shell request failed: {e}"))?;
 
-    let (mut read_half, write_half) = channel.split();
+    let (read_half, write_half) = channel.split();
     let channel = Arc::new(write_half);
 
     // Spawn a task to poll channel output and emit events.
@@ -348,43 +383,27 @@ pub async fn connect(
     let ah = app_handle.clone();
     let state_clone = ssh_state.clone();
     tokio::spawn(async move {
-        loop {
-            let msg = read_half.wait().await;
-
-            match msg {
-                Some(ChannelMsg::Data { data }) => {
-                    let encoded = BASE64.encode(&*data);
-                    let _ = ah.emit(
-                        "ssh_output",
-                        SshOutputEvent {
-                            session_id: sid.clone(),
-                            data: encoded,
-                        },
-                    );
-                }
-                Some(ChannelMsg::ExtendedData { data, .. }) => {
-                    let encoded = BASE64.encode(&*data);
-                    let _ = ah.emit(
-                        "ssh_output",
-                        SshOutputEvent {
-                            session_id: sid.clone(),
-                            data: encoded,
-                        },
-                    );
-                }
-                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => {
-                    let _ = ah.emit(
-                        "ssh_disconnect",
-                        SshDisconnectEvent {
-                            session_id: sid.clone(),
-                            reason: "Connection closed by server".to_string(),
-                        },
-                    );
-                    break;
-                }
-                _ => {}
+        pump_output(read_half, |event| match event {
+            PumpEvent::Output(data) => {
+                let _ = ah.emit(
+                    "ssh_output",
+                    SshOutputEvent {
+                        session_id: sid.clone(),
+                        data,
+                    },
+                );
             }
-        }
+            PumpEvent::Disconnected(reason) => {
+                let _ = ah.emit(
+                    "ssh_disconnect",
+                    SshDisconnectEvent {
+                        session_id: sid.clone(),
+                        reason,
+                    },
+                );
+            }
+        })
+        .await;
 
         // Clean up session from state
         let mut sessions = state_clone.lock().await;
