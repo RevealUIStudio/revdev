@@ -12,6 +12,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // A build without a bundled window icon must not take the whole app down at
     // startup; a tray without an icon is still usable.
     let Some(icon) = app.default_window_icon().cloned() else {
+        eprintln!("warning: no bundled window icon; skipping tray icon setup");
         return Ok(());
     };
 
