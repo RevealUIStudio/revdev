@@ -322,7 +322,22 @@ pub async fn daemon_stop() -> Result<(), String> {
         }
     }
 
-    Err(format!("Daemon PID {pid} did not exit within 10s"))
+    // Escalate. Without this, Stop reports an error while leaving a wedged
+    // daemon running, and the UI offers no way to recover short of a shell.
+    if unsafe { libc::kill(pid as i32, libc::SIGKILL) } != 0 {
+        return Err(format!(
+            "Daemon PID {pid} ignored SIGTERM and SIGKILL could not be sent"
+        ));
+    }
+
+    for _ in 0..20 {
+        sleep(Duration::from_millis(100)).await;
+        if !is_pid_alive(pid) {
+            return Ok(());
+        }
+    }
+
+    Err(format!("Daemon PID {pid} survived SIGTERM and SIGKILL"))
 }
 
 #[cfg(not(unix))]
