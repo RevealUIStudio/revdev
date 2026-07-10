@@ -598,6 +598,15 @@ registerHandler('project.grant', async (params, _db, ctx) => {
   return { granted: granteeAgentId, root: entry.real };
 });
 
+/**
+ * Revoke a grantee's access to a root.
+ *
+ * NOT a kill-switch. This blocks FUTURE operations, including `agent.spawn`.
+ * PTY processes the grantee already spawned keep running: they are keyed to the
+ * spawning `ownerAgentId`, not to an ongoing grant, and survive until they exit
+ * or the grantee's session ends (see the eviction cascade above). To stop live
+ * work, end the grantee's session.
+ */
 registerHandler('project.revoke', async (params, _db, ctx) => {
   const repoPathRaw = requireStr(params.repoPath, 'repoPath');
   const granteeAgentId = requireStr(params.granteeAgentId, 'granteeAgentId');
