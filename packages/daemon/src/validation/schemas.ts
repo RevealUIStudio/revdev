@@ -346,15 +346,25 @@ export const schemas: Record<string, z.ZodType> = {
   // `harness.prune`) previously bypassed `validateParams` because no
   // schema existed in the registry. Adding them here completes the
   // Option A direction (schemas as canonical) shipped by GAP-173 —
-  // every live handler should have a schema entry. Schemas are
-  // intentionally TYPE-ONLY (no integer / non-negative / upper-bound
-  // constraints on `staleDays` / `hardDeleteDays`): the prune handler
-  // already runs a defensive clamp via `Number.isFinite` + `Math.max(0,
-  // ...)`, AND the integration tests legitimately pass fractional days
-  // (e.g. `staleDays: 0.00001` ≈ 0.86s) to exercise the prune logic
-  // without 24h sleeps + negative days to verify the defensive clamp.
-  // Adding `int()` / `min(0)` here would break those tests and move
-  // safety enforcement away from the handler where it belongs.
+  // every live handler should have a schema entry.
+  //
+  // These schemas WERE intentionally type-only, delegating safety to the
+  // handler's `Math.max(0, ...)` clamp so that integration tests could pass
+  // fractional days (`staleDays: 0.00001`) and negative days. That reasoning
+  // was wrong, and GAP-312 is the bill: a clamp whose floor is ZERO is not a
+  // defense. `staleDays: 0` (and every negative, which clamped to 0) turns
+  // prune's WHERE clause into `started_at < NOW()`, every live session, and
+  // runPrune fans `notifyAgentEnded` across all of them, evicting each agent's
+  // project roots and killing each agent's PTYs. Fleet-wide, from one frame.
+  //
+  // The threshold is now floored at ONE DAY here, at the untrusted boundary,
+  // and again in runPrune. A reaper of *stale* sessions has no legitimate
+  // sub-day threshold. The tests that needed one were testing a time-based
+  // reaper by shrinking time; they now backdate `started_at` instead, which is
+  // both correct and faster (no sleeps, no flake).
+  //
+  // Not `.int()`: a fractional threshold >= 1 is harmless, and the floor is
+  // the security property. Keep the constraint minimal and legible.
   'harness.health': z
     .object({
       actorAgentId,
@@ -363,8 +373,8 @@ export const schemas: Record<string, z.ZodType> = {
 
   'harness.prune': z
     .object({
-      staleDays: z.number().optional(),
-      hardDeleteDays: z.number().optional(),
+      staleDays: z.number().min(1).optional(),
+      hardDeleteDays: z.number().min(1).optional(),
       actorAgentId,
     })
     .passthrough(),

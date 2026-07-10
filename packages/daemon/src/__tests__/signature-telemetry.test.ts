@@ -254,9 +254,14 @@ describe('P2 signature-status telemetry', () => {
        VALUES ($1, 'identity.signature_status', '{}'::jsonb, NOW())`,
       ['prune-fresh-marker'],
     );
-    // harness.prune is IDENTITY_EXEMPT — no signature needed. Default
-    // hardDeleteDays is 30, so the 40-day row is dropped, the fresh one kept.
-    await rpcFrame(socketPath, 'harness.prune', {});
+    // harness.prune is signature-required (GAP-312), so it must be signed.
+    // Default hardDeleteDays is 30, so the 40-day row is dropped, fresh kept.
+    await rpcFrame(
+      socketPath,
+      'harness.prune',
+      {},
+      sign('harness.prune', {}, did, fingerprint, kp.privateKeyPem),
+    );
     const remaining = await db.query<{ agent_id: string }>(
       `SELECT agent_id FROM events
         WHERE event_type = 'identity.signature_status'
