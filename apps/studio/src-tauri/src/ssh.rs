@@ -6,7 +6,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD as BASE64, STANDARD_NO_PAD};
 use russh::keys::{PublicKey, PublicKeyBase64};
-use russh::{ChannelId, ChannelMsg, ChannelWriteHalf, client};
+use russh::{ChannelId, ChannelMsg, ChannelReadHalf, ChannelWriteHalf, client};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::Emitter;
