@@ -114,7 +114,10 @@ const IDENTITY_EXEMPT = new Set([
   'session.attach',
   'session.list',
   'harness.health',
-  'harness.prune',
+  // `harness.prune` was here. It reaches notifyAgentEnded for EVERY matched
+  // session, so an identity-exempt, unsigned caller could evict every agent's
+  // roots and kill every agent's PTY with one frame. See GAP-312 and the
+  // MUTATING_OR_CONTENT_METHODS entry below.
   'inference.status',
   'inference.pull',
   'inference.start',
@@ -217,6 +220,19 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // is the verified signer and nothing else. Cross-language contract: signing.rs
   // requires_signature() must mark this too.
   'session.end',
+  // harness.prune reaches the SAME eviction primitive as session.end
+  // (notifyAgentEnded → evictRootsForAgent + the spawn.ts PTY-kill hook), but
+  // fans it out across EVERY matched session rather than one. It was
+  // IDENTITY_EXEMPT and absent from this set, so a single unsigned frame from
+  // any same-UID socket peer ended the whole fleet's sessions and killed every
+  // PTY. `staleDays` is the amplifier: it had no floor, so 0 (or any negative,
+  // which clamped to 0) selected `started_at < NOW()`, i.e. all live sessions.
+  // Signature-REQUIRED, and the schema now floors both thresholds at 1 day so
+  // no caller can select "everything". The periodic internal sweep is
+  // unaffected: it calls runPrune directly, never through this RPC.
+  // Cross-language contract: signing.rs requires_signature() must mark this too.
+  // GAP-312. Sibling of the session.end fix (GAP-288, revdev#261).
+  'harness.prune',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -261,11 +277,17 @@ async function runPrune(
   staleDays: number,
   hardDeleteDays: number,
 ): Promise<{ aged: number; deleted: number }> {
-  // Clamp non-negative + finite. Defends against bad caller input — a
-  // negative or NaN threshold would otherwise widen the WHERE clause to
-  // include all-or-no rows depending on Postgres semantics.
-  const stale = Number.isFinite(staleDays) ? Math.max(0, staleDays) : 7;
-  const hard = Number.isFinite(hardDeleteDays) ? Math.max(0, hardDeleteDays) : 30;
+  // Floor at ONE DAY, not zero. The previous Math.max(0, ...) let a caller pass
+  // staleDays: 0 (or any negative, which clamped to 0), turning the WHERE
+  // clause into `started_at < NOW()`, every live session, and fanning
+  // notifyAgentEnded across the whole fleet. A zero threshold has no
+  // legitimate meaning for a reaper of *stale* sessions. NaN still falls back
+  // to the defaults. This is the last line of defense: the RPC schema floors
+  // these too, and it also covers the env-var path
+  // (REVDEV_STALE_THRESHOLD_DAYS / REVDEV_HARD_DELETE_DAYS to cfg to here).
+  // GAP-312.
+  const stale = Number.isFinite(staleDays) ? Math.max(1, staleDays) : 7;
+  const hard = Number.isFinite(hardDeleteDays) ? Math.max(1, hardDeleteDays) : 30;
 
   // Parameterized interval avoids SQL injection on the days value.
   const aged = await db.query<{ id: string }>(
@@ -1591,11 +1613,23 @@ registerHandler('harness.health', async (_params, db) => {
   };
 });
 
-registerHandler('harness.prune', async (params, db) => {
-  // Allow ops / tests to run a prune pass on demand. Defaults match
-  // DAEMON_DEFAULTS so callers can invoke with no params.
-  const staleDays = num(params.staleDays, DAEMON_DEFAULTS.staleSessionDays);
-  const hardDeleteDays = num(params.hardDeleteDays, DAEMON_DEFAULTS.hardDeleteDays);
+registerHandler('harness.prune', async (params, db, ctx) => {
+  // Allow ops to run a prune pass on demand. Defaults match DAEMON_DEFAULTS so
+  // callers can invoke with no params.
+  //
+  // Signature-REQUIRED (GAP-312). This RPC reaches notifyAgentEnded for every
+  // matched session, so it must not be drivable by an unsigned socket peer.
+  // The dispatch gate already rejects unsigned callers before we get here;
+  // this is the defense-in-depth backstop, mirroring spawn.ts requireAgent.
+  if (ctx.boundVia !== 'signature' || !ctx.agentId) {
+    throw new Error(
+      'harness.prune requires a signed request (verified Ed25519 signature); unsigned or param-bound caller rejected',
+    );
+  }
+  // The schema floors both thresholds at 1 day. Re-floor here so a schema
+  // regression cannot hand runPrune a fleet-wide selector.
+  const staleDays = Math.max(1, num(params.staleDays, DAEMON_DEFAULTS.staleSessionDays));
+  const hardDeleteDays = Math.max(1, num(params.hardDeleteDays, DAEMON_DEFAULTS.hardDeleteDays));
   const result = await runPrune(db, staleDays, hardDeleteDays);
   return {
     aged: result.aged,
