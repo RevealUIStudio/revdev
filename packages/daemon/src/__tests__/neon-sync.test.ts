@@ -24,11 +24,14 @@ function rpc(
   socketPath: string,
   method: string,
   params: Record<string, unknown> = {},
+  signature?: string,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const sock: Socket = connect(socketPath);
     let buf = '';
-    const req = `${JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })}\n`;
+    const frame: Record<string, unknown> = { jsonrpc: '2.0', id: 1, method, params };
+    if (signature) frame['x-revdev-signature'] = signature;
+    const req = `${JSON.stringify(frame)}\n`;
     sock.on('connect', () => sock.write(req));
     sock.on('data', (d) => {
       buf += d.toString();
