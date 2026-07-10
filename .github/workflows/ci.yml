@@ -74,12 +74,29 @@ jobs:
     needs: quality
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Install bubblewrap (agent.spawn confinement integration tests)
-        # The real-bwrap adversarial-read tests (confinement-integration.test.ts)
-        # need bwrap present AND able to create unprivileged namespaces. When it
-        # cannot, the suite self-skips via its bwrapUsable() probe — the install
-        # is what lets the boundary be proven for real on CI rather than skipped.
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Install bubblewrap + enable unprivileged user namespaces (agent.spawn confinement tests)
+        # confinement-integration.test.ts runs REAL bwrap adversarial reads proving
+        # ~/.ssh, ~/.age-identity, and the revvault store are denied inside the
+        # sandbox. They need bwrap present AND able to create unprivileged user
+        # namespaces. ubuntu-24.04 ships kernel.apparmor_restrict_unprivileged_userns=1,
+        # which blocks that — so without lowering it, bwrapUsable() fails and the
+        # whole suite self-skips and the boundary is never proven on CI (GAP-319).
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          # `|| true`: if a future runner kernel lacks this knob, the guard step
+          # below is the real gate — do not fail here on a missing sysctl.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Guard — unprivileged user namespaces must work (no silent confinement skip)
+        # Turn a SILENT all-skip of the confinement suite into a LOUD failure. This
+        # probe mirrors bwrapUsable() in confinement-integration.test.ts; if it cannot
+        # build a userns sandbox, the 7 real-bwrap tests would skip and a bwrap-argv
+        # regression would pass CI unnoticed (GAP-319 acceptance).
+        run: |
+          bwrap --unshare-user --unshare-pid \
+            --ro-bind /usr /usr \
+            --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 \
+            --proc /proc --dev /dev -- /bin/true
+          echo "OK: unprivileged user namespaces work — the confinement integration suite will run for real"
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
