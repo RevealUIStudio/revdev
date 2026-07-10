@@ -45,7 +45,10 @@ export async function vercelSetEnv(
 }
 
 export async function vercelDeploy(token: string, projectId: string): Promise<string> {
-  if (!isTauri()) return 'mock-deploy-id';
+  if (!isTauri()) {
+    markDegraded('Demo mode. No deployment actually ran, this deploy id is a fake placeholder.');
+    return 'MOCK_DEPLOY_ID_DO_NOT_USE';
+  }
   return tauriInvoke<string>('vercel_deploy', { token, projectId });
 }
 
@@ -54,6 +57,7 @@ export async function vercelGetDeployment(
   deploymentId: string,
 ): Promise<VercelDeployment> {
   if (!isTauri()) {
+    markDegraded('Demo mode. This deployment status is fake, nothing is actually live.');
     return {
       uid: deploymentId,
       url: 'mock.vercel.app',
@@ -136,7 +140,7 @@ function mockSecret(label: string, length: number): string {
 
 export async function generateSecret(length: number): Promise<string> {
   if (!isTauri()) {
-    markDegraded('Demo mode — generated secrets are fake placeholders, not real keys.');
+    markDegraded('Demo mode. Generated secrets are fake placeholders, not real keys.');
     return mockSecret('SECRET', length);
   }
   return tauriInvoke<string>('generate_secret', { length });
@@ -144,7 +148,7 @@ export async function generateSecret(length: number): Promise<string> {
 
 export async function generateKek(): Promise<string> {
   if (!isTauri()) {
-    markDegraded('Demo mode — generated secrets are fake placeholders, not real keys.');
+    markDegraded('Demo mode. Generated secrets are fake placeholders, not real keys.');
     return mockSecret('KEK', 64);
   }
   return tauriInvoke<string>('generate_kek');
@@ -152,7 +156,7 @@ export async function generateKek(): Promise<string> {
 
 export async function generateRsaKeypair(): Promise<[string, string]> {
   if (!isTauri()) {
-    markDegraded('Demo mode — generated secrets are fake placeholders, not real keys.');
+    markDegraded('Demo mode. Generated secrets are fake placeholders, not real keys.');
     return ['MOCK_PRIVATE_KEY_DO_NOT_USE', 'MOCK_PUBLIC_KEY_DO_NOT_USE'];
   }
   return tauriInvoke<[string, string]>('generate_rsa_keypair');

@@ -172,38 +172,42 @@ export function useAuth(apiUrl: string, localMode = false): AuthContextValue {
     const refreshAt = expiresMs - 7 * 24 * 60 * 60 * 1000; // 7 days before expiry
     const delay = refreshAt - Date.now();
 
-    if (delay <= 0) {
-      // Already within refresh window — refresh now
-      refreshToken(apiUrl, tokenRef.current)
+    // A rejected/expired token (HttpError kind "client") means the refresh
+    // was explicitly denied — the stored token can't be trusted, so sign the
+    // user out with an actionable message. A network/server/parse failure
+    // means the API just couldn't be reached; the existing offline session
+    // (see the mount-time effect above) is preserved instead.
+    function performRefresh(): void {
+      const token = tokenRef.current;
+      if (!token) return;
+      refreshToken(apiUrl, token)
         .then(async (res) => {
           if (res.success && res.token) {
             tokenRef.current = res.token;
             await saveToken(res.token);
             setTokenExpiresAt(res.expiresAt ?? null);
+            return;
+          }
+          if (res.kind === 'client') {
+            tokenRef.current = null;
+            await clearToken();
+            setUser(null);
+            setTokenExpiresAt(null);
+            setStep('email');
+            setError('Your session could not be renewed. Please sign in again.');
           }
         })
         .catch(() => {
-          /* best-effort refresh */
+          /* API unreachable — best-effort refresh, keep offline access */
         });
+    }
+
+    if (delay <= 0) {
+      performRefresh();
       return;
     }
 
-    const timer = setTimeout(() => {
-      if (tokenRef.current) {
-        refreshToken(apiUrl, tokenRef.current)
-          .then(async (res) => {
-            if (res.success && res.token) {
-              tokenRef.current = res.token;
-              await saveToken(res.token);
-              setTokenExpiresAt(res.expiresAt ?? null);
-            }
-          })
-          .catch(() => {
-            /* best-effort refresh */
-          });
-      }
-    }, delay);
-
+    const timer = setTimeout(performRefresh, delay);
     return () => clearTimeout(timer);
   }, [step, tokenExpiresAt, apiUrl]);
 

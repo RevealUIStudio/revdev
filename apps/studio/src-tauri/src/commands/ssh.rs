@@ -58,15 +58,16 @@ pub async fn ssh_send(
         .decode(&data)
         .map_err(|e| StudioError::Other(format!("Invalid base64: {e}")))?;
 
-    let sessions = state.sessions.lock().await;
-    let session = sessions
-        .get(&session_id)
-        .ok_or_else(|| StudioError::Other(format!("No session with id {session_id}")))?;
-
-    let channel_guard = session.channel.lock().await;
-    let channel = channel_guard
-        .as_ref()
-        .ok_or_else(|| StudioError::Ssh("Channel closed".into()))?;
+    // Clone the write half and release the sessions map before awaiting, so a
+    // slow send on one session cannot stall every other session's commands.
+    let channel = {
+        let sessions = state.sessions.lock().await;
+        sessions
+            .get(&session_id)
+            .ok_or_else(|| StudioError::Other(format!("No session with id {session_id}")))?
+            .channel
+            .clone()
+    };
 
     channel
         .data(&bytes[..])
@@ -84,15 +85,14 @@ pub async fn ssh_resize(
     rows: u32,
     state: State<'_, SshState>,
 ) -> Result<(), StudioError> {
-    let sessions = state.sessions.lock().await;
-    let session = sessions
-        .get(&session_id)
-        .ok_or_else(|| StudioError::Other(format!("No session with id {session_id}")))?;
-
-    let channel_guard = session.channel.lock().await;
-    let channel = channel_guard
-        .as_ref()
-        .ok_or_else(|| StudioError::Ssh("Channel closed".into()))?;
+    let channel = {
+        let sessions = state.sessions.lock().await;
+        sessions
+            .get(&session_id)
+            .ok_or_else(|| StudioError::Other(format!("No session with id {session_id}")))?
+            .channel
+            .clone()
+    };
 
     channel
         .window_change(cols, rows, 0, 0)
