@@ -75,7 +75,6 @@ pub struct SyncResult {
 pub struct RepoEntry {
     pub name: String,
     pub c_path: String,
-    pub e_path: String,
     pub identity: String,
 }
 

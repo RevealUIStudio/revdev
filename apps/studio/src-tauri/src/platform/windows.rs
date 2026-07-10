@@ -98,50 +98,6 @@ impl WindowsPlatform {
         }
     }
 
-    fn git_sync_e(&self, repo_path: &str) -> SyncResult {
-        let full_path = format!("E:\\repos\\{}", repo_path);
-        let branch = self.git_branch(&full_path);
-
-        let check = Command::new("git")
-            .args(["-C", &full_path, "rev-parse", "--git-dir"])
-            .output();
-
-        if check.is_err() || !check.unwrap().status.success() {
-            return SyncResult {
-                drive: "E:".to_string(),
-                repo: String::new(),
-                status: "skip".to_string(),
-                branch: "-".to_string(),
-            };
-        }
-
-        let _ = Command::new("git")
-            .args(["-C", &full_path, "fetch", "origin", "--quiet"])
-            .output();
-
-        let reset = Command::new("git")
-            .args([
-                "-C",
-                &full_path,
-                "reset",
-                "--hard",
-                &format!("origin/{branch}"),
-            ])
-            .output();
-
-        let status = match reset {
-            Ok(o) if o.status.success() => "ok",
-            _ => "reset_failed",
-        };
-
-        SyncResult {
-            drive: "E:".to_string(),
-            repo: String::new(),
-            status: status.to_string(),
-            branch,
-        }
-    }
-
     fn git_branch(&self, path: &str) -> String {
         Command::new("git")
             .args(["-C", path, "rev-parse", "--abbrev-ref", "HEAD"])
@@ -154,7 +110,6 @@ impl WindowsPlatform {
         vec![RepoEntry {
             name: "RevealUI".to_string(),
             c_path: "projects\\RevealUI".to_string(),
-            e_path: "repos\\RevealUI".to_string(),
             identity: "professional".to_string(),
         }]
     }
@@ -362,23 +317,17 @@ impl PlatformOps for WindowsPlatform {
         }
     }
 
+    // The E: mirror sync was removed: it ran `reset --hard` against `E:\repos`,
+    // a mirror retired in 2026, with no dirty check. The C: sync below stays
+    // because it refuses to touch a dirty tree and only fast-forwards.
     fn sync_all_repos(&self) -> Result<Vec<SyncResult>, String> {
         let registry = Self::repo_registry();
-        let e_available = std::path::Path::new("E:\\repos").exists();
         let mut results = Vec::new();
 
         for repo in &registry {
-            // C: drive sync
             let mut c_result = self.git_sync_c(&repo.c_path);
             c_result.repo = repo.name.clone();
             results.push(c_result);
-
-            // E: drive sync (if available)
-            if e_available {
-                let mut e_result = self.git_sync_e(&repo.e_path);
-                e_result.repo = repo.name.clone();
-                results.push(e_result);
-            }
         }
 
         Ok(results)
