@@ -12,12 +12,6 @@
 apps/studio/src/__tests__/hooks/use-local-shell.test.ts   abs-home-path
 apps/studio/src/__tests__/hooks/use-ssh.test.ts           abs-home-path
 
-# Phase-1 agent.spawn confinement test fixtures use a synthetic operator
-# username (/home/<op>) — same placeholder case as the two entries above;
-# not a real developer path.
-packages/daemon/src/__tests__/confinement.test.ts         abs-home-path
-packages/daemon/src/__tests__/spawn.test.ts               abs-home-path
-
 # Test fixture: the license-key shape matches the regex but the body is a
 # repeating hex pattern (abcdef-0123456789 doubled). Not a real key.
 packages/daemon/src/__tests__/flows.test.ts               license-key
