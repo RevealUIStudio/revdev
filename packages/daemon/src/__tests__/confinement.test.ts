@@ -35,7 +35,7 @@ describe('filterCallerEnv', () => {
   });
 
   it('rejects HOME by name (the escape the tmpfs would otherwise absorb)', () => {
-    expect(() => filterCallerEnv({ HOME: '/home/op' })).toThrow(/"HOME" is not caller-settable/);
+    expect(() => filterCallerEnv({ HOME: '/base/op' })).toThrow(/"HOME" is not caller-settable/);
   });
 
   it('rejects PATH', () => {
@@ -98,10 +98,10 @@ describe('buildConfinedEnv', () => {
 describe('linuxBubblewrapBackend.spawnConfined', () => {
   const backend = linuxBubblewrapBackend('/usr/bin/bwrap');
   const opts = {
-    repoReal: '/home/op/repo',
-    cwd: '/home/op/repo/packages/x',
-    agentHome: '/home/op/.local/share/revealui/agent-homes/deadbeef',
-    operatorHome: '/home/op',
+    repoReal: '/base/op/repo',
+    cwd: '/base/op/repo/packages/x',
+    agentHome: '/base/op/.local/share/revealui/agent-homes/deadbeef',
+    operatorHome: '/base/op',
   };
 
   it('execs bwrap, not the raw command', () => {
@@ -121,11 +121,11 @@ describe('linuxBubblewrapBackend.spawnConfined', () => {
   it('tmpfs-hides the operator home and re-binds only the granted root + agent home', () => {
     const { argv } = backend.spawnConfined('bash', [], opts);
     const s = argv.join(' ');
-    expect(s).toContain('--tmpfs /home/op');
+    expect(s).toContain('--tmpfs /base/op');
     expect(s).toContain(`--bind ${opts.repoReal} ${opts.repoReal}`);
     expect(s).toContain(`--bind ${opts.agentHome} ${opts.agentHome}`);
     // The operator-home tmpfs must come BEFORE the re-binds, or the binds get wiped.
-    const tmpfsIdx = argv.indexOf('/home/op'); // the --tmpfs operand
+    const tmpfsIdx = argv.indexOf('/base/op'); // the --tmpfs operand
     const repoBindIdx = argv.indexOf(opts.repoReal);
     expect(tmpfsIdx).toBeLessThan(repoBindIdx);
   });
