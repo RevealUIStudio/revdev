@@ -454,7 +454,7 @@ async function httpRpc<T>(method: string, params: Record<string, unknown>): Prom
   }
 
   if (res.status === 401 || res.status === 403) {
-    throw new Error('Authentication required — pair with daemon first');
+    throw new Error('Authentication required. Pair with the daemon first.');
   }
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
