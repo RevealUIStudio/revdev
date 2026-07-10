@@ -323,7 +323,7 @@ describe('agent.spawn', () => {
       signedRpc(owner, 'agent.spawn', {
         command: 'bash',
         repoPath: repoRoot,
-        env: { HOME: '/home/op' },
+        env: { HOME: '/base/op' },
       }),
     ).rejects.toThrow(/not caller-settable/);
   });
