@@ -78,6 +78,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PGlite } from '@electric-sql/pglite';
 import { formatDid } from '@revdev/protocol/did';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -173,6 +174,7 @@ const other = makeSigner('spawn-test-other');
 let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
+let db: PGlite;
 /** A project root `owner` opens; agent.spawn now authorizes against it. */
 let repoRoot: string;
 /** A root owned by `other`, used to prove cross-agent spawn is refused. */
@@ -190,6 +192,13 @@ async function signedRpc(
 }
 
 beforeAll(async () => {
+  // These tests exercise the signature gate, ownership, and project-grant
+  // authorization — NOT the OS sandbox (that is proven with real bwrap in
+  // confinement-integration.test.ts). node-pty is mocked here, so an actual
+  // bwrap wrap is neither observable nor desirable, and the daemon must not
+  // fail closed on a CI runner without bwrap. Run these under the operator
+  // escape hatch: spawns are unconfined and record confinement='none'.
+  process.env.REVDEV_SPAWN_CONFINEMENT = 'none';
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-spawn-test-'));
   socketPath = join(dataDir, 'harness.sock');
@@ -206,6 +215,7 @@ beforeAll(async () => {
     trustedAnchorRequireRootOwned: false,
   });
   close = d.close;
+  db = d._db;
 
   // Persist each client's public key so the daemon can Ed25519-verify their
   // signed agent.* calls (the trust anchor only holds the fingerprint). One-time
@@ -233,6 +243,7 @@ afterAll(async () => {
   await close?.();
   await rm(dataDir, { recursive: true, force: true });
   clearTestLicenseEnv();
+  delete process.env.REVDEV_SPAWN_CONFINEMENT;
 });
 
 beforeEach(() => {
@@ -285,6 +296,46 @@ describe('agent.spawn', () => {
         cwd: join(repoRoot, 'nonexistent', 'does-not-exist'),
       }),
     ).rejects.toThrow();
+  });
+
+  // Under the escape hatch a spawn is unconfined, but it leaves a receipt: the
+  // audit row records confinement='none' (spec §8.1).
+  it("records confinement='none' on the row under the escape hatch", async () => {
+    const { processId } = (await signedRpc(owner, 'agent.spawn', {
+      command: 'bash',
+      repoPath: repoRoot,
+    })) as { processId: string };
+    const row = await db.query<{ confinement: string | null }>(
+      `SELECT confinement FROM agent_processes WHERE id = $1`,
+      [processId],
+    );
+    expect(row.rows[0]?.confinement).toBe('none');
+    // Release the live-count slot — mock ptys never exit on their own, and the
+    // per-agent cap (10) is shared across every owner spawn in this file.
+    _lastPty?._fireExit(0);
+  });
+
+  // The env allow-list (spec §7) runs regardless of confinement mode, so it is
+  // enforced even under the escape hatch. A non-allow-listed key is rejected by
+  // name (§10 test 3).
+  it('rejects a caller env key outside the allow-list', async () => {
+    await expect(
+      signedRpc(owner, 'agent.spawn', {
+        command: 'bash',
+        repoPath: repoRoot,
+        env: { HOME: '/home/op' },
+      }),
+    ).rejects.toThrow(/not caller-settable/);
+  });
+
+  it('accepts an allow-listed caller env key (TERM)', async () => {
+    const result = (await signedRpc(owner, 'agent.spawn', {
+      command: 'bash',
+      repoPath: repoRoot,
+      env: { TERM: 'screen-256color' },
+    })) as { processId: string };
+    expect(typeof result.processId).toBe('string');
+    _lastPty?._fireExit(0);
   });
 });
 
