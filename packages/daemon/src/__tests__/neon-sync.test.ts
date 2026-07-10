@@ -12,7 +12,7 @@ import { vi } from 'vitest';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
