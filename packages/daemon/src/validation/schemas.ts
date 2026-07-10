@@ -526,8 +526,11 @@ export const schemas: Record<string, z.ZodType> = {
       cwd: safePath.optional(),
       cols: z.number().int().min(1).max(1000).optional(),
       rows: z.number().int().min(1).max(500).optional(),
-      // Caller-supplied env overrides (merged onto a minimal safe baseline).
-      // Values must be strings; non-string values are dropped by the handler.
+      // Caller-supplied env. The handler enforces an ALLOW-LIST (filterCallerEnv,
+      // spec §7): only TERM, LANG, LC_*, CI, NO_COLOR, REVDEV_* are accepted; any
+      // other key (HOME, PATH, LD_*/GIT_*/NODE_OPTIONS loader keys) is rejected by
+      // name. The schema stays permissive so the rejection is a clear handler
+      // error naming the offending key, not a generic schema failure.
       env: z.record(z.string(), z.string()).optional(),
       actorAgentId,
     })

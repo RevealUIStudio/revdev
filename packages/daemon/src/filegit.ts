@@ -294,8 +294,23 @@ export async function requireDirInRoot(
   cwdRaw: string | undefined,
   callerAgentId: string | null,
 ): Promise<string> {
+  return (await requireRootAndDir(repoPathRaw, cwdRaw, callerAgentId)).cwd;
+}
+
+/**
+ * Like `requireDirInRoot`, but returns BOTH the realpath'd granted root and the
+ * resolved cwd. `agent.spawn` confinement binds the whole root read-write and
+ * then chdirs into the (at-or-beneath) cwd, so it needs both — the root to
+ * bind, the cwd to start in. Same authorization; a single realpath+ownership
+ * check backs both values so the two surfaces cannot drift.
+ */
+export async function requireRootAndDir(
+  repoPathRaw: string,
+  cwdRaw: string | undefined,
+  callerAgentId: string | null,
+): Promise<{ repoReal: string; cwd: string }> {
   const repoReal = await requireRoot(repoPathRaw, callerAgentId);
-  if (cwdRaw === undefined || cwdRaw === '') return repoReal;
+  if (cwdRaw === undefined || cwdRaw === '') return { repoReal, cwd: repoReal };
 
   // mustExist=true realpaths the target itself, so a symlink pointing outside
   // the root resolves before `within()` sees it.
@@ -307,7 +322,7 @@ export async function requireDirInRoot(
     throw new Error(`cwd does not exist: ${cwdRaw}`);
   }
   if (!s.isDirectory()) throw new Error(`cwd is not a directory: ${cwdRaw}`);
-  return real;
+  return { repoReal, cwd: real };
 }
 
 /**

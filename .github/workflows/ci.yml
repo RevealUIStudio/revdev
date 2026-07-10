@@ -74,6 +74,12 @@ jobs:
     needs: quality
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install bubblewrap (agent.spawn confinement integration tests)
+        # The real-bwrap adversarial-read tests (confinement-integration.test.ts)
+        # need bwrap present AND able to create unprivileged namespaces. When it
+        # cannot, the suite self-skips via its bwrapUsable() probe — the install
+        # is what lets the boundary be proven for real on CI rather than skipped.
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
