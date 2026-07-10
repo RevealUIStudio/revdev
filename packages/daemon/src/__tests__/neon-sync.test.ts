@@ -219,18 +219,19 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
   });
 
   it('session.end triggers UPDATE setting ended_at + status=ended + summary in metadata', async () => {
+    // Register the client-owned key so the daemon can verify the signature.
     await rpc(socketPath, 'session.register', {
-      agentId: 'sync-test-4',
-      agentName: 'sync-test-4',
+      agentId: ender.agentId,
+      agentName: ender.agentId,
       backend: 'test',
+      publicKeyPem: ender.publicKeyPem,
     });
     recordedCalls = [];
 
-    await rpc(socketPath, 'session.end', {
-      actorAgentId: 'sync-test-4',
-      sessionId: 'sync-test-4',
-      summary: 'all done',
-    });
+    // session.end is signature-required and self-scopes to the signer, so no
+    // sessionId is passed: the signer IS the target.
+    const endParams = { summary: 'all done' };
+    await rpc(socketPath, 'session.end', endParams, ender.sign('session.end', endParams));
 
     expect(recordedCalls.length).toBe(1);
     const [endRecord] = recordedCalls;
