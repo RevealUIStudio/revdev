@@ -280,6 +280,37 @@ async function resolveInRoot(
 }
 
 /**
+ * Authorize a working directory for a caller: the repo root must be registered
+ * and owned-or-granted by `callerAgentId`, and `cwdRaw` must resolve to a real
+ * directory at or beneath that root.
+ *
+ * Exported for `agent.spawn`, which forks a caller-supplied command as the
+ * daemon UID. Authentication (the Ed25519 signature gate) proves *who* is
+ * asking; this proves they are allowed to run it *there*. Both invariants stay
+ * in this module so the spawn surface cannot drift from the file surface.
+ */
+export async function requireDirInRoot(
+  repoPathRaw: string,
+  cwdRaw: string | undefined,
+  callerAgentId: string | null,
+): Promise<string> {
+  const repoReal = await requireRoot(repoPathRaw, callerAgentId);
+  if (cwdRaw === undefined || cwdRaw === '') return repoReal;
+
+  // mustExist=true realpaths the target itself, so a symlink pointing outside
+  // the root resolves before `within()` sees it.
+  const real = await resolveInRoot(repoReal, cwdRaw, true);
+  let s: Awaited<ReturnType<typeof stat>>;
+  try {
+    s = await stat(real);
+  } catch {
+    throw new Error(`cwd does not exist: ${cwdRaw}`);
+  }
+  if (!s.isDirectory()) throw new Error(`cwd is not a directory: ${cwdRaw}`);
+  return real;
+}
+
+/**
  * Lexical repo-relative path for a git pathspec argument. The repo root is
  * already a realpath'd registered root, and git itself confines pathspecs to
  * the work tree, so a lexical `..`/absolute-escape check is sufficient here
