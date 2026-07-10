@@ -9,13 +9,12 @@
  *   - Enforces per-agent ownership: only the spawning agent may send input,
  *     resize, or stop a process it owns
  *
- * P4-IDENTITY TODO: Once the "B6" identity lane ships its signature-gating
- * rewrite, add 'agent.spawn', 'agent.stop', 'agent.input', 'agent.resize',
- * and 'agent.output' to MUTATING_OR_CONTENT_METHODS in server.ts AND to
- * requires_signature() in signing.rs. Until then these methods accept
- * actorAgentId param auth (same posture as mail.send / files.reserve), which
- * is gated only by the 0600 socket boundary. The deferred grant model
- * (spawned-agent DID + project.grant) should be designed as part of that lane.
+ * Authentication: all five methods are in MUTATING_OR_CONTENT_METHODS and in
+ * signing.rs requires_signature(), so the dispatch gate binds ctx.agentId to a
+ * verified Ed25519 signer. The spoofable actorAgentId param auth is gone.
+ *
+ * Authorization: agent.spawn additionally requires the signer to hold (own, or
+ * have been granted) the project root its command will run in. See the handler.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -238,7 +237,11 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   if (!repoPath) {
     throw new Error('agent.spawn: missing repoPath (call project.open on the root first)');
   }
-  const cwd = await requireDirInRoot(repoPath, stringParam(params, 'cwd') || undefined, ownerAgentId);
+  const cwd = await requireDirInRoot(
+    repoPath,
+    stringParam(params, 'cwd') || undefined,
+    ownerAgentId,
+  );
 
   if (liveCountForAgent(ownerAgentId) >= MAX_PROCESSES_PER_AGENT) {
     throw new Error(

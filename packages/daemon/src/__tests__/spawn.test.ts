@@ -64,31 +64,17 @@ vi.mock('node-pty', () => ({
   }),
 }));
 
-// ---------------------------------------------------------------------------
-// Mock node:fs/promises stat so cwd validation passes for /tmp paths
-// ---------------------------------------------------------------------------
-
-vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return {
-    ...actual,
-    stat: vi.fn(async (p: string) => {
-      if (p === '/tmp' || (p.startsWith('/tmp/') && !p.includes('nonexistent'))) {
-        return { isDirectory: () => true };
-      }
-      const err = Object.assign(new Error(`ENOENT: no such file or directory, stat '${p}'`), {
-        code: 'ENOENT',
-      });
-      throw err;
-    }),
-  };
-});
+// `node:fs/promises` is deliberately NOT mocked. agent.spawn now authorizes its
+// cwd against a registered project root, and that check rests on real inode
+// identity (dev/ino) and real symlink resolution. A stubbed `stat` would fake
+// the filesystem the security boundary is built on, so these tests use real
+// temp directories instead.
 
 // ---------------------------------------------------------------------------
 // Imports (after mock declarations)
 // ---------------------------------------------------------------------------
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -187,6 +173,10 @@ const other = makeSigner('spawn-test-other');
 let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
+/** A project root `owner` opens; agent.spawn now authorizes against it. */
+let repoRoot: string;
+/** A root owned by `other`, used to prove cross-agent spawn is refused. */
+let otherRoot: string;
 
 /** Signed RPC that throws on error (the common happy-path wrapper). */
 async function signedRpc(
@@ -229,6 +219,14 @@ beforeAll(async () => {
     });
     if (reg.error) throw new Error(`register ${s.agentId} failed: ${reg.error.message}`);
   }
+
+  // agent.spawn authorizes its cwd against a registered project root, so each
+  // identity opens one. `owner` drives the happy paths; `otherRoot` proves a
+  // signer cannot spawn into a root it neither owns nor was granted.
+  repoRoot = await mkdtemp(join(tmpdir(), 'revdev-spawn-root-'));
+  otherRoot = await mkdtemp(join(tmpdir(), 'revdev-spawn-otherroot-'));
+  await signedRpc(owner, 'project.open', { repoPath: repoRoot });
+  await signedRpc(other, 'project.open', { repoPath: otherRoot });
 });
 
 afterAll(async () => {
@@ -248,7 +246,10 @@ beforeEach(() => {
 
 describe('signature gate', () => {
   it('rejects an UNSIGNED agent.spawn (no Ed25519 envelope)', async () => {
-    const resp = await rpcFrame(socketPath, 'agent.spawn', { command: 'bash', cwd: '/tmp' });
+    const resp = await rpcFrame(socketPath, 'agent.spawn', {
+      command: 'bash',
+      repoPath: repoRoot,
+    });
     // The dispatch gate refuses a MUTATING_OR_CONTENT_METHODS call that is not
     // signature-verified — the unsigned host process can no longer exec as the
     // daemon UID. No processId is returned.
@@ -262,7 +263,7 @@ describe('agent.spawn', () => {
     const result = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
       args: ['-i'],
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string; pid: number };
 
     expect(result.processId).toMatch(
@@ -273,16 +274,97 @@ describe('agent.spawn', () => {
   });
 
   it('rejects when command is missing (schema validation)', async () => {
-    await expect(signedRpc(owner, 'agent.spawn', { cwd: '/tmp' })).rejects.toThrow();
+    await expect(signedRpc(owner, 'agent.spawn', { repoPath: repoRoot })).rejects.toThrow();
   });
 
   it('rejects a nonexistent cwd', async () => {
     await expect(
       signedRpc(owner, 'agent.spawn', {
         command: 'bash',
-        cwd: '/tmp/nonexistent/does-not-exist',
+        repoPath: repoRoot,
+        cwd: join(repoRoot, 'nonexistent', 'does-not-exist'),
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('agent.spawn authorization (project grant)', () => {
+  it('rejects when repoPath is absent — no implicit $HOME cwd', async () => {
+    await expect(signedRpc(owner, 'agent.spawn', { command: 'bash' })).rejects.toThrow();
+  });
+
+  it('rejects an unregistered repoPath', async () => {
+    const stray = await mkdtemp(join(tmpdir(), 'revdev-spawn-stray-'));
+    try {
+      await expect(
+        signedRpc(owner, 'agent.spawn', { command: 'bash', repoPath: stray }),
+      ).rejects.toThrow(/not registered/);
+    } finally {
+      await rm(stray, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects spawning into another agent's root", async () => {
+    await expect(
+      signedRpc(owner, 'agent.spawn', { command: 'bash', repoPath: otherRoot }),
+    ).rejects.toThrow(/not registered/);
+  });
+
+  it('allows spawning into another agent root once granted, and refuses after revoke', async () => {
+    await signedRpc(other, 'project.grant', {
+      repoPath: otherRoot,
+      granteeAgentId: owner.agentId,
+    });
+
+    const granted = (await signedRpc(owner, 'agent.spawn', {
+      command: 'bash',
+      repoPath: otherRoot,
+    })) as { processId: string };
+    expect(typeof granted.processId).toBe('string');
+
+    await signedRpc(other, 'project.revoke', {
+      repoPath: otherRoot,
+      granteeAgentId: owner.agentId,
+    });
+
+    await expect(
+      signedRpc(owner, 'agent.spawn', { command: 'bash', repoPath: otherRoot }),
+    ).rejects.toThrow(/not registered/);
+  });
+
+  it('rejects a cwd that escapes the authorized root via ..', async () => {
+    await expect(
+      signedRpc(owner, 'agent.spawn', {
+        command: 'bash',
+        repoPath: repoRoot,
+        cwd: join(repoRoot, '..'),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a cwd symlink pointing outside the authorized root', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'revdev-spawn-outside-'));
+    const link = join(repoRoot, 'escape-link');
+    try {
+      await symlink(outside, link, 'dir');
+      await expect(
+        signedRpc(owner, 'agent.spawn', { command: 'bash', repoPath: repoRoot, cwd: link }),
+      ).rejects.toThrow(/escapes project root/);
+    } finally {
+      await rm(link, { force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts a real subdirectory of the authorized root', async () => {
+    const sub = join(repoRoot, 'packages', 'nested');
+    await mkdir(sub, { recursive: true });
+    const result = (await signedRpc(owner, 'agent.spawn', {
+      command: 'bash',
+      repoPath: repoRoot,
+      cwd: sub,
+    })) as { processId: string };
+    expect(typeof result.processId).toBe('string');
   });
 });
 
@@ -290,7 +372,7 @@ describe('agent.input', () => {
   it('writes data to the mocked pty', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     const result = await signedRpc(owner, 'agent.input', {
@@ -305,7 +387,7 @@ describe('agent.input', () => {
   it('rejects input to a process owned by another agent', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     await expect(
@@ -321,7 +403,7 @@ describe('agent.resize', () => {
   it('calls pty.resize with the given dimensions', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     const result = (await signedRpc(owner, 'agent.resize', {
@@ -339,7 +421,7 @@ describe('agent.resize', () => {
   it('rejects resize for a process owned by another agent', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     await expect(
@@ -356,7 +438,7 @@ describe('agent.stop', () => {
   it('kills the mocked pty and returns status killed', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     const result = (await signedRpc(owner, 'agent.stop', {
@@ -371,7 +453,7 @@ describe('agent.stop', () => {
   it('rejects stop for a process owned by another agent', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     await expect(
@@ -394,7 +476,7 @@ describe('agent.output', () => {
   it('returns buffered chunks and a cursor', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     _lastPty?._fireData('hello world\r\n');
@@ -422,7 +504,7 @@ describe('agent.output', () => {
   it('rejects output poll for a process owned by another agent', async () => {
     const { processId } = (await signedRpc(owner, 'agent.spawn', {
       command: 'bash',
-      cwd: '/tmp',
+      repoPath: repoRoot,
     })) as { processId: string };
 
     await expect(
