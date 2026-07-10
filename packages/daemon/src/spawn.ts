@@ -15,6 +15,14 @@
  *
  * Authorization: agent.spawn additionally requires the signer to hold (own, or
  * have been granted) the project root its command will run in. See the handler.
+ *
+ * This is a least-privilege gate, NOT a sandbox. `command` and `args` are
+ * unconstrained, and buildSafeEnv still passes the operator's HOME and PATH, so
+ * an authorized caller runs arbitrary code as the daemon UID and can read
+ * ~/.age-identity, ~/.ssh, and the revvault store regardless of which cwd it was
+ * granted. The cwd check bounds where a process STARTS, not what it may touch.
+ * The missing control is a command allow-list; until that ships, the trust
+ * anchor deciding who may sign at all is what actually holds this surface.
  */
 
 import { randomUUID } from 'node:crypto';
