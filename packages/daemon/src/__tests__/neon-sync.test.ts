@@ -94,6 +94,9 @@ interface RecordedCall {
   values: unknown[];
 }
 
+/** Client-owned identity used by the signature-required session.end test. */
+const ender = makeSigner('sync-test-4');
+
 let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
