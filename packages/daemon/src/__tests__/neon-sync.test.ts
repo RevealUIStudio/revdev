@@ -107,8 +107,17 @@ beforeAll(async () => {
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-neon-'));
   socketPath = join(dataDir, 'harness.sock');
+  // Provision the signer's fingerprint so it can enroll a client-owned key.
+  const anchor = join(dataDir, 'trusted-client-fingerprint');
+  await writeFile(anchor, `${ender.agentId}:${ender.fingerprint}\n`);
   // Disable periodic prune so it doesn't touch the test DB unexpectedly.
-  const d = await startDaemon({ socketPath, dataDir, pruneIntervalMs: 0 });
+  const d = await startDaemon({
+    socketPath,
+    dataDir,
+    pruneIntervalMs: 0,
+    trustedClientFingerprintPath: anchor,
+    trustedAnchorRequireRootOwned: false,
+  });
   close = d.close;
 });
 
