@@ -9,22 +9,29 @@
  *   - Enforces per-agent ownership: only the spawning agent may send input,
  *     resize, or stop a process it owns
  *
- * P4-IDENTITY TODO: Once the "B6" identity lane ships its signature-gating
- * rewrite, add 'agent.spawn', 'agent.stop', 'agent.input', 'agent.resize',
- * and 'agent.output' to MUTATING_OR_CONTENT_METHODS in server.ts AND to
- * requires_signature() in signing.rs. Until then these methods accept
- * actorAgentId param auth (same posture as mail.send / files.reserve), which
- * is gated only by the 0600 socket boundary. The deferred grant model
- * (spawned-agent DID + project.grant) should be designed as part of that lane.
+ * Authentication: all five methods are in MUTATING_OR_CONTENT_METHODS and in
+ * signing.rs requires_signature(), so the dispatch gate binds ctx.agentId to a
+ * verified Ed25519 signer. The spoofable actorAgentId param auth is gone.
+ *
+ * Authorization: agent.spawn additionally requires the signer to hold (own, or
+ * have been granted) the project root its command will run in. See the handler.
+ *
+ * This is a least-privilege gate, NOT a sandbox. `command` and `args` are
+ * unconstrained, and buildSafeEnv still passes the operator's HOME and PATH, so
+ * an authorized caller runs arbitrary code as the daemon UID and can read
+ * ~/.age-identity, ~/.ssh, and the revvault store regardless of which cwd it was
+ * granted. The cwd check bounds where a process STARTS, not what it may touch.
+ * The missing control is a command allow-list; until that ships, the trust
+ * anchor deciding who may sign at all is what actually holds this surface.
  */
 
 import { randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
 import type { PGlite } from '@electric-sql/pglite';
 import { createLogger } from '@revealui/utils/logger';
 import type { IDisposable, IPty } from 'node-pty';
 import * as nodePty from 'node-pty';
 import { onAgentEnded } from './eviction.js';
+import { requireDirInRoot } from './filegit.js';
 import { registerHandler, type SocketContext } from './server.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
@@ -204,11 +211,16 @@ function safeEnvRecord(v: unknown): Record<string, string> {
  * agent.spawn — fork a PTY child process and return processId + pid.
  *
  * Security:
- *   - cwd is validated to exist via stat() before passing to node-pty.
+ *   - Signature-gated: requireAgent() accepts only a verified Ed25519 signer,
+ *     never a caller-supplied actorAgentId.
+ *   - Authorized: `repoPath` must be a registered root the signer owns or was
+ *     granted, and `cwd` must resolve at or beneath it (requireDirInRoot).
+ *     There is no default cwd; a missing repoPath is a hard error.
  *   - env is built from a minimal baseline (see buildSafeEnv).
  *   - Per-agent concurrency is capped at MAX_PROCESSES_PER_AGENT.
- *   - P4-IDENTITY TODO: signature-gate once B6 ships; add to
- *     MUTATING_OR_CONTENT_METHODS and to signing.rs requires_signature().
+ *
+ * Still open: `command` itself is not constrained to an allow-list, so an
+ * authorized caller may run any binary within a root it holds.
  */
 registerHandler('agent.spawn', async (params, db, ctx) => {
   const ownerAgentId = requireAgent(ctx, params);
@@ -217,19 +229,27 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   if (!command) throw new Error('agent.spawn: missing command');
 
   const args = stringArrayParam(params, 'args');
-  const cwd = stringParam(params, 'cwd') || (process.env.HOME ?? '/tmp');
   const cols = positiveInt(params.cols, 80);
   const rows = positiveInt(params.rows, 24);
   const extraEnv = safeEnvRecord(params.env);
 
-  // Validate cwd exists and is a directory
-  try {
-    const s = await stat(cwd);
-    if (!s.isDirectory()) throw new Error(`agent.spawn: cwd is not a directory: ${cwd}`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`agent.spawn: cwd not accessible: ${msg}`);
+  // Authorization. The signature gate above proves WHO is asking; this proves
+  // they may run a command THERE. `repoPath` must be a root the signer opened
+  // or was granted via project.grant, and `cwd` must resolve to a real
+  // directory at or beneath it.
+  //
+  // Fail closed: `repoPath` is required. The previous default silently fell
+  // back to $HOME, so any verified agent could fork a command as the daemon UID
+  // anywhere in the operator's home directory.
+  const repoPath = stringParam(params, 'repoPath');
+  if (!repoPath) {
+    throw new Error('agent.spawn: missing repoPath (call project.open on the root first)');
   }
+  const cwd = await requireDirInRoot(
+    repoPath,
+    stringParam(params, 'cwd') || undefined,
+    ownerAgentId,
+  );
 
   if (liveCountForAgent(ownerAgentId) >= MAX_PROCESSES_PER_AGENT) {
     throw new Error(

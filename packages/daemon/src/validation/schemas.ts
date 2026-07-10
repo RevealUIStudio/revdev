@@ -500,15 +500,20 @@ export const schemas: Record<string, z.ZodType> = {
     .passthrough(),
 
   // -- Agent process spawning (P4) -------------------------------------------
-  // P4-IDENTITY TODO: once the B6 identity lane ships signature gating, add
-  // all five agent.* methods to MUTATING_OR_CONTENT_METHODS in server.ts and
-  // to requires_signature() in signing.rs. The grant model (spawned-agent DID
-  // + project.grant) is deferred to that lane.
+  // All five agent.* methods are signature-gated (MUTATING_OR_CONTENT_METHODS
+  // in server.ts, requires_signature() in signing.rs), and agent.spawn is
+  // additionally authorized against a project.grant on `repoPath`.
   'agent.spawn': z
     .object({
       command: z.string().min(1).max(MAX_PATH_LENGTH),
       args: z.array(z.string().max(MAX_PATH_LENGTH)).max(128).optional(),
-      cwd: z.string().max(MAX_PATH_LENGTH).optional(),
+      // Required: the registered project root the caller owns or was granted.
+      // Without it the handler cannot authorize where the command runs.
+      // `safePath` for symmetry with every other repoPath-taking method. The
+      // handler's requireDirInRoot is the load-bearing check; this is depth,
+      // and it rejects a `..` cwd before the handler ever resolves it.
+      repoPath: safePath,
+      cwd: safePath.optional(),
       cols: z.number().int().min(1).max(1000).optional(),
       rows: z.number().int().min(1).max(500).optional(),
       // Caller-supplied env overrides (merged onto a minimal safe baseline).
