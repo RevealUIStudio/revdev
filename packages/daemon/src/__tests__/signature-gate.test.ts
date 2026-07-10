@@ -57,6 +57,9 @@ const SIGNED = [
   'agent.input',
   'agent.resize',
   'agent.output',
+  // session.end evicts the target's roots and kills its PTYs, and is self-scoped
+  // to the verified signer. Signature-required so the signer IS the target.
+  'session.end',
 ];
 
 // Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.

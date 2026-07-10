@@ -84,6 +84,10 @@ pub fn requires_signature(method: &str) -> bool {
             | "agent.input"
             | "agent.resize"
             | "agent.output"
+            // session.end evicts the target's project roots and kills its PTYs.
+            // Signature-required so the daemon can self-scope it to the verified
+            // signer instead of a caller-supplied `sessionId`.
+            | "session.end"
     )
 }
 
@@ -516,6 +520,7 @@ mod tests {
         assert!(requires_signature("agent.input"));
         assert!(requires_signature("agent.resize"));
         assert!(requires_signature("agent.output"));
+        assert!(requires_signature("session.end"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
     }

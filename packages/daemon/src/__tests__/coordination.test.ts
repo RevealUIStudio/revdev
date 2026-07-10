@@ -387,11 +387,15 @@ describe('GAP-153: stale-session prune', () => {
       agentName: 'hard-delete-test',
       backend: 'test',
     });
-    await rpc(socketPath, 'session.end', {
-      actorAgentId: 'hard-delete-test',
-      sessionId: 'hard-delete-test',
-      summary: 'test end',
-    });
+    // session.end is signature-required and self-scopes to the signer, so it is
+    // signed as the session's own identity and passes no target.
+    const ender = await seedIdentity('hard-delete-test');
+    await signedRpc(
+      socketPath,
+      'session.end',
+      { summary: 'test end' },
+      { did: ender.did, fingerprint: ender.fingerprint, privateKeyPem: ender.privateKeyPem },
+    );
     await new Promise((r) => setTimeout(r, 1100));
 
     const result = (await rpc(socketPath, 'harness.prune', {

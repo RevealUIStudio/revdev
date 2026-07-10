@@ -209,6 +209,14 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'agent.input',
   'agent.resize',
   'agent.output',
+  // session.end fans out to notifyAgentEnded, which evicts the target's project
+  // roots and kills every PTY it owns. It used to take a caller-supplied target
+  // and sat OUTSIDE this set, so any socket peer could end an arbitrary agent's
+  // session unsigned: the identity gate is satisfied by a bare `actorAgentId`
+  // string, while the handler read `sessionId`. Signature-REQUIRED so the target
+  // is the verified signer and nothing else. Cross-language contract: signing.rs
+  // requires_signature() must mark this too.
+  'session.end',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1020,9 +1028,21 @@ registerHandler('session.list', async (params, db) => {
 });
 
 registerHandler('session.end', async (params, db, ctx) => {
-  // Prefer caller's own session, but allow explicit override (e.g. admin cleanup).
-  const target = strOrNull(params.sessionId) ?? strOrNull(params.agentId) ?? ctx.agentId;
-  if (!target) throw new Error('No session to end');
+  // Self-scoped to the VERIFIED signer. session.end is in
+  // MUTATING_OR_CONTENT_METHODS, so the dispatch gate has already bound
+  // ctx.agentId via boundVia==='signature' before this runs; the check below is
+  // the defense-in-depth backstop, mirroring agent.spawn's requireAgent.
+  //
+  // The old `params.sessionId ?? params.agentId` override ("admin cleanup") had
+  // NO caller: harness.prune reaps aged sessions by calling notifyAgentEnded
+  // directly, and every real caller passes its own id. It existed only as the
+  // attack surface, so it is gone rather than gated behind an unused admin role.
+  if (ctx.boundVia !== 'signature' || !ctx.agentId) {
+    throw new Error(
+      'session.end requires a signed request (verified Ed25519 signature); unsigned or param-bound actor rejected',
+    );
+  }
+  const target = ctx.agentId;
   // Canonical: exitSummary (matches DB column `exit_summary`).
   // Compat alias: summary (for callers using shorter name).
   const exitSummary = strOrNull(params.exitSummary) ?? strOrNull(params.summary);
