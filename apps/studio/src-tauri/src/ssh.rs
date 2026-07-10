@@ -6,7 +6,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD as BASE64, STANDARD_NO_PAD};
 use russh::keys::{PublicKey, PublicKeyBase64};
-use russh::{ChannelId, ChannelMsg, client};
+use russh::{ChannelId, ChannelMsg, ChannelWriteHalf, client};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::Emitter;
@@ -58,9 +58,13 @@ pub struct SshHostKeyEvent {
 }
 
 /// Holds a single SSH session's handle and channel.
+///
+/// Only the channel's write half is stored. The read half is owned exclusively
+/// by that session's output task, so a `wait()` parked on an idle prompt can
+/// never block a concurrent `data()` or `window_change()`.
 pub struct SshSession {
     pub handle: client::Handle<SshClientHandler>,
-    pub channel: Arc<Mutex<Option<russh::Channel<client::Msg>>>>,
+    pub channel: Arc<ChannelWriteHalf<client::Msg>>,
 }
 
 /// Managed Tauri state for SSH sessions.
@@ -336,23 +340,16 @@ pub async fn connect(
         .await
         .map_err(|e| format!("Shell request failed: {e}"))?;
 
-    let channel = Arc::new(Mutex::new(Some(channel)));
+    let (mut read_half, write_half) = channel.split();
+    let channel = Arc::new(write_half);
 
     // Spawn a task to poll channel output and emit events.
     let sid = session_id.clone();
     let ah = app_handle.clone();
     let state_clone = ssh_state.clone();
-    let channel_clone = channel.clone();
     tokio::spawn(async move {
         loop {
-            // Lock briefly to call wait(), then release
-            let msg = {
-                let mut guard = channel_clone.lock().await;
-                match guard.as_mut() {
-                    Some(ch) => ch.wait().await,
-                    None => break,
-                }
-            };
+            let msg = read_half.wait().await;
 
             match msg {
                 Some(ChannelMsg::Data { data }) => {
