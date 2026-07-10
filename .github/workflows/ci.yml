@@ -106,7 +106,7 @@ jobs:
       - run: pnpm test
 
   prove-red:
-    name: Prove-Red (changed tests must fail against base)
+    name: Prove-Red (TypeScript changed tests must fail against base)
     runs-on: ubuntu-latest
     needs: quality
     # PR-only: a merge-base is meaningless on a direct push to test/main.
@@ -130,9 +130,42 @@ jobs:
       # per-file vitest runs fail to resolve imports rather than on assertions.
       - run: pnpm --filter @revdev/protocol build
       - run: pnpm --filter @revdev/daemon build
-      - name: Prove changed tests are red against base
+      # Scoped to TypeScript: this runner installs only Node/pnpm. The Rust and
+      # Go languages the gate also covers run in their own jobs (prove-red-go
+      # here; prove-red-rust in studio-rust-tests.yml) so each installs only its
+      # own toolchain. Default (no PROVE_RED_LANGS) is all three, for local runs.
+      - name: Prove changed TypeScript tests are red against base
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
+          PROVE_RED_LANGS: typescript
+        run: node scripts/ci/prove-red.mjs
+
+  prove-red-go:
+    name: Prove-Red (Go changed tests must fail against base)
+    runs-on: ubuntu-latest
+    needs: quality
+    # PR-only: a merge-base is meaningless on a direct push to test/main.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: apps/console/go.mod
+          cache-dependency-path: apps/console/go.sum
+      # Node runs the gate script itself (Node stdlib only, no pnpm needed here).
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+      # Reverts the changed Go source to base, then runs each changed test's
+      # package (`go test ./pkg/`) and requires >=1 red. Package granularity is
+      # inherent to `go test`; see scripts/ci/prove-red.mjs header.
+      - name: Prove changed Go tests are red against base
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          PROVE_RED_LANGS: go
         run: node scripts/ci/prove-red.mjs
 
   build:
