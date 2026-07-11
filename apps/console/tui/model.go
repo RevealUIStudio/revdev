@@ -109,7 +109,7 @@ func fallbackTiers() []Tier {
 			Features:    []string{"15 sites", "100 users", "Full AI memory", "Audit logging", "50K tasks/mo", "Email support (24h)"},
 		},
 		{
-			ID: "enterprise", Name: "Enterprise", Price: "$1,499", Period: "/mo",
+			ID: "enterprise", Name: "Enterprise", Price: "$1499", Period: "/mo",
 			Description: "Scale, compliance, and agent payments.",
 			Features:    []string{"Unlimited sites", "Unlimited users", "OAuth", "x402 agent payments (soon)", "Unlimited tasks", "Slack support (4h SLA)"},
 		},
