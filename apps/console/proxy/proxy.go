@@ -132,7 +132,7 @@ func (p *Proxy) spawnSession(name string) (string, error) {
 
 // pickSession shows a text-based session selector.
 func (p *Proxy) pickSession(s ssh.Session, sessions []SessionInfo) (string, error) {
-	fmt.Fprintf(s, "\033[1;33mRevealUI Terminal — Agent Sessions\033[0m\r\n\r\n")
+	fmt.Fprintf(s, "\033[1;33mRevealUI Agent Sessions\033[0m\r\n\r\n")
 
 	// Partition PTY sessions: running ones are selectable; non-running ones are
 	// still listed (dimmed, with an explicit status word) instead of being
