@@ -19,6 +19,7 @@ import {
   neverBoundSet,
   resolveBwrapAbsPath,
   resolveConfinementBackend,
+  resolveOperatorHome,
 } from '../confinement.js';
 
 // ---------------------------------------------------------------------------
@@ -372,6 +373,27 @@ describe('assertGrantedRootBindable', () => {
     } finally {
       await rm(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe('resolveOperatorHome (GAP-320a review S1)', () => {
+  it('realpaths a symlinked home so the guard compares canonical paths', async () => {
+    // /real-home is the true dir; /link-home is a symlink to it. Resolving the
+    // symlink yields the same canonical path repoReal would realpath to.
+    const base = await mkdtemp(join(tmpdir(), 'op-home-'));
+    try {
+      const realHome = join(base, 'real-home');
+      const linkHome = join(base, 'link-home');
+      await mkdir(realHome, { recursive: true });
+      await symlink(realHome, linkHome);
+      expect(await resolveOperatorHome(linkHome)).toBe(await realpath(realHome));
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to the lexical value when the path does not resolve', () => {
+    expect(resolveOperatorHome('/no/such/dir/xyzzy')).toBe('/no/such/dir/xyzzy');
   });
 });
 

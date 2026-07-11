@@ -154,6 +154,30 @@ describe.skipIf(!RUN)('confinement integration (real bwrap)', () => {
     expect(out).toContain('REPO-VISIBLE');
   });
 
+  it('refuses a spawn whose granted root overlaps a real fixture secret (GAP-320a §5.D)', () => {
+    // End-to-end against the seeded operator-home layout: a granted root that IS
+    // the operator home, or that lives inside the seeded ~/.ssh, is refused by
+    // name before any sandbox is built — while the sibling happy-path spawn above
+    // still succeeds (DAILY DRIVER). The guard fires in spawnConfined, so this
+    // exercises the real entrypoint with a real secret-bearing home on disk.
+    expect(() =>
+      backend.spawnConfined('/bin/sh', ['-c', 'true'], {
+        repoReal: operatorHome,
+        cwd: operatorHome,
+        agentHome,
+        operatorHome,
+      }),
+    ).toThrow(/is or contains the operator home/);
+    expect(() =>
+      backend.spawnConfined('/bin/sh', ['-c', 'true'], {
+        repoReal: join(operatorHome, '.ssh'),
+        cwd: join(operatorHome, '.ssh'),
+        agentHome,
+        operatorHome,
+      }),
+    ).toThrow(/overlaps the never-bound secret path/);
+  });
+
   it('HOME points at the agent home, not the operator home', () => {
     const { out } = confined('echo "HOME=$HOME"');
     expect(out).toContain(`HOME=${agentHome}`);

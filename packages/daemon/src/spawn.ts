@@ -38,6 +38,7 @@ import {
   filterCallerEnv,
   type ResolvedConfinement,
   resolveConfinementBackend,
+  resolveOperatorHome,
 } from './confinement.js';
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { requireRootAndDir } from './filegit.js';
@@ -282,7 +283,9 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   // Resolve the confinement backend (cached at daemon start; lazy fallback for
   // a handler somehow invoked before the startDaemon hook fired).
   const conf = _confinement ?? resolveConfinementBackend();
-  const operatorHome = process.env.HOME ?? '/root';
+  // Realpath'd so the overlap guard (which compares against a realpath'd
+  // repoReal) and the tmpfs bind agree on the canonical home (GAP-320a review S1).
+  const operatorHome = resolveOperatorHome();
 
   let file: string;
   let argv: string[];

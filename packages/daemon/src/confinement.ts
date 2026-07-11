@@ -304,6 +304,24 @@ export function assertGrantedRootBindable(repoReal: string, operatorHome: string
 }
 
 /**
+ * Resolve the operator's real home, realpath'd. `assertGrantedRootBindable`
+ * compares the home against an already-realpath'd `repoReal`, and the backend
+ * tmpfs-hides this path; realpath'ing here keeps both consistent, so a symlinked
+ * `$HOME` component can't make the guard's home-identity/ancestor checks
+ * lexical-only and diverge from the canonical path (GAP-320a review S1). Falls
+ * back to the lexical value when it does not resolve (e.g. an absent `/root`),
+ * which never WIDENS the guard — the never-bound entries carry their own
+ * realpath-if-exists forms, so a real secret is still caught.
+ */
+export function resolveOperatorHome(rawHome: string = process.env.HOME ?? '/root'): string {
+  try {
+    return realpathSync(rawHome);
+  } catch {
+    return rawHome;
+  }
+}
+
+/**
  * The Linux/WSL2 backend. Builds a deny-by-default bwrap argv:
  *   - /usr read-only, the merged-usr symlinks, minimal /etc, /proc, /dev, /tmp;
  *   - the operator home tmpfs'd (hides everything beneath it), THEN the granted
