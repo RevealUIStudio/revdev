@@ -74,6 +74,7 @@ vi.mock('node-pty', () => ({
 // Imports (after mock declarations)
 // ---------------------------------------------------------------------------
 
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -235,6 +236,9 @@ beforeAll(async () => {
   // signer cannot spawn into a root it neither owns nor was granted.
   repoRoot = await mkdtemp(join(tmpdir(), 'revdev-spawn-root-'));
   otherRoot = await mkdtemp(join(tmpdir(), 'revdev-spawn-otherroot-'));
+  // project.open now rejects a non-repo root (GAP-326 D1); make the fixtures repos.
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: otherRoot });
   await signedRpc(owner, 'project.open', { repoPath: repoRoot });
   await signedRpc(other, 'project.open', { repoPath: otherRoot });
 });

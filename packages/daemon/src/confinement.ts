@@ -284,6 +284,27 @@ export function neverBoundSet(operatorHome: string, dataDir: string): string[] {
 }
 
 /**
+ * Return the first never-bound entry that overlaps `real` in either direction,
+ * or `null` when none does. Pure, zero I/O (the caller passes a precomputed
+ * `neverBound` list) and zero regex — the shared overlap predicate.
+ *
+ *   - `within(real, nb)`: the secret lives INSIDE `real` (a bind/read exposes it).
+ *   - `within(nb, real)`: `real` IS or lives INSIDE a secret path.
+ *
+ * Consumed by BOTH the spawn side (`assertGrantedRootBindable`, which formats a
+ * full-path error because a granted root is operator-known material) and the
+ * file side (`filegit.ts` D1/D2/D3, which formats a CLASS-only error because a
+ * `project.open` caller may be hostile). One never-bound set (`neverBoundSet`),
+ * one predicate, no copied logic (extend-before-create, GAP-326).
+ */
+export function findNeverBoundOverlap(real: string, neverBound: readonly string[]): string | null {
+  for (const nb of neverBound) {
+    if (within(real, nb) || within(nb, real)) return nb;
+  }
+  return null;
+}
+
+/**
  * Refuse to bind a granted root that overlaps the never-bound secret set or the
  * operator home (GAP-320a). The bind sequence tmpfs-hides the operator home and
  * then re-binds `repoReal` read-write on top (§4.3); if `repoReal` IS, CONTAINS,
@@ -312,14 +333,13 @@ export function assertGrantedRootBindable(
       `agent.spawn: refusing to bind granted root "${repoReal}" — it is or contains the operator home "${operatorHome}" (confinement would re-expose the entire home read-write). Grant a project root beneath the home, not the home itself.`,
     );
   }
-  for (const nb of neverBoundSet(operatorHome, dataDir)) {
-    // within(repoReal, nb): the secret lives INSIDE the granted root (bind exposes it).
-    // within(nb, repoReal): the granted root IS or lives INSIDE a secret path.
-    if (within(repoReal, nb) || within(nb, repoReal)) {
-      throw new Error(
-        `agent.spawn: refusing to bind granted root "${repoReal}" — it overlaps the never-bound secret path "${nb}" (confinement would re-expose it read-write). Grant a root that does not contain secret material.`,
-      );
-    }
+  // within(repoReal, nb): the secret lives INSIDE the granted root (bind exposes it).
+  // within(nb, repoReal): the granted root IS or lives INSIDE a secret path.
+  const nb = findNeverBoundOverlap(repoReal, neverBoundSet(operatorHome, dataDir));
+  if (nb !== null) {
+    throw new Error(
+      `agent.spawn: refusing to bind granted root "${repoReal}" — it overlaps the never-bound secret path "${nb}" (confinement would re-expose it read-write). Grant a root that does not contain secret material.`,
+    );
   }
 }
 
