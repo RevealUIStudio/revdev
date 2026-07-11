@@ -6,17 +6,20 @@
  * @vitest-environment node
  */
 
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  assertGrantedRootBindable,
   buildConfinedEnv,
   ensureAgentHome,
   filterCallerEnv,
   linuxBubblewrapBackend,
+  neverBoundSet,
   resolveBwrapAbsPath,
   resolveConfinementBackend,
+  resolveOperatorHome,
 } from '../confinement.js';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +43,16 @@ describe('filterCallerEnv', () => {
 
   it('rejects PATH', () => {
     expect(() => filterCallerEnv({ PATH: '/evil/bin' })).toThrow(/"PATH" is not caller-settable/);
+  });
+
+  it('rejects REVDEV_SPAWN_CONFINEMENT by name despite the REVDEV_ prefix (GAP-320b)', () => {
+    expect(() => filterCallerEnv({ REVDEV_SPAWN_CONFINEMENT: 'none' })).toThrow(
+      /"REVDEV_SPAWN_CONFINEMENT" is not caller-settable/,
+    );
+    // The deny check runs FIRST, so it wins even when a benign REVDEV_ key precedes it.
+    expect(() => filterCallerEnv({ REVDEV_HINT: 'ok', REVDEV_SPAWN_CONFINEMENT: 'none' })).toThrow(
+      /"REVDEV_SPAWN_CONFINEMENT" is not caller-settable/,
+    );
   });
 
   it.each([
@@ -102,6 +115,7 @@ describe('linuxBubblewrapBackend.spawnConfined', () => {
     cwd: '/base/op/repo/packages/x',
     agentHome: '/base/op/.local/share/revealui/agent-homes/deadbeef',
     operatorHome: '/base/op',
+    dataDir: '/base/op/.local/share/revealui',
   };
 
   it('execs bwrap, not the raw command', () => {
@@ -275,5 +289,208 @@ describe('ensureAgentHome', () => {
     const a = await ensureAgentHome(dataDir, 'did:key:zOne');
     const b = await ensureAgentHome(dataDir, 'did:key:zTwo');
     expect(a).not.toBe(b);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assertGrantedRootBindable — the overlap guard (GAP-320a, spec §4.3)
+// ---------------------------------------------------------------------------
+
+describe('assertGrantedRootBindable', () => {
+  const HOME = '/base/op';
+  const DATADIR = '/base/op/.local/share/revealui';
+
+  it('refuses the operator home itself', () => {
+    expect(() => assertGrantedRootBindable(HOME, HOME, DATADIR)).toThrow(
+      /is or contains the operator home/,
+    );
+  });
+
+  it('refuses an ANCESTOR of the operator home', () => {
+    // repoReal = /base contains /base/op — the tmpfs-then-bind would carry the home.
+    expect(() => assertGrantedRootBindable('/base', HOME, DATADIR)).toThrow(
+      /is or contains the operator home/,
+    );
+  });
+
+  it('refuses a granted root that IS a secret path', () => {
+    expect(() => assertGrantedRootBindable(join(HOME, '.ssh'), HOME, DATADIR)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('refuses a granted root INSIDE a secret path', () => {
+    expect(() => assertGrantedRootBindable(join(HOME, '.ssh', 'sub'), HOME, DATADIR)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('refuses a granted root that CONTAINS a secret path (.revealui over passage-store)', () => {
+    // repoReal = <home>/.revealui contains <home>/.revealui/passage-store.
+    expect(() => assertGrantedRootBindable(join(HOME, '.revealui'), HOME, DATADIR)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('refuses the absolute NTFS mounts', () => {
+    // A root INSIDE the first NTFS mount (within direction), and the second mount
+    // itself (equal direction). Fixtures avoid the Windows-user and trailing-slash
+    // mount shapes the private-leak scanner flags — the refusal is identical for
+    // any path on those mounts.
+    expect(() => assertGrantedRootBindable('/mnt/c/project', HOME, DATADIR)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+    expect(() => assertGrantedRootBindable('/mnt/e', HOME, DATADIR)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('refuses a granted root that IS the daemon data dir', () => {
+    expect(() => assertGrantedRootBindable(DATADIR, HOME, DATADIR)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('refuses a granted root that CONTAINS the daemon data dir', () => {
+    // repoReal = <home>/.local/share contains the daemon dir under it.
+    expect(() => assertGrantedRootBindable(join(HOME, '.local', 'share'), HOME, DATADIR)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('refuses the daemon data dir even when it is configured OUTSIDE the home', () => {
+    const outHome = '/var/lib/revealui-daemon';
+    expect(() => assertGrantedRootBindable(outHome, HOME, outHome)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+    // A root beneath it (e.g. the grants DB dir) is refused too.
+    expect(() => assertGrantedRootBindable(`${outHome}/pglite`, HOME, outHome)).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('does NOT refuse the normal case: a project root beneath the home', () => {
+    // The supported shape — ~/revfleet/<repo>. Must NOT throw.
+    expect(() =>
+      assertGrantedRootBindable(join(HOME, 'revfleet', 'revealui'), HOME, DATADIR),
+    ).not.toThrow();
+  });
+
+  it('does NOT refuse a sibling of the home that shares a name prefix (separator-safe)', () => {
+    // /base/op-scratch must not match /base/op via a naive startsWith.
+    expect(() => assertGrantedRootBindable('/base/op-scratch/repo', HOME, DATADIR)).not.toThrow();
+  });
+
+  it('does NOT refuse a repo whose name merely prefixes a secret name (.sshkeep)', () => {
+    // <home>/.sshkeep is not <home>/.ssh — separator-safe within() must not match.
+    expect(() => assertGrantedRootBindable(join(HOME, '.sshkeep'), HOME, DATADIR)).not.toThrow();
+  });
+
+  it('refuses a SYMLINKED secret dir via the realpath-if-exists form', async () => {
+    // Fixture: a real operator-home layout where <home>/.ssh -> <home>/real-ssh.
+    // A grant of the symlink TARGET (which is what requireRootAndDir realpaths to)
+    // must still be refused, even though the lexical secret entry is <home>/.ssh.
+    const home = await mkdtemp(join(tmpdir(), 'nb-symlink-'));
+    try {
+      const target = join(home, 'real-ssh');
+      await mkdir(target, { recursive: true });
+      await symlink(target, join(home, '.ssh'));
+      // realpath the target the same way requireRootAndDir would hand it in.
+      const repoReal = await realpath(target);
+      expect(() => assertGrantedRootBindable(repoReal, home, join(home, 'daemon-data'))).toThrow(
+        /overlaps the never-bound secret path/,
+      );
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveOperatorHome (GAP-320a review S1)', () => {
+  it('realpaths a symlinked home so the guard compares canonical paths', async () => {
+    // /real-home is the true dir; /link-home is a symlink to it. Resolving the
+    // symlink yields the same canonical path repoReal would realpath to.
+    const base = await mkdtemp(join(tmpdir(), 'op-home-'));
+    try {
+      const realHome = join(base, 'real-home');
+      const linkHome = join(base, 'link-home');
+      await mkdir(realHome, { recursive: true });
+      await symlink(realHome, linkHome);
+      expect(await resolveOperatorHome(linkHome)).toBe(await realpath(realHome));
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to the lexical value when the path does not resolve', () => {
+    expect(resolveOperatorHome('/no/such/dir/xyzzy')).toBe('/no/such/dir/xyzzy');
+  });
+});
+
+describe('neverBoundSet', () => {
+  it('materializes the home-relative secrets and absolute mounts', () => {
+    const set = neverBoundSet('/base/op', '/base/op/.local/share/revealui');
+    for (const p of [
+      '/base/op/.ssh',
+      '/base/op/.age-identity',
+      '/base/op/.revealui/passage-store',
+      '/base/op/.config/gh',
+      '/base/op/.npmrc',
+      '/base/op/.aws',
+      '/base/op/.docker/config.json',
+      '/base/op/.claude',
+      '/mnt/c',
+      '/mnt/e',
+    ]) {
+      expect(set).toContain(p);
+    }
+  });
+
+  it('includes /run/user/<uid> when getuid is available', () => {
+    if (typeof process.getuid !== 'function') return;
+    const set = neverBoundSet('/base/op', '/base/op/.local/share/revealui');
+    expect(set).toContain(`/run/user/${process.getuid()}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spawnConfined guard wiring — the backend refuses an overlapping root (GAP-320a)
+// ---------------------------------------------------------------------------
+
+describe('linuxBubblewrapBackend.spawnConfined — overlap guard', () => {
+  const backend = linuxBubblewrapBackend('/usr/bin/bwrap');
+  const base = {
+    cwd: '/base/op/.ssh',
+    agentHome: '/base/op/.local/share/revealui/agent-homes/deadbeef',
+    operatorHome: '/base/op',
+    dataDir: '/base/op/.local/share/revealui',
+  };
+
+  it('refuses to build argv when the granted root overlaps a secret path', () => {
+    expect(() => backend.spawnConfined('bash', [], { ...base, repoReal: '/base/op/.ssh' })).toThrow(
+      /overlaps the never-bound secret path/,
+    );
+  });
+
+  it('refuses to build argv when the granted root overlaps the daemon data dir', () => {
+    expect(() =>
+      backend.spawnConfined('bash', [], {
+        ...base,
+        repoReal: '/base/op/.local/share/revealui',
+        cwd: '/base/op/.local/share/revealui',
+      }),
+    ).toThrow(/overlaps the never-bound secret path/);
+  });
+
+  it('still builds argv for a normal project root beneath the home', () => {
+    const { argv } = backend.spawnConfined('bash', [], {
+      repoReal: '/base/op/revfleet/repo',
+      cwd: '/base/op/revfleet/repo',
+      agentHome: base.agentHome,
+      operatorHome: base.operatorHome,
+      dataDir: base.dataDir,
+    });
+    expect(argv).toContain('--bind');
+    expect(argv.join(' ')).toContain('--bind /base/op/revfleet/repo /base/op/revfleet/repo');
   });
 });

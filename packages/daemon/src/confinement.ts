@@ -23,10 +23,20 @@
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { createLogger } from '@revealui/utils/logger';
 
 const log = createLogger({ service: 'revdev-daemon/confinement' });
+
+/**
+ * True when `target` is `root` itself or a descendant of it. Separator-safe
+ * (never a bare `startsWith`, which would treat `/a/bc` as within `/a/b`).
+ * Local to this module — same shape as filegit.ts `within()`, kept here so the
+ * confinement layer carries no dependency on the file layer. Zero regex.
+ */
+function within(root: string, target: string): boolean {
+  return target === root || target.startsWith(root + sep);
+}
 
 // ---------------------------------------------------------------------------
 // Backend interface
@@ -41,6 +51,15 @@ export interface ConfinementOpts {
   agentHome: string;
   /** The operator's real home; tmpfs'd to hide everything beneath it. */
   operatorHome: string;
+  /**
+   * The daemon data directory (`getDaemonConfig().dataDir`, default
+   * `~/.local/share/revealui`). Never-bound: it holds the PGlite integrity DB
+   * (grants, identities, roots), the control socket, and the per-agent homes —
+   * a confined agent that could read/write it could rewrite its own
+   * authorization state. A specific per-agent home subdir IS bound (that is the
+   * agent's own home); the guard only refuses a GRANTED ROOT overlapping dataDir.
+   */
+  dataDir: string;
 }
 
 export interface ConfinementResult {
@@ -52,6 +71,12 @@ export interface ConfinementResult {
 
 export interface ConfinementBackend {
   readonly name: string;
+  /**
+   * Resolve the argv for this backend. Every backend MUST validate the granted
+   * root against the never-bound secret set (via `assertGrantedRootBindable`)
+   * before building its argv — a backend that skips it re-exposes secrets a
+   * broad grant overlaps (GAP-320a). Throws the guard's named error on overlap.
+   */
   spawnConfined(command: string, args: string[], opts: ConfinementOpts): ConfinementResult;
 }
 
@@ -106,6 +131,19 @@ export function resolveBwrapAbsPath(candidate: string = BWRAP_CANDIDATE): string
 const CALLER_ENV_EXACT = new Set(['TERM', 'LANG', 'CI', 'NO_COLOR']);
 /** Namespaced prefixes a caller may set. */
 const CALLER_ENV_PREFIXES = ['LC_', 'REVDEV_'] as const;
+/**
+ * Daemon-control keys a caller may NEVER set, even under an allowed prefix
+ * (GAP-320b). Membership criterion: an env var the daemon itself reads to
+ * configure or WEAKEN a security boundary. `REVDEV_SPAWN_CONFINEMENT` is the
+ * only member — it is inert in a child today (resolveConfinementBackend reads
+ * only the daemon's own `process.env`, never caller env), but a caller-seedable
+ * escape-hatch key sitting in a sandboxed process's environment invites a future
+ * misread that it is load-bearing. Prune knobs (`REVDEV_STALE_THRESHOLD_DAYS`,
+ * `REVDEV_HARD_DELETE_DAYS`) do NOT qualify: they configure nothing in a child
+ * and mislead nobody about a boundary. Keep this set tiny — the allow-list is
+ * the load-bearing control; a deny-list always loses eventually.
+ */
+const CALLER_ENV_DENY_EXACT = new Set(['REVDEV_SPAWN_CONFINEMENT']);
 
 /**
  * Filter caller-supplied env to the allow-list. A deny-list of dangerous keys
@@ -120,6 +158,13 @@ const CALLER_ENV_PREFIXES = ['LC_', 'REVDEV_'] as const;
 export function filterCallerEnv(extraEnv: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(extraEnv)) {
+    // Daemon-control keys are rejected FIRST, before the prefix allowance that
+    // would otherwise wave `REVDEV_SPAWN_CONFINEMENT` through (GAP-320b).
+    if (CALLER_ENV_DENY_EXACT.has(k)) {
+      throw new Error(
+        `agent.spawn: env key "${k}" is not caller-settable — it is a daemon-control key that configures the confinement boundary (the REVDEV_ prefix is otherwise allowed).`,
+      );
+    }
     if (CALLER_ENV_EXACT.has(k)) {
       out[k] = v;
       continue;
@@ -180,6 +225,122 @@ const ETC_RO_BINDS = [
   '/etc/alternatives',
 ] as const;
 
+// ---------------------------------------------------------------------------
+// Never-bound secret set + granted-root overlap guard (spec §4.3, GAP-320a)
+// ---------------------------------------------------------------------------
+
+/** Home-relative secret paths (spec §4.3), joined onto the operator home. */
+const NEVER_BOUND_HOME_RELATIVE = [
+  '.ssh',
+  '.age-identity',
+  '.revealui/passage-store',
+  '.config/gh',
+  '.npmrc',
+  '.aws',
+  '.docker/config.json',
+  '.claude',
+] as const;
+
+/** Absolute mounts that must never be bound (spec §4.3). No development happens
+ *  on the NTFS mounts; /mnt/c carries the Windows credential stores, /mnt/e the
+ *  LTS backups. */
+const NEVER_BOUND_ABSOLUTE = ['/mnt/c', '/mnt/e'] as const;
+
+/**
+ * Materialize spec §4.3's never-bound secret set for this host, from the
+ * operator home and the daemon data directory. Each entry is carried in two
+ * forms: its lexical path, and its realpath WHEN the entry exists
+ * (realpath-if-exists). Rationale: `repoReal` arrives already realpath'd
+ * (requireRootAndDir), so a lexical-only compare misses a secret directory that
+ * is itself a symlink (`~/.ssh -> /data/ssh`). Entries absent on this host stay
+ * lexical-only. Computed per spawn (a handful of joins plus at most a few
+ * stats), so a secret path or symlink that appears after daemon start is guarded
+ * without a restart. Zero authored regex.
+ *
+ * `dataDir` is included because it holds the daemon's integrity DB, control
+ * socket, and per-agent homes (the authorization state itself); it is often but
+ * not always under the operator home, so it gets its own entry regardless of
+ * where it is configured.
+ */
+export function neverBoundSet(operatorHome: string, dataDir: string): string[] {
+  const lexical: string[] = [
+    ...NEVER_BOUND_HOME_RELATIVE.map((p) => join(operatorHome, p)),
+    ...NEVER_BOUND_ABSOLUTE,
+    dataDir,
+  ];
+  // /run/user/<uid> carries the ssh-agent socket (spec §4.3).
+  if (typeof process.getuid === 'function') {
+    lexical.push(`/run/user/${process.getuid()}`);
+  }
+  const out = new Set<string>(lexical);
+  for (const p of lexical) {
+    try {
+      out.add(realpathSync(p));
+    } catch {
+      // absent on this host — the lexical form stays, realpath is skipped
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Refuse to bind a granted root that overlaps the never-bound secret set or the
+ * operator home (GAP-320a). The bind sequence tmpfs-hides the operator home and
+ * then re-binds `repoReal` read-write on top (§4.3); if `repoReal` IS, CONTAINS,
+ * or lives INSIDE a secret path, that rw bind re-exposes the secret inside the
+ * sandbox. We REFUSE (fail closed) rather than mask: a mask that misses a path
+ * exposes it silently, whereas an over-broad refusal fails loud and is fixed the
+ * same day. Confinement does not replace authorization (spec §4.2 invariant 3) —
+ * this only refuses grants the confinement layer cannot actually confine.
+ *
+ * `repoReal` BENEATH the operator home (`within(operatorHome, repoReal)`) is the
+ * normal, supported case (`~/revfleet/<repo>`) and is NOT refused. Every backend
+ * MUST call this before building its argv (see the ConfinementBackend contract).
+ *
+ * @throws naming the granted root, the colliding path, and the reason. Both are
+ *   operator-known material (their own home layout), so naming them is not an oracle.
+ */
+export function assertGrantedRootBindable(
+  repoReal: string,
+  operatorHome: string,
+  dataDir: string,
+): void {
+  // repoReal IS the home, or is an ANCESTOR of it (e.g. `/base` over `/base/op`):
+  // the tmpfs-then-bind sequence would re-expose the entire home read-write.
+  if (repoReal === operatorHome || within(repoReal, operatorHome)) {
+    throw new Error(
+      `agent.spawn: refusing to bind granted root "${repoReal}" — it is or contains the operator home "${operatorHome}" (confinement would re-expose the entire home read-write). Grant a project root beneath the home, not the home itself.`,
+    );
+  }
+  for (const nb of neverBoundSet(operatorHome, dataDir)) {
+    // within(repoReal, nb): the secret lives INSIDE the granted root (bind exposes it).
+    // within(nb, repoReal): the granted root IS or lives INSIDE a secret path.
+    if (within(repoReal, nb) || within(nb, repoReal)) {
+      throw new Error(
+        `agent.spawn: refusing to bind granted root "${repoReal}" — it overlaps the never-bound secret path "${nb}" (confinement would re-expose it read-write). Grant a root that does not contain secret material.`,
+      );
+    }
+  }
+}
+
+/**
+ * Resolve the operator's real home, realpath'd. `assertGrantedRootBindable`
+ * compares the home against an already-realpath'd `repoReal`, and the backend
+ * tmpfs-hides this path; realpath'ing here keeps both consistent, so a symlinked
+ * `$HOME` component can't make the guard's home-identity/ancestor checks
+ * lexical-only and diverge from the canonical path (GAP-320a review S1). Falls
+ * back to the lexical value when it does not resolve (e.g. an absent `/root`),
+ * which never WIDENS the guard — the never-bound entries carry their own
+ * realpath-if-exists forms, so a real secret is still caught.
+ */
+export function resolveOperatorHome(rawHome: string = process.env.HOME ?? '/root'): string {
+  try {
+    return realpathSync(rawHome);
+  } catch {
+    return rawHome;
+  }
+}
+
 /**
  * The Linux/WSL2 backend. Builds a deny-by-default bwrap argv:
  *   - /usr read-only, the merged-usr symlinks, minimal /etc, /proc, /dev, /tmp;
@@ -199,7 +360,13 @@ export function linuxBubblewrapBackend(bwrapAbs: string): ConfinementBackend {
   return {
     name: 'linux-bubblewrap',
     spawnConfined(command, args, opts): ConfinementResult {
-      const { repoReal, cwd, agentHome, operatorHome } = opts;
+      const { repoReal, cwd, agentHome, operatorHome, dataDir } = opts;
+
+      // Refuse a granted root that overlaps a secret path, the operator home, or
+      // the daemon data dir BEFORE any argv is assembled — the invariant lives
+      // next to the bind sequence that creates the hazard (GAP-320a, spec §4.3).
+      assertGrantedRootBindable(repoReal, operatorHome, dataDir);
+
       const a: string[] = [];
 
       // System, read-only + merged-usr symlinks.
