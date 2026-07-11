@@ -97,7 +97,7 @@ func TestFallbackTiers_Prices(t *testing.T) {
 		"free":       {"$0", ""},
 		"pro":        {"$49", "/mo"},
 		"max":        {"$299", "/mo"},
-		"enterprise": {"$1,499", "/mo"},
+		"enterprise": {"$1499", "/mo"},
 	}
 	for _, tier := range tiers {
 		want, ok := expected[tier.ID]
@@ -133,6 +133,37 @@ func TestFallbackTiers_Features(t *testing.T) {
 		}
 		if !slices.Equal(tier.Features, want) {
 			t.Errorf("tier %q Features = %v, want %v", tier.ID, tier.Features, want)
+		}
+	}
+}
+
+// TestFallbackTiers_CanonicalCatalogValues pins fallbackTiers() against the
+// canonical RevealUI Stripe catalog (revealui/scripts/setup/stripe-catalog.ts
+// CATALOG). These id/name/price triples MUST be updated in lockstep with the
+// catalog on any reprice or rename, or the console's offline fallback will
+// silently show stale numbers to a paying customer. See stripe-catalog.ts
+// header for the other surfaces (pricing.ts, pricing-fallbacks.ts) that must
+// move together.
+func TestFallbackTiers_CanonicalCatalogValues(t *testing.T) {
+	type want struct {
+		id, name, price string
+	}
+	expected := []want{
+		{id: "free", name: "Free (OSS)", price: "$0"},
+		{id: "pro", name: "Pro", price: "$49"},
+		{id: "max", name: "Max", price: "$299"},
+		{id: "enterprise", name: "Enterprise", price: "$1499"},
+	}
+
+	tiers := fallbackTiers()
+	if len(tiers) != len(expected) {
+		t.Fatalf("fallbackTiers() returned %d tiers, want %d", len(tiers), len(expected))
+	}
+	for i, w := range expected {
+		got := tiers[i]
+		if got.ID != w.id || got.Name != w.name || got.Price != w.price {
+			t.Errorf("tiers[%d] = {ID: %q, Name: %q, Price: %q}, want {ID: %q, Name: %q, Price: %q}",
+				i, got.ID, got.Name, got.Price, w.id, w.name, w.price)
 		}
 	}
 }
