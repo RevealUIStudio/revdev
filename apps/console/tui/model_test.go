@@ -79,10 +79,35 @@ func TestFallbackTiers_PaidTiersHavePeriod(t *testing.T) {
 
 func TestFallbackTiers_Names(t *testing.T) {
 	tiers := fallbackTiers()
-	expected := []string{"Free (OSS)", "Pro", "Max", "Forge"}
+	expected := []string{"Free (OSS)", "Pro", "Max", "Enterprise"}
 	for i, want := range expected {
 		if tiers[i].Name != want {
 			t.Errorf("tiers[%d].Name = %q, want %q", i, tiers[i].Name, want)
+		}
+	}
+}
+
+// TestFallbackTiers_Prices pins the offline fallback ladder to the canonical
+// prices in @revealui/contracts pricing.ts (realignment ADR 2026-06-07), so a
+// future edit can't silently reintroduce a superseded price.
+func TestFallbackTiers_Prices(t *testing.T) {
+	tiers := fallbackTiers()
+	expected := map[string]struct{ price, period string }{
+		"free":       {"$0", ""},
+		"pro":        {"$49", "/mo"},
+		"max":        {"$299", "/mo"},
+		"enterprise": {"$1,499", "/mo"},
+	}
+	for _, tier := range tiers {
+		want, ok := expected[tier.ID]
+		if !ok {
+			t.Fatalf("unexpected tier ID %q", tier.ID)
+		}
+		if tier.Price != want.price {
+			t.Errorf("tier %q Price = %q, want %q", tier.ID, tier.Price, want.price)
+		}
+		if tier.Period != want.period {
+			t.Errorf("tier %q Period = %q, want %q", tier.ID, tier.Period, want.period)
 		}
 	}
 }

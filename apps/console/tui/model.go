@@ -104,13 +104,13 @@ func fallbackTiers() []Tier {
 			Highlighted: true,
 		},
 		{
-			ID: "max", Name: "Max", Price: "$149", Period: "/mo",
-			Description: "AI memory, multi-provider, compliance tooling.",
+			ID: "max", Name: "Max", Price: "$299", Period: "/mo",
+			Description: "AI memory, advanced inference, and compliance tooling.",
 			Features:    []string{"15 sites", "100 users", "AI memory", "BYOK server-side", "50K tasks/mo"},
 		},
 		{
-			ID: "enterprise", Name: "Forge", Price: "$299", Period: "/mo",
-			Description: "Advanced scale and compliance requirements.",
+			ID: "enterprise", Name: "Enterprise", Price: "$1,499", Period: "/mo",
+			Description: "Scale, compliance, and agent payments.",
 			Features:    []string{"Unlimited sites", "Unlimited users", "SSO/SAML", "White-label", "Unlimited tasks"},
 		},
 	}
