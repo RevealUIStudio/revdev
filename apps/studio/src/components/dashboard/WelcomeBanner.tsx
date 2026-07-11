@@ -35,9 +35,9 @@ export default function WelcomeBanner() {
         Run your agents on your own infrastructure
       </h2>
       <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-        Studio is where you start and watch the AI agents working for you. Each one runs as a user
-        you govern, and what it does is recorded so you can check it. This is an early preview, so
-        expect a few rough edges.
+        Studio is where you start your agents and watch them work. Each one runs as a user you
+        govern, and every action it takes is recorded so you can check it. This is an early preview,
+        so expect a few rough edges.
       </p>
     </div>
   );
