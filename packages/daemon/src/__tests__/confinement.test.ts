@@ -301,7 +301,9 @@ describe('assertGrantedRootBindable', () => {
   const DATADIR = '/base/op/.local/share/revealui';
 
   it('refuses the operator home itself', () => {
-    expect(() => assertGrantedRootBindable(HOME, HOME, DATADIR)).toThrow(/is or contains the operator home/);
+    expect(() => assertGrantedRootBindable(HOME, HOME, DATADIR)).toThrow(
+      /is or contains the operator home/,
+    );
   });
 
   it('refuses an ANCESTOR of the operator home', () => {
@@ -369,7 +371,9 @@ describe('assertGrantedRootBindable', () => {
 
   it('does NOT refuse the normal case: a project root beneath the home', () => {
     // The supported shape — ~/revfleet/<repo>. Must NOT throw.
-    expect(() => assertGrantedRootBindable(join(HOME, 'revfleet', 'revealui'), HOME, DATADIR)).not.toThrow();
+    expect(() =>
+      assertGrantedRootBindable(join(HOME, 'revfleet', 'revealui'), HOME, DATADIR),
+    ).not.toThrow();
   });
 
   it('does NOT refuse a sibling of the home that shares a name prefix (separator-safe)', () => {
