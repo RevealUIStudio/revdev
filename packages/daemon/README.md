@@ -77,7 +77,7 @@ Environment variables (all optional):
 
 | Var | Default | Purpose |
 |---|---|---|
-| `REVEALUI_LICENSE_KEY` | (none → FREE tier) | v2 Ed25519-signed license. Pro+ unlocks coordination RPCs |
+| `REVEALUI_LICENSE_KEY` | (none → FREE tier) | Ed25519-signed license. Pro+ unlocks coordination RPCs |
 | `REVDEV_LICENSE_PUBLIC_KEY` | (none) | Public key matching the license signature |
 | `REVDEV_DAEMON_SOCKET` | `~/.local/share/revealui/harness.sock` | Unix socket bind path |
 | `REVDEV_DAEMON_DATA` | `~/.local/share/revealui` | PGlite data directory |
