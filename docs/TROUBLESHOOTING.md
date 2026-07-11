@@ -91,15 +91,14 @@ You're on the Free tier. Set `REVEALUI_LICENSE_KEY` and restart the daemon. See 
 
 ### "running in FREE (degraded) mode"
 
-No valid license key detected. Set `REVEALUI_LICENSE_KEY` (and `REVDEV_LICENSE_PUBLIC_KEY`) in your environment:
+No valid license key detected. Set `REVEALUI_LICENSE_KEY` in your environment:
 
 ```bash
 export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9..."
-export REVDEV_LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEA...
------END PUBLIC KEY-----"
 systemctl --user restart revdev-daemon
 ```
+
+The daemon ships with the vendor public key baked in, so this is normally all you need. `REVDEV_LICENSE_PUBLIC_KEY` is only for key rotation or testing your own keypair; see "License key doesn't activate" below if the key is valid but still shows Free.
 
 <!-- doclint:allow-legacy-format:start — this section documents the REJECTED formats on purpose -->
 ### Old-format key (`RVUI-*` or `RVUI.v2.*`) rejected
