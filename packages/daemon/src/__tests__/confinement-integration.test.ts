@@ -105,6 +105,7 @@ describe.skipIf(!RUN)('confinement integration (real bwrap)', () => {
       cwd: repoReal,
       agentHome,
       operatorHome,
+      dataDir: join(operatorHome, 'daemon-data'),
     });
     const r = spawnSync(file, argv, { encoding: 'utf8', timeout: 15_000 });
     return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
@@ -160,12 +161,14 @@ describe.skipIf(!RUN)('confinement integration (real bwrap)', () => {
     // name before any sandbox is built — while the sibling happy-path spawn above
     // still succeeds (DAILY DRIVER). The guard fires in spawnConfined, so this
     // exercises the real entrypoint with a real secret-bearing home on disk.
+    const dataDir = join(operatorHome, 'daemon-data');
     expect(() =>
       backend.spawnConfined('/bin/sh', ['-c', 'true'], {
         repoReal: operatorHome,
         cwd: operatorHome,
         agentHome,
         operatorHome,
+        dataDir,
       }),
     ).toThrow(/is or contains the operator home/);
     expect(() =>
@@ -174,6 +177,7 @@ describe.skipIf(!RUN)('confinement integration (real bwrap)', () => {
         cwd: join(operatorHome, '.ssh'),
         agentHome,
         operatorHome,
+        dataDir,
       }),
     ).toThrow(/overlaps the never-bound secret path/);
   });

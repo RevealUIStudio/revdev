@@ -277,7 +277,8 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   }
 
   // Per-agent persistent home (spec §5); HOME points here inside the sandbox.
-  const agentHome = await ensureAgentHome(getDaemonConfig().dataDir, ownerAgentId);
+  const dataDir = getDaemonConfig().dataDir;
+  const agentHome = await ensureAgentHome(dataDir, ownerAgentId);
   const env = buildConfinedEnv(callerEnv, agentHome);
 
   // Resolve the confinement backend (cached at daemon start; lazy fallback for
@@ -297,6 +298,7 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
       cwd,
       agentHome,
       operatorHome,
+      dataDir,
     }));
     confinement = conf.mode;
   } else if (conf.escapeHatch) {
