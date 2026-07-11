@@ -501,11 +501,11 @@ func (m Model) viewLoading() string {
 // -- Tier selection ----------------------------------------------------------
 
 func (m Model) viewTiers() string {
-	s := titleStyle.Render("RevealUI — Choose Your Plan") + "\n"
+	s := titleStyle.Render("Choose your RevealUI plan") + "\n"
 
 	// Warn when the displayed prices are stale fallback data, not live pricing.
 	if m.pricingOffline {
-		s += errorStyle.Render("  ⚠ Offline pricing — may be out of date") + "\n"
+		s += errorStyle.Render("  ⚠ Offline pricing may be out of date") + "\n"
 	}
 
 	// Show current user info if known
@@ -531,7 +531,7 @@ func (m Model) viewTiers() string {
 			price = "—"
 		}
 
-		line := fmt.Sprintf("%s%s %s%s — %s",
+		line := fmt.Sprintf("%s%s %s%s • %s",
 			cursor, tier.Name, price, tier.Period, tier.Description)
 
 		// Mark current tier
@@ -571,7 +571,7 @@ func (m Model) viewCheckout() string {
 		return "No tier selected"
 	}
 
-	s := titleStyle.Render(fmt.Sprintf("Upgrade to %s — %s%s",
+	s := titleStyle.Render(fmt.Sprintf("Upgrade to %s for %s%s",
 		m.selected.Name, m.selected.Price, m.selected.Period)) + "\n\n"
 
 	for _, f := range m.selected.Features {
