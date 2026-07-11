@@ -40,9 +40,9 @@ RevDev **consumes** RevealUI packages — it does not contain them:
 The harness daemon is the brain; Studio is its UI. Console is a separate SSH surface talking to the RevealUI API, not the daemon.
 
 ## Git Identity
-RevealUI Studio <43050008+joshua-v-dev@users.noreply.github.com>
+Commit as the fleet's verified GitHub noreply identity, configured once in the global `~/.gitconfig` (never override it per-repo; the literal address lives there, not in docs, and this repo's leak scanner enforces that).
 
-> Amended 2026-07-10. The prior founder@revealui.com address is retired: commits carrying it render Unverified under required signatures. Do not restore it.
+> Amended 2026-07-10. The prior founder@revealui.com address is retired: commits carrying it render Unverified under required signatures. Do not restore it, and do not re-add local user.email overrides.
 
 ## Stack
 - **Studio**: Rust (Tauri 2 backend) + TypeScript/React 19 (frontend)
