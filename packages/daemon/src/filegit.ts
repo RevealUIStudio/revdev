@@ -29,9 +29,13 @@ import { open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PGlite } from '@electric-sql/pglite';
+import { createLogger } from '@revealui/utils/logger';
+import { findNeverBoundOverlap, neverBoundSet, resolveOperatorHome } from './confinement.js';
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { getDaemonConfig, registerHandler } from './server.js';
 import { runGit, type ShellResult } from './vcs.js';
+
+const log = createLogger({ service: 'revdev-daemon/filegit' });
 
 // ---------------------------------------------------------------------------
 // Registered project roots
@@ -140,9 +144,41 @@ export async function restoreProjectRoots(db: PGlite): Promise<void> {
      FROM project_roots pr
      INNER JOIN agent_sessions s ON s.id = pr.agent_id AND s.ended_at IS NULL`,
   );
+  // D3 (GAP-326): re-validation below uses neverBoundContext(), which lazily
+  // computes from this started daemon's config (getDaemonConfig() is set before
+  // this hook fires) — so a restart under a new dataDir is reflected without an
+  // explicit reset. Tests pin the context via _setNeverBoundForTest first.
   for (const row of rows.rows) {
     const dev = BigInt(row.dev);
     const ino = BigInt(row.ino);
+    // D3 (GAP-326): re-validate every persisted root against D1's checks. A row
+    // written before this gate existed — or before the never-bound set grew —
+    // may now be a non-repo or overlap a secret path; such a row is EVICTED
+    // (deleted + logged), never restored into the serving map, so set growth
+    // becomes retroactively protective. The path is the operator's own material
+    // and this is the operator's own daemon log, so naming it is not an oracle.
+    let evictReason: string | null = null;
+    const isRepo = await stat(join(row.real_path, '.git')).then(
+      () => true,
+      () => false,
+    );
+    if (!isRepo) {
+      evictReason = 'not a git repository';
+    } else {
+      try {
+        assertRootAvoidsNeverBound(row.real_path);
+      } catch (e) {
+        evictReason = e instanceof Error ? e.message : String(e);
+      }
+    }
+    if (evictReason !== null) {
+      log.warn('evicting persisted project root that fails never-bound re-validation', {
+        root: row.real_path,
+        reason: evictReason,
+      });
+      await db.query(`DELETE FROM project_roots WHERE dev = $1 AND ino = $2`, [row.dev, row.ino]);
+      continue;
+    }
     registeredRoots.set(inodeKey(dev, ino), {
       real: row.real_path,
       agentId: row.agent_id,
@@ -200,6 +236,117 @@ function expandTilde(p: string): string {
 /** True when `target` is `root` itself or a descendant of it. */
 function within(root: string, target: string): boolean {
   return target === root || target.startsWith(root + sep);
+}
+
+// ---------------------------------------------------------------------------
+// Never-bound secret set at the file layer (GAP-326)
+//
+// The confinement layer (agent.spawn) refuses to BIND a granted root that
+// overlaps the operator's secret set. The SAME set must gate the file.*/git.*
+// surface, or a client-owned verified signer can project.open a secret-bearing
+// tree — the operator home, ~/.ssh, the passage store — and read it straight
+// through file.read with no spawn involved (so confinement never runs). One
+// never-bound set (confinement.ts's `neverBoundSet`), imported here and shared
+// via `findNeverBoundOverlap` — never a second literal list.
+// ---------------------------------------------------------------------------
+
+/**
+ * Memoized (operatorHome, never-bound list) for this daemon. Computed lazily on
+ * first use — in a running daemon that is during restoreProjectRoots or the
+ * first file op, both after getDaemonConfig() is set, so it reflects the active
+ * dataDir/home without an explicit reset. Precomputed once thereafter so the D2
+ * resolution belt adds no per-call I/O. Tests override it via _setNeverBoundForTest.
+ */
+let neverBoundCache: { operatorHome: string; list: string[] } | null = null;
+
+function neverBoundContext(): { operatorHome: string; list: string[] } {
+  if (neverBoundCache === null) {
+    const operatorHome = resolveOperatorHome();
+    neverBoundCache = {
+      operatorHome,
+      list: neverBoundSet(operatorHome, getDaemonConfig().dataDir),
+    };
+  }
+  return neverBoundCache;
+}
+
+/**
+ * @internal — test seam: pin the never-bound context to a scratch home/dataDir
+ * so a test can register an overlapping "secret" tree without touching the real
+ * operator home.
+ */
+export function _setNeverBoundForTest(operatorHome: string, dataDir: string): void {
+  const home = resolveOperatorHome(operatorHome);
+  neverBoundCache = { operatorHome: home, list: neverBoundSet(home, dataDir) };
+}
+
+/** @internal — test seam: drop the pinned/memoized never-bound context. */
+export function _resetNeverBoundForTest(): void {
+  neverBoundCache = null;
+}
+
+/**
+ * Coarse CLASS of a never-bound entry, for an error handed back to a possibly
+ * hostile project.open/file.* caller. We name the CLASS ("ssh keys"), never the
+ * full path — echoing the operator's home layout back would be an oracle. The
+ * secret CATEGORIES are public knowledge; a specific home path is not. Zero
+ * regex (substring membership only).
+ */
+function neverBoundClass(entry: string): string {
+  if (entry.includes('/.ssh')) return 'ssh keys';
+  if (entry.includes('.age-identity')) return 'the age identity';
+  if (entry.includes('passage-store')) return 'the credential store';
+  if (entry.includes('/.config/gh')) return 'github credentials';
+  if (entry.includes('.npmrc')) return 'npm credentials';
+  if (entry.includes('/.aws')) return 'aws credentials';
+  if (entry.includes('.docker')) return 'docker credentials';
+  if (entry.includes('/.claude')) return 'agent credentials';
+  if (entry.includes('/mnt/c') || entry.includes('/mnt/e')) return 'a mounted credential volume';
+  if (entry.includes('/run/user')) return 'the runtime socket directory';
+  return 'daemon secret state';
+}
+
+/**
+ * D1/D3 root gate (GAP-326): refuse a project root that IS or CONTAINS the
+ * operator home, or that overlaps the never-bound secret set in either
+ * direction. Same semantics as confinement's `assertGrantedRootBindable`,
+ * sharing `findNeverBoundOverlap` + `neverBoundSet`; class-only errors (a root
+ * beneath the home, the normal `~/revfleet/<repo>` shape, is NOT refused).
+ */
+function assertRootAvoidsNeverBound(real: string): void {
+  const { operatorHome, list } = neverBoundContext();
+  if (real === operatorHome || within(real, operatorHome)) {
+    throw new Error(
+      'project root is or contains the operator home (it would expose the entire home through file.*)',
+    );
+  }
+  const nb = findNeverBoundOverlap(real, list);
+  if (nb !== null) {
+    throw new Error(`project root overlaps a never-bound secret path (${neverBoundClass(nb)})`);
+  }
+}
+
+/**
+ * D2 resolution belt (GAP-326): refuse a resolved target that lands on the
+ * never-bound set. Defense-in-depth behind D1 — the invariant holds even for a
+ * root that came to be registered before this gate existed (a pre-fix persisted
+ * row D3 eviction has not reached, or a never-bound entry that grew). One
+ * precomputed prefix scan, no added I/O (the caller already realpath'd).
+ */
+function assertTargetAvoidsNeverBound(target: string): void {
+  const nb = findNeverBoundOverlap(target, neverBoundContext().list);
+  if (nb !== null) {
+    throw new Error(`path resolves onto a never-bound secret path (${neverBoundClass(nb)})`);
+  }
+}
+
+/**
+ * @internal — test seam: exercise the D1/D3 never-bound root gate on an
+ * already-realpath'd root (the same check project.open and restoreProjectRoots
+ * run). Throws the class-only refusal; returns void on a clean root.
+ */
+export function _assertRootAvoidsNeverBoundForTest(real: string): void {
+  assertRootAvoidsNeverBound(real);
 }
 
 /**
@@ -265,6 +412,7 @@ async function resolveInRoot(
       throw new Error(`file not found: ${filePathRaw}`);
     }
     if (!within(repoReal, real)) throw new Error(`path escapes project root: ${filePathRaw}`);
+    assertTargetAvoidsNeverBound(real);
     return real;
   }
 
@@ -276,7 +424,9 @@ async function resolveInRoot(
     throw new Error(`parent directory does not exist: ${filePathRaw}`);
   }
   if (!within(repoReal, parentReal)) throw new Error(`path escapes project root: ${filePathRaw}`);
-  return join(parentReal, basename(abs));
+  const target = join(parentReal, basename(abs));
+  assertTargetAvoidsNeverBound(target);
+  return target;
 }
 
 /**
@@ -506,12 +656,26 @@ registerHandler('project.open', async (params, db, ctx) => {
   } catch {
     throw new Error(`project root does not exist: ${repoPathRaw}`);
   }
-  // Confirm it is actually a git repository — registering a non-repo root
-  // would let file.* operate on an arbitrary directory tree.
+  // D1 (GAP-326): confirm it is actually a git repository. Registering a non-repo
+  // root would let file.* operate on an arbitrary directory tree — the comment
+  // here has claimed this policy since the surface shipped; the code now enforces
+  // it. A non-repo root also skips assertNoExecConfig below, so rejecting it
+  // closes both gaps at once. A future non-repo need arrives as a new,
+  // separately-reviewed method — never by silently widening project.open.
   const isRepo = await stat(join(real, '.git')).then(
     () => true,
     () => false,
   );
+  if (!isRepo) {
+    throw new Error(`project root is not a git repository: ${repoPathRaw}`);
+  }
+  // D1 (GAP-326): refuse a root that overlaps the never-bound secret set (in
+  // either direction) or the operator home, BEFORE any registration side effect.
+  // Without this a client-owned verified signer could project.open("~") or
+  // project.open("~/.ssh") and read secrets straight through file.read — no spawn,
+  // so the confinement layer never runs. Same never-bound set the spawn side
+  // enforces (confinement.ts), imported — never a second copy.
+  assertRootAvoidsNeverBound(real);
   if (ctx.agentId === null) {
     // Unreachable in practice: project.open is in MUTATING_OR_CONTENT_METHODS,
     // so the dispatch signature gate binds ctx.agentId to the verified signer
@@ -535,8 +699,9 @@ registerHandler('project.open', async (params, db, ctx) => {
   // project.open is the trust boundary for a third-party repo: without this a
   // routine `git.diffFile`/`git.stageFile`/checkout would run attacker code as
   // the daemon UID (e.g. exfil ~/.age-identity/keys.txt). Done BEFORE adding to
-  // registeredRoots so a refused repo is never usable by file.*/git.*.
-  if (isRepo) await assertNoExecConfig(real);
+  // registeredRoots so a refused repo is never usable by file.*/git.*. isRepo is
+  // guaranteed true here (non-repo roots are rejected by D1 above).
+  await assertNoExecConfig(real);
   // Stat to get the canonical inode key.
   const s = await stat(real);
   const dev = BigInt(s.dev);

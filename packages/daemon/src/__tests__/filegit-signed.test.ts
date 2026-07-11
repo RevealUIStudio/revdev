@@ -13,6 +13,7 @@
  * side): produce envelopes byte-compatible with what this test sends.
  */
 
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -105,6 +106,8 @@ describe('Studio client-key signing (zero-9P P1)', () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-signed-'));
     repo = await mkdtemp(join(tmpdir(), 'revdev-signed-repo-'));
+    // project.open now rejects a non-repo root (GAP-326 D1); make the fixture a repo.
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
     socketPath = join(dataDir, 'harness.sock');
     // Trust anchor: provision THIS client's fingerprint so enrollment is
     // allowed (the production install writes this root-owned; the test points
