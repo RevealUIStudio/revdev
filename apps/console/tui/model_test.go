@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/RevealUIStudio/revdev/apps/console/api"
@@ -108,6 +109,30 @@ func TestFallbackTiers_Prices(t *testing.T) {
 		}
 		if tier.Period != want.period {
 			t.Errorf("tier %q Period = %q, want %q", tier.ID, tier.Period, want.period)
+		}
+	}
+}
+
+// TestFallbackTiers_Features pins the offline fallback ladder's feature
+// bullets to the canonical inclusions in @revealui/contracts pricing.ts
+// (SUBSCRIPTION_TIERS[].features, realignment ADR 2026-06-07), TUI-shortened.
+// Guards against stale claims (e.g. the retired "BYOK server-side",
+// "SSO/SAML", "White-label" bullets) silently surviving a price/name fix.
+func TestFallbackTiers_Features(t *testing.T) {
+	tiers := fallbackTiers()
+	expected := map[string][]string{
+		"free":       {"1 site", "3 users", "Local AI inference", "Community support", "Full source access"},
+		"pro":        {"5 sites", "25 users", "AI agents", "Stripe payments", "10K tasks/mo", "RevVault desktop + rotation", "Email support (48h)"},
+		"max":        {"15 sites", "100 users", "Full AI memory", "Audit logging", "50K tasks/mo", "Email support (24h)"},
+		"enterprise": {"Unlimited sites", "Unlimited users", "OAuth", "x402 agent payments (soon)", "Unlimited tasks", "Slack support (4h SLA)"},
+	}
+	for _, tier := range tiers {
+		want, ok := expected[tier.ID]
+		if !ok {
+			t.Fatalf("unexpected tier ID %q", tier.ID)
+		}
+		if !slices.Equal(tier.Features, want) {
+			t.Errorf("tier %q Features = %v, want %v", tier.ID, tier.Features, want)
 		}
 	}
 }
