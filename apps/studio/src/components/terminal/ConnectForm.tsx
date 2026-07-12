@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { sshBookmarkDelete, sshBookmarkList, sshBookmarkSave } from '../../lib/invoke';
 import type { SshAuth, SshBookmark, SshConnectParams } from '../../types';
 import Button from '../ui/Button';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import Input from '../ui/Input';
 
 interface ConnectFormProps {
@@ -22,6 +23,7 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
   const [passphrase, setPassphrase] = useState('');
   const [bookmarks, setBookmarks] = useState<SshBookmark[]>([]);
   const [showBookmarks, setShowBookmarks] = useState(true);
+  const [pendingDeleteBookmark, setPendingDeleteBookmark] = useState<SshBookmark | null>(null);
 
   const loadBookmarks = useCallback(async () => {
     try {
@@ -112,7 +114,7 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteBookmark(b.id)}
+                  onClick={() => setPendingDeleteBookmark(b)}
                   className="ml-2 text-xs text-fg-subtle opacity-0 transition-opacity hover:text-error group-hover:opacity-100"
                 >
                   remove
@@ -262,6 +264,24 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
           </div>
         </form>
       )}
+
+      <ConfirmDialog
+        open={pendingDeleteBookmark !== null}
+        title="Remove connection"
+        body={
+          <>
+            Remove the saved connection{' '}
+            <span className="font-mono text-fg">{pendingDeleteBookmark?.label}</span>?
+          </>
+        }
+        affectedItems={pendingDeleteBookmark ? [pendingDeleteBookmark.label] : undefined}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (pendingDeleteBookmark) void handleDeleteBookmark(pendingDeleteBookmark.id);
+          setPendingDeleteBookmark(null);
+        }}
+        onClose={() => setPendingDeleteBookmark(null)}
+      />
     </div>
   );
 }

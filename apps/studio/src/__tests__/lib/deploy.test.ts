@@ -46,8 +46,8 @@ describe('deploy bridge (browser mocks)', () => {
     await expect(vercelSetEnv('t', 'p', 'k', 'v')).resolves.toBeUndefined();
   });
 
-  it('vercelDeploy returns mock ID', async () => {
-    expect(await vercelDeploy('t', 'p')).toBe('mock-deploy-id');
+  it('vercelDeploy returns an obviously-fake deploy id', async () => {
+    expect(await vercelDeploy('t', 'p')).toBe('MOCK_DEPLOY_ID_DO_NOT_USE');
   });
 
   it('vercelGetDeployment returns READY state with deployment ID', async () => {

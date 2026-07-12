@@ -23,7 +23,7 @@ function isTauri(): boolean {
 }
 
 const BROWSER_REASON =
-  'Demo data — not connected to a real system (running outside the desktop app).';
+  'Demo data. Not connected to a real system (running outside the desktop app).';
 
 export interface DegradedState {
   degraded: boolean;

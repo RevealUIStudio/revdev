@@ -77,7 +77,7 @@ Environment variables (all optional):
 
 | Var | Default | Purpose |
 |---|---|---|
-| `REVEALUI_LICENSE_KEY` | (none → FREE tier) | v2 Ed25519-signed license. Pro+ unlocks coordination RPCs |
+| `REVEALUI_LICENSE_KEY` | (none → FREE tier) | Ed25519-signed license. Pro+ unlocks coordination RPCs |
 | `REVDEV_LICENSE_PUBLIC_KEY` | (none) | Public key matching the license signature |
 | `REVDEV_DAEMON_SOCKET` | `~/.local/share/revealui/harness.sock` | Unix socket bind path |
 | `REVDEV_DAEMON_DATA` | `~/.local/share/revealui` | PGlite data directory |
@@ -97,7 +97,7 @@ Environment variables (all optional):
 ## Smoke test
 
 For local dev / smoke testing without a real license key, use the
-Ed25519 v2 test-license generator at
+Ed25519 test-license generator at
 [`src/__tests__/test-license-helper.ts`](src/__tests__/test-license-helper.ts).
 It produces a self-signed keypair on the fly and returns a license + public
 key suitable for the `enterprise` tier. The integration test suite at

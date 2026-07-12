@@ -536,6 +536,98 @@ describe('adversarial agent isolation (B6 §6)', () => {
         await rm(repo, { recursive: true, force: true });
       }
     });
+
+    it('an unsigned peer cannot end another agent’s session (no eviction, no kill)', async () => {
+      // The hole: session.end used to read `params.sessionId` verbatim while the
+      // identity gate was satisfied by any `actorAgentId` string. One unsigned
+      // call evicted the victim's roots and killed its PTYs.
+      const repo = await initRepo('iso-j-crossagent-');
+      const victimId = 'iso-j-victim-agent';
+      const kpVictim = generateAgentKeypair();
+      const fpVictim = computeFingerprint(kpVictim.publicKeyRaw);
+      const didVictim = formatDid(victimId, fpVictim);
+
+      const anchorContent = await readFile(anchor, 'utf8');
+      await writeFile(anchor, `${anchorContent}${victimId}:${fpVictim}\n`);
+
+      const rpcVictim = (method: string, params: Record<string, unknown>) =>
+        rpcFrame(
+          socketPath,
+          method,
+          params,
+          signFor(victimId, didVictim, fpVictim, kpVictim, method, params),
+        );
+
+      try {
+        await rpcFrame(socketPath, 'session.register', {
+          agentId: victimId,
+          agentName: victimId,
+          backend: 'studio',
+          publicKeyPem: kpVictim.publicKeyPem,
+        });
+        expect((await rpcVictim('project.open', { repoPath: repo })).error).toBeUndefined();
+
+        // The attack, verbatim: unsigned, `actorAgentId` to pass the identity
+        // gate, `sessionId` naming the victim.
+        const attack = await rpcFrame(socketPath, 'session.end', {
+          actorAgentId: 'iso-j-attacker',
+          sessionId: victimId,
+        });
+        expect(attack.error).toBeDefined();
+        expect(attack.result).toBeUndefined();
+
+        // And the victim's root is still owned: C still hits a conflict, which
+        // it would not if notifyAgentEnded had run.
+        const cAfter = await rpcC('project.open', { repoPath: repo });
+        expect(cAfter.error?.message).toContain('conflict');
+      } finally {
+        await rm(repo, { recursive: true, force: true });
+      }
+    });
+
+    it('a signed agent cannot end a different agent’s session', async () => {
+      // C is a verified signer, so it clears the signature gate. It still must
+      // not be able to name someone else as the target: session.end self-scopes
+      // to ctx.agentId and ignores params entirely.
+      const repo = await initRepo('iso-j-signedcross-');
+      const victimId = 'iso-j-victim2-agent';
+      const kpVictim = generateAgentKeypair();
+      const fpVictim = computeFingerprint(kpVictim.publicKeyRaw);
+      const didVictim = formatDid(victimId, fpVictim);
+
+      const anchorContent = await readFile(anchor, 'utf8');
+      await writeFile(anchor, `${anchorContent}${victimId}:${fpVictim}\n`);
+
+      const rpcVictim = (method: string, params: Record<string, unknown>) =>
+        rpcFrame(
+          socketPath,
+          method,
+          params,
+          signFor(victimId, didVictim, fpVictim, kpVictim, method, params),
+        );
+
+      try {
+        await rpcFrame(socketPath, 'session.register', {
+          agentId: victimId,
+          agentName: victimId,
+          backend: 'studio',
+          publicKeyPem: kpVictim.publicKeyPem,
+        });
+        expect((await rpcVictim('project.open', { repoPath: repo })).error).toBeUndefined();
+
+        // C signs, but names the victim. The call succeeds as C ending C, and
+        // the victim is untouched.
+        const res = await rpcC('session.end', { sessionId: victimId, agentId: victimId });
+        expect(res.error).toBeUndefined();
+        expect((res.result as { ended: string }).ended).not.toBe(victimId);
+
+        // Victim still owns its root.
+        const cAfter = await rpcC('project.open', { repoPath: repo });
+        expect(cAfter.error?.message).toContain('conflict');
+      } finally {
+        await rm(repo, { recursive: true, force: true });
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------

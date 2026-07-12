@@ -14,6 +14,7 @@
  * pointed at a fixture (production writes it root-owned at install).
  */
 
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -119,6 +120,9 @@ describe('daemon enrollment gate + per-agent root scoping', () => {
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-enroll-'));
     repoA = await mkdtemp(join(tmpdir(), 'revdev-enroll-repoA-'));
     repoB = await mkdtemp(join(tmpdir(), 'revdev-enroll-repoB-'));
+    // project.open now rejects a non-repo root (GAP-326 D1); make the fixtures repos.
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repoA });
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repoB });
     socketPath = join(dataDir, 'harness.sock');
     const anchor = join(dataDir, 'trusted-client-fingerprint');
     // Anchor trusts the (agentId, fingerprint) PAIRS of A and B but NOT evil.

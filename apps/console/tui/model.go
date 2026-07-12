@@ -95,23 +95,23 @@ func fallbackTiers() []Tier {
 		{
 			ID: "free", Name: "Free (OSS)", Price: "$0",
 			Description: "Perfect for trying out RevealUI and small projects.",
-			Features:    []string{"1 site", "3 users", "Basic sync", "Community support"},
+			Features:    []string{"1 site", "3 users", "Local AI inference", "Community support", "Full source access"},
 		},
 		{
 			ID: "pro", Name: "Pro", Price: "$49", Period: "/mo",
 			Description: "For software companies building production products.",
-			Features:    []string{"5 sites", "25 users", "AI agents", "Stripe payments", "10K tasks/mo"},
+			Features:    []string{"5 sites", "25 users", "AI agents", "Stripe payments", "10K tasks/mo", "RevVault desktop + rotation", "Email support (48h)"},
 			Highlighted: true,
 		},
 		{
-			ID: "max", Name: "Max", Price: "$149", Period: "/mo",
-			Description: "AI memory, multi-provider, compliance tooling.",
-			Features:    []string{"15 sites", "100 users", "AI memory", "BYOK server-side", "50K tasks/mo"},
+			ID: "max", Name: "Max", Price: "$299", Period: "/mo",
+			Description: "AI memory, advanced inference, and compliance tooling.",
+			Features:    []string{"15 sites", "100 users", "Full AI memory", "Audit logging", "50K tasks/mo", "Email support (24h)"},
 		},
 		{
-			ID: "enterprise", Name: "Forge", Price: "$299", Period: "/mo",
-			Description: "Advanced scale and compliance requirements.",
-			Features:    []string{"Unlimited sites", "Unlimited users", "SSO/SAML", "White-label", "Unlimited tasks"},
+			ID: "enterprise", Name: "Enterprise", Price: "$1499", Period: "/mo",
+			Description: "Scale, compliance, and agent payments.",
+			Features:    []string{"Unlimited sites", "Unlimited users", "OAuth", "x402 agent payments (soon)", "Unlimited tasks", "Slack support (4h SLA)"},
 		},
 	}
 }
@@ -501,11 +501,11 @@ func (m Model) viewLoading() string {
 // -- Tier selection ----------------------------------------------------------
 
 func (m Model) viewTiers() string {
-	s := titleStyle.Render("RevealUI — Choose Your Plan") + "\n"
+	s := titleStyle.Render("Choose your RevealUI plan") + "\n"
 
 	// Warn when the displayed prices are stale fallback data, not live pricing.
 	if m.pricingOffline {
-		s += errorStyle.Render("  ⚠ Offline pricing — may be out of date") + "\n"
+		s += errorStyle.Render("  ⚠ Offline pricing may be out of date") + "\n"
 	}
 
 	// Show current user info if known
@@ -531,7 +531,7 @@ func (m Model) viewTiers() string {
 			price = "—"
 		}
 
-		line := fmt.Sprintf("%s%s %s%s — %s",
+		line := fmt.Sprintf("%s%s %s%s • %s",
 			cursor, tier.Name, price, tier.Period, tier.Description)
 
 		// Mark current tier
@@ -571,7 +571,7 @@ func (m Model) viewCheckout() string {
 		return "No tier selected"
 	}
 
-	s := titleStyle.Render(fmt.Sprintf("Upgrade to %s — %s%s",
+	s := titleStyle.Render(fmt.Sprintf("Upgrade to %s for %s%s",
 		m.selected.Name, m.selected.Price, m.selected.Period)) + "\n\n"
 
 	for _, f := range m.selected.Features {

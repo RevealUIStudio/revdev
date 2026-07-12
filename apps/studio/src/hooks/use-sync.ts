@@ -79,7 +79,7 @@ export function useSync() {
   return {
     syncingRepos: state.syncingRepos,
     anySyncing,
-    globalError: (state.errors['__all__'] ?? null) as string | null,
+    globalError: (state.errors.__all__ ?? null) as string | null,
     errors: state.errors,
     results: state.results,
     log: state.log,

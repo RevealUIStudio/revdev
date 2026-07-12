@@ -74,6 +74,29 @@ jobs:
     needs: quality
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install bubblewrap + enable unprivileged user namespaces (agent.spawn confinement tests)
+        # confinement-integration.test.ts runs REAL bwrap adversarial reads proving
+        # ~/.ssh, ~/.age-identity, and the revvault store are denied inside the
+        # sandbox. They need bwrap present AND able to create unprivileged user
+        # namespaces. ubuntu-24.04 ships kernel.apparmor_restrict_unprivileged_userns=1,
+        # which blocks that — so without lowering it, bwrapUsable() fails and the
+        # whole suite self-skips and the boundary is never proven on CI (GAP-319).
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          # `|| true`: if a future runner kernel lacks this knob, the guard step
+          # below is the real gate — do not fail here on a missing sysctl.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Guard — unprivileged user namespaces must work (no silent confinement skip)
+        # Turn a SILENT all-skip of the confinement suite into a LOUD failure. This
+        # probe mirrors bwrapUsable() in confinement-integration.test.ts; if it cannot
+        # build a userns sandbox, the 7 real-bwrap tests would skip and a bwrap-argv
+        # regression would pass CI unnoticed (GAP-319 acceptance).
+        run: |
+          bwrap --unshare-user --unshare-pid \
+            --ro-bind /usr /usr \
+            --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 \
+            --proc /proc --dev /dev -- /bin/true
+          echo "OK: unprivileged user namespaces work — the confinement integration suite will run for real"
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -81,6 +104,69 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+
+  prove-red:
+    name: Prove-Red (TypeScript changed tests must fail against base)
+    runs-on: ubuntu-latest
+    needs: quality
+    # PR-only: a merge-base is meaningless on a direct push to test/main.
+    if: github.event_name == 'pull_request'
+    steps:
+      # Check out the PR head (not the synthetic merge commit) with full history
+      # so scripts/ci/prove-red.mjs can compute the merge base and revert the
+      # source diff. See docs (verification-enforcement lane) for the mechanism.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Changed daemon tests import @revdev/protocol and @revdev/daemon; build
+      # them from source first, exactly as the root `test` script does, or the
+      # per-file vitest runs fail to resolve imports rather than on assertions.
+      - run: pnpm --filter @revdev/protocol build
+      - run: pnpm --filter @revdev/daemon build
+      # Scoped to TypeScript: this runner installs only Node/pnpm. The Rust and
+      # Go languages the gate also covers run in their own jobs (prove-red-go
+      # here; prove-red-rust in studio-rust-tests.yml) so each installs only its
+      # own toolchain. Default (no PROVE_RED_LANGS) is all three, for local runs.
+      - name: Prove changed TypeScript tests are red against base
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          PROVE_RED_LANGS: typescript
+        run: node scripts/ci/prove-red.mjs
+
+  prove-red-go:
+    name: Prove-Red (Go changed tests must fail against base)
+    runs-on: ubuntu-latest
+    needs: quality
+    # PR-only: a merge-base is meaningless on a direct push to test/main.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: apps/console/go.mod
+          cache-dependency-path: apps/console/go.sum
+      # Node runs the gate script itself (Node stdlib only, no pnpm needed here).
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+      # Reverts the changed Go source to base, then runs each changed test's
+      # package (`go test ./pkg/`) and requires >=1 red. Package granularity is
+      # inherent to `go test`; see scripts/ci/prove-red.mjs header.
+      - name: Prove changed Go tests are red against base
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          PROVE_RED_LANGS: go
+        run: node scripts/ci/prove-red.mjs
 
   build:
     name: Build

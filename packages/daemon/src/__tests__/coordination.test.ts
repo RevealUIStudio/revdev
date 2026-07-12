@@ -344,36 +344,43 @@ describe('GAP-153: stale-session prune', () => {
     expect(typeof health.prune?.lastDeletedCount).toBe('number');
   });
 
+  // harness.prune is signature-required (GAP-312). These tests sign the call,
+  // and because the threshold is now floored at 1 day they age rows by
+  // BACKDATING `started_at` / `ended_at` through the _db handle rather than by
+  // passing a sub-day threshold and sleeping. Backdating is both correct (it is
+  // what a genuinely stale session looks like) and faster (no real-time waits,
+  // no flake).
+
   it('ages out a session whose age exceeds the stale threshold', async () => {
-    // Register a stable-id session, then wait briefly so its started_at
-    // is older than the threshold we'll pass to prune.
     await rpc(socketPath, 'session.register', {
       agentId: 'stale-test',
       agentName: 'stale-test',
       backend: 'test',
     });
 
-    // Sanity: row is currently active in session.list (which filters
-    // to ended_at IS NULL).
+    // Sanity: row is active in session.list (filters to ended_at IS NULL).
     const before = (await rpc(socketPath, 'session.list')) as {
       sessions: Array<{ id: string }>;
     };
     expect(before.sessions.find((s) => s.id === 'stale-test')).toBeDefined();
 
-    await new Promise((r) => setTimeout(r, 1100));
+    // Make it genuinely stale: started 10 days ago.
+    await db.query(
+      "UPDATE agent_sessions SET started_at = NOW() - INTERVAL '10 days' WHERE id = $1",
+      ['stale-test'],
+    );
 
-    // staleDays = 0.00001 → ≈ 0.86s. With the 1.1s sleep above, the
-    // session is past the threshold.
-    const result = (await rpc(socketPath, 'harness.prune', {
-      staleDays: 0.00001,
-      hardDeleteDays: 365,
-    })) as { aged: number; deleted: number };
+    const pruner = await seedIdentity('pruner-stale');
+    const result = (await signedRpc(
+      socketPath,
+      'harness.prune',
+      { staleDays: 7, hardDeleteDays: 365 },
+      { did: pruner.did, fingerprint: pruner.fingerprint, privateKeyPem: pruner.privateKeyPem },
+    )) as { aged: number; deleted: number };
     expect(result.aged).toBeGreaterThanOrEqual(1);
     expect(result.deleted).toBe(0);
 
-    // After prune, the row is no longer in session.list (proof its
-    // ended_at + exit_summary were populated by runPrune; session.list
-    // hides any row with ended_at IS NOT NULL).
+    // After prune the row leaves session.list (its ended_at was populated).
     const after = (await rpc(socketPath, 'session.list')) as {
       sessions: Array<{ id: string }>;
     };
@@ -381,23 +388,32 @@ describe('GAP-153: stale-session prune', () => {
   });
 
   it('hard-deletes a session ended longer than hardDeleteDays', async () => {
-    // Register, end, then prune with a tiny hardDeleteDays.
     await rpc(socketPath, 'session.register', {
       agentId: 'hard-delete-test',
       agentName: 'hard-delete-test',
       backend: 'test',
     });
-    await rpc(socketPath, 'session.end', {
-      actorAgentId: 'hard-delete-test',
-      sessionId: 'hard-delete-test',
-      summary: 'test end',
-    });
-    await new Promise((r) => setTimeout(r, 1100));
+    // session.end is signature-required and self-scopes to the signer.
+    const ender = await seedIdentity('hard-delete-test');
+    await signedRpc(
+      socketPath,
+      'session.end',
+      { summary: 'test end' },
+      { did: ender.did, fingerprint: ender.fingerprint, privateKeyPem: ender.privateKeyPem },
+    );
+    // Backdate the end so it is older than hardDeleteDays.
+    await db.query(
+      "UPDATE agent_sessions SET ended_at = NOW() - INTERVAL '40 days' WHERE id = $1",
+      ['hard-delete-test'],
+    );
 
-    const result = (await rpc(socketPath, 'harness.prune', {
-      staleDays: 365,
-      hardDeleteDays: 0.00001,
-    })) as { aged: number; deleted: number };
+    const pruner = await seedIdentity('pruner-hard');
+    const result = (await signedRpc(
+      socketPath,
+      'harness.prune',
+      { staleDays: 365, hardDeleteDays: 30 },
+      { did: pruner.did, fingerprint: pruner.fingerprint, privateKeyPem: pruner.privateKeyPem },
+    )) as { aged: number; deleted: number };
 
     expect(result.deleted).toBeGreaterThanOrEqual(1);
 
@@ -408,7 +424,13 @@ describe('GAP-153: stale-session prune', () => {
   });
 
   it('harness.health reports prune state after a prune run', async () => {
-    await rpc(socketPath, 'harness.prune', { staleDays: 365, hardDeleteDays: 365 });
+    const pruner = await seedIdentity('pruner-health');
+    await signedRpc(
+      socketPath,
+      'harness.prune',
+      { staleDays: 365, hardDeleteDays: 365 },
+      { did: pruner.did, fingerprint: pruner.fingerprint, privateKeyPem: pruner.privateKeyPem },
+    );
     const health = (await rpc(socketPath, 'harness.health')) as {
       prune: { lastRunAt: string | null; lastAgedCount: number; lastDeletedCount: number };
     };
@@ -419,23 +441,60 @@ describe('GAP-153: stale-session prune', () => {
     expect(health.prune.lastDeletedCount).toBe(0);
   });
 
-  it('clamps negative thresholds to zero (defensive)', async () => {
-    // staleDays=0 → "older than NOW" → matches every session with
-    // ended_at IS NULL. We need at least one such session to verify
-    // the clamp is wider than negative-would-be (which Postgres
-    // semantics handle the same way as 0 here, but the explicit
-    // clamp is what we're checking the call doesn't error on).
+  // GAP-312 adversarial isolation. The prior test here ("clamps negative
+  // thresholds to zero (defensive)") asserted the VULNERABILITY as intended:
+  // it fired an UNSIGNED prune with staleDays: -100, expected it to succeed,
+  // and expected it to age every unended session. That is exactly the
+  // fleet-wide kill switch. It is replaced by the two properties the fix must
+  // hold. Both were shown red against the pre-fix handler before landing.
+
+  it('rejects an UNSIGNED harness.prune and evicts nothing (GAP-312)', async () => {
+    // A live session the attacker would try to reap.
     await rpc(socketPath, 'session.register', {
-      agentId: 'clamp-test',
-      agentName: 'clamp-test',
+      agentId: 'victim-unsigned',
+      agentName: 'victim-unsigned',
       backend: 'test',
     });
-    const result = (await rpc(socketPath, 'harness.prune', {
-      staleDays: -100,
-      hardDeleteDays: 365,
-    })) as { aged: number };
-    // Negative was clamped to 0 → matches all unended sessions.
-    expect(result.aged).toBeGreaterThanOrEqual(1);
+
+    // A valid-schema threshold, so this isolates the SIGNATURE gate rather than
+    // the floor: an unsigned caller is rejected with -32003 before the handler.
+    // (The staleDays: 0 exploit frame is covered by the floor test below, where
+    // the schema rejects it with -32602 first.)
+    await expect(
+      rpc(socketPath, 'harness.prune', { staleDays: 7, hardDeleteDays: 30 }),
+    ).rejects.toThrow(/-32003|[Ss]ignature required/);
+
+    // The victim is untouched: still active in session.list.
+    const listing = (await rpc(socketPath, 'session.list')) as {
+      sessions: Array<{ id: string }>;
+    };
+    expect(listing.sessions.find((s) => s.id === 'victim-unsigned')).toBeDefined();
+  });
+
+  it('rejects a SIGNED harness.prune with a sub-day threshold (GAP-312 floor)', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'victim-floor',
+      agentName: 'victim-floor',
+      backend: 'test',
+    });
+
+    // Even a validly signed caller cannot select "every session": the schema
+    // floors staleDays at 1, so 0 (and any value < 1) is rejected as invalid
+    // params before the handler runs.
+    const pruner = await seedIdentity('pruner-floor');
+    await expect(
+      signedRpc(
+        socketPath,
+        'harness.prune',
+        { staleDays: 0 },
+        { did: pruner.did, fingerprint: pruner.fingerprint, privateKeyPem: pruner.privateKeyPem },
+      ),
+    ).rejects.toThrow();
+
+    const listing = (await rpc(socketPath, 'session.list')) as {
+      sessions: Array<{ id: string }>;
+    };
+    expect(listing.sessions.find((s) => s.id === 'victim-floor')).toBeDefined();
   });
 });
 

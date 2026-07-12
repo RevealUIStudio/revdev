@@ -84,6 +84,17 @@ pub fn requires_signature(method: &str) -> bool {
             | "agent.input"
             | "agent.resize"
             | "agent.output"
+            // session.end evicts the target's project roots and kills its PTYs.
+            // Signature-required so the daemon can self-scope it to the verified
+            // signer instead of a caller-supplied `sessionId`.
+            | "session.end"
+            // harness.prune reaches the SAME eviction primitive as session.end,
+            // but fans it across every matched session rather than one. It was
+            // identity-exempt and unsigned, so one frame from any same-UID
+            // socket peer ended the whole fleet's sessions and killed every PTY
+            // (`staleDays: 0` selects `started_at < NOW()`). GAP-312.
+            // MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
+            | "harness.prune"
     )
 }
 
@@ -516,7 +527,13 @@ mod tests {
         assert!(requires_signature("agent.input"));
         assert!(requires_signature("agent.resize"));
         assert!(requires_signature("agent.output"));
+        assert!(requires_signature("session.end"));
+        // GAP-312: same eviction primitive as session.end, fleet-wide fan-out.
+        assert!(requires_signature("harness.prune"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
+        // harness.health is a read; it stays unsigned. Guards against a
+        // copy-paste that gates the wrong half of the harness.* surface.
+        assert!(!requires_signature("harness.health"));
     }
 }

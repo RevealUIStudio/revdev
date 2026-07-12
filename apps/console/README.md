@@ -1,9 +1,9 @@
 # RevealUI Console
 
-> **Status: Experimental** — Not production-deployed. Functional prototype.
+> **Status: Experimental.** Not production-deployed. A functional prototype.
 
 SSH-delivered TUI for RevealUI account management and licensing. Runs anywhere
-there's SSH — phone, borrowed laptop, server — and is explicitly **not** for
+there's SSH (phone, borrowed laptop, server) and is explicitly **not** for
 editing code (that's Studio's job).
 
 The TUI walks users through: browsing subscription tiers, initiating checkout
@@ -13,16 +13,16 @@ API (pass `agents` as the SSH command, or set `TERMINAL_MODE=agents`).
 
 Built with the [Charm](https://charm.sh/) ecosystem:
 
-- **Wish** — SSH server
-- **Bubble Tea** — TUI framework
-- **Lip Gloss** — Terminal styling
+- **Wish** runs the SSH server
+- **Bubble Tea** drives the TUI
+- **Lip Gloss** handles the terminal styling
 
 ## Usage
 
-The intended entry point — once hosted deployment ships — is a single SSH command:
+Once hosted deployment ships, the intended entry point is a single SSH command:
 
 ```bash
-ssh terminal.revealui.com           # planned — hosted endpoint not yet live
+ssh terminal.revealui.com           # planned, hosted endpoint not yet live
 ssh terminal.revealui.com -t agents # agent proxy mode
 ```
 

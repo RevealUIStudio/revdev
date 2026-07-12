@@ -324,6 +324,25 @@ pub fn list(
     Ok(list)
 }
 
+/// Kill every still-running agent child.
+///
+/// Tauri's exit path reaches `std::process::exit`, which does not run
+/// destructors, so a `Drop` impl would not fire and long-lived children such as
+/// `ollama run` would outlive the app. The kill is issued under the lock and we
+/// deliberately do not `wait()`, since the reaper thread polls for the same
+/// lock and the process is terminating anyway.
+pub fn kill_all(state: Arc<Mutex<HashMap<String, AgentProcess>>>) {
+    let Ok(mut sessions) = state.lock() else {
+        return;
+    };
+    for proc in sessions.values_mut() {
+        if proc.status == "running" {
+            let _ = proc.child.kill();
+            proc.status = "stopped".to_string();
+        }
+    }
+}
+
 /// Remove a stopped/errored session from the session map.
 pub fn remove(
     session_id: &str,

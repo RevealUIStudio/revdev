@@ -12,23 +12,60 @@ import { vi } from 'vitest';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { formatDid } from '@revdev/protocol/did';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  computeFingerprint,
+  generateAgentKeypair,
+  generateNonce,
+  hashParams,
+  serializeEnvelope,
+  signEnvelope,
+} from '../agent-identity-crypto.js';
 import { _resetForTesting, setNeonClientForTesting } from '../neon.js';
 import { startDaemon } from '../server.js';
+
+/**
+ * `session.end` is signature-required (it evicts roots and kills PTYs), so the
+ * test that exercises its Neon dual-write has to sign like a real client.
+ */
+function makeSigner(agentId: string) {
+  const kp = generateAgentKeypair();
+  const fingerprint = computeFingerprint(kp.publicKeyRaw);
+  const did = formatDid(agentId, fingerprint);
+  const sign = (method: string, params: Record<string, unknown>): string =>
+    serializeEnvelope(
+      signEnvelope(
+        {
+          did,
+          kid: fingerprint,
+          nonce: generateNonce(),
+          ts: Math.floor(Date.now() / 1000),
+          method,
+          paramsHash: hashParams(method, params),
+        },
+        kp.privateKeyPem,
+      ),
+    );
+  return { agentId, fingerprint, publicKeyPem: kp.publicKeyPem, sign };
+}
 
 function rpc(
   socketPath: string,
   method: string,
   params: Record<string, unknown> = {},
+  signature?: string,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const sock: Socket = connect(socketPath);
     let buf = '';
-    const req = `${JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })}\n`;
+    const frame: Record<string, unknown> = { jsonrpc: '2.0', id: 1, method, params };
+    if (signature) frame['x-revdev-signature'] = signature;
+    const req = `${JSON.stringify(frame)}\n`;
     sock.on('connect', () => sock.write(req));
     sock.on('data', (d) => {
       buf += d.toString();
@@ -57,6 +94,9 @@ interface RecordedCall {
   values: unknown[];
 }
 
+/** Client-owned identity used by the signature-required session.end test. */
+const ender = makeSigner('sync-test-4');
+
 let dataDir: string;
 let socketPath: string;
 let close: () => Promise<void>;
@@ -70,8 +110,17 @@ beforeAll(async () => {
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-neon-'));
   socketPath = join(dataDir, 'harness.sock');
+  // Provision the signer's fingerprint so it can enroll a client-owned key.
+  const anchor = join(dataDir, 'trusted-client-fingerprint');
+  await writeFile(anchor, `${ender.agentId}:${ender.fingerprint}\n`);
   // Disable periodic prune so it doesn't touch the test DB unexpectedly.
-  const d = await startDaemon({ socketPath, dataDir, pruneIntervalMs: 0 });
+  const d = await startDaemon({
+    socketPath,
+    dataDir,
+    pruneIntervalMs: 0,
+    trustedClientFingerprintPath: anchor,
+    trustedAnchorRequireRootOwned: false,
+  });
   close = d.close;
 });
 
@@ -170,18 +219,19 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
   });
 
   it('session.end triggers UPDATE setting ended_at + status=ended + summary in metadata', async () => {
+    // Register the client-owned key so the daemon can verify the signature.
     await rpc(socketPath, 'session.register', {
-      agentId: 'sync-test-4',
-      agentName: 'sync-test-4',
+      agentId: ender.agentId,
+      agentName: ender.agentId,
       backend: 'test',
+      publicKeyPem: ender.publicKeyPem,
     });
     recordedCalls = [];
 
-    await rpc(socketPath, 'session.end', {
-      actorAgentId: 'sync-test-4',
-      sessionId: 'sync-test-4',
-      summary: 'all done',
-    });
+    // session.end is signature-required and self-scopes to the signer, so no
+    // sessionId is passed: the signer IS the target.
+    const endParams = { summary: 'all done' };
+    await rpc(socketPath, 'session.end', endParams, ender.sign('session.end', endParams));
 
     expect(recordedCalls.length).toBe(1);
     const [endRecord] = recordedCalls;

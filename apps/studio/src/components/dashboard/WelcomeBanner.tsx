@@ -31,13 +31,13 @@ export default function WelcomeBanner() {
           <path d="M18 6 6 18M6 6l12 12" />
         </svg>
       </button>
-      <h2 className="text-sm font-semibold text-brand-text">Welcome to RevealUI Studio</h2>
+      <h2 className="text-sm font-semibold text-brand-text">
+        Run your agents on your own infrastructure
+      </h2>
       <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-        Your native AI experience for managing agents and infrastructure. Use the sidebar to
-        navigate between services — check system status on the{' '}
-        <strong className="text-fg-muted">Dashboard</strong>, manage secrets in the{' '}
-        <strong className="text-fg-muted">Vault</strong>, and configure your environment in{' '}
-        <strong className="text-fg-muted">Setup</strong>.
+        Studio is where you start your agents and watch them work. Each one runs as a user you
+        govern, and every action it takes is recorded so you can check it. This is an early preview,
+        so expect a few rough edges.
       </p>
     </div>
   );

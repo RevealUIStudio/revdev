@@ -352,12 +352,27 @@ describe('harness.prune validation', () => {
     expect(validateParams('harness.prune', { staleDays: 7, hardDeleteDays: 30 }).valid).toBe(true);
   });
 
-  it('accepts fractional days (test helpers use these to avoid long sleeps)', () => {
-    expect(validateParams('harness.prune', { staleDays: 0.00001 }).valid).toBe(true);
+  it('accepts a fractional threshold >= 1 day', () => {
+    // The floor is 1, not "integer". A fractional day at or above the floor is
+    // harmless, and keeping the constraint minimal is intentional.
+    expect(validateParams('harness.prune', { staleDays: 1.5 }).valid).toBe(true);
   });
 
-  it('accepts negative days (handler defensive clamp is the safety net)', () => {
-    expect(validateParams('harness.prune', { staleDays: -1, hardDeleteDays: -7 }).valid).toBe(true);
+  it('REJECTS a sub-day staleDays (GAP-312 floor)', () => {
+    // staleDays: 0.00001 selected ≈0.86s of age, and staleDays: 0 selected
+    // every live session. The schema floors at 1 day so neither reaches the
+    // handler. Test helpers that once shrank time now backdate started_at.
+    expect(validateParams('harness.prune', { staleDays: 0.00001 }).valid).toBe(false);
+    expect(validateParams('harness.prune', { staleDays: 0 }).valid).toBe(false);
+  });
+
+  it('REJECTS negative days (GAP-312 floor; no clamp-to-zero)', () => {
+    // Previously accepted on the theory that the handler's Math.max(0, ...) was
+    // "the safety net". A zero floor is not a net: it is the fleet-wide
+    // selector. Rejected at the boundary now.
+    expect(validateParams('harness.prune', { staleDays: -1, hardDeleteDays: -7 }).valid).toBe(
+      false,
+    );
   });
 
   it('rejects non-numeric staleDays', () => {

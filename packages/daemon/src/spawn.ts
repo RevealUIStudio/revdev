@@ -9,23 +9,40 @@
  *   - Enforces per-agent ownership: only the spawning agent may send input,
  *     resize, or stop a process it owns
  *
- * P4-IDENTITY TODO: Once the "B6" identity lane ships its signature-gating
- * rewrite, add 'agent.spawn', 'agent.stop', 'agent.input', 'agent.resize',
- * and 'agent.output' to MUTATING_OR_CONTENT_METHODS in server.ts AND to
- * requires_signature() in signing.rs. Until then these methods accept
- * actorAgentId param auth (same posture as mail.send / files.reserve), which
- * is gated only by the 0600 socket boundary. The deferred grant model
- * (spawned-agent DID + project.grant) should be designed as part of that lane.
+ * Authentication: all five methods are in MUTATING_OR_CONTENT_METHODS and in
+ * signing.rs requires_signature(), so the dispatch gate binds ctx.agentId to a
+ * verified Ed25519 signer. The spoofable actorAgentId param auth is gone.
+ *
+ * Authorization: agent.spawn additionally requires the signer to hold (own, or
+ * have been granted) the project root its command will run in. See the handler.
+ *
+ * Containment (Phase 1, GAP-288, spec 2026-07-10-agent-spawn-confinement-phase-1):
+ * on Linux and WSL2 the command runs inside a `bwrap` sandbox with a
+ * deny-by-default bind set — the operator home is tmpfs'd, so ~/.ssh,
+ * ~/.age-identity, and the revvault store are unreadable even though the process
+ * still runs as the daemon UID. Only the granted root and a per-agent home are
+ * bound read-write. On platforms with no backend, agent.spawn FAILS CLOSED (an
+ * absent sandbox is indistinguishable from a broken one, so it refuses). The
+ * operator escape hatch REVDEV_SPAWN_CONFINEMENT=none spawns unconfined and
+ * records confinement='none' on the row. See confinement.ts.
  */
 
 import { randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
 import type { PGlite } from '@electric-sql/pglite';
 import { createLogger } from '@revealui/utils/logger';
 import type { IDisposable, IPty } from 'node-pty';
 import * as nodePty from 'node-pty';
-import { onAgentEnded } from './eviction.js';
-import { registerHandler, type SocketContext } from './server.js';
+import {
+  buildConfinedEnv,
+  ensureAgentHome,
+  filterCallerEnv,
+  type ResolvedConfinement,
+  resolveConfinementBackend,
+  resolveOperatorHome,
+} from './confinement.js';
+import { onAgentEnded, onDaemonStarted } from './eviction.js';
+import { requireRootAndDir } from './filegit.js';
+import { getDaemonConfig, registerHandler, type SocketContext } from './server.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
 
@@ -120,30 +137,30 @@ onAgentEnded((agentId: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Minimal safe environment for spawned processes
+// Confinement backend — resolved ONCE at daemon start (spec §4.2 invariant 1),
+// cached module-level. bwrap is realpath'd + ownership-checked here, never
+// through a caller-influenced PATH.
 // ---------------------------------------------------------------------------
 
-/**
- * Build a minimal environment for a spawned PTY process. We do NOT inherit
- * `process.env` blindly because that would pass revvault secrets, API keys,
- * and signing material to the child.
- *
- * P4-IDENTITY TODO: once the B6 project.grant model ships, gate which env
- * keys a spawned-agent DID may request against the grant.
- */
-function buildSafeEnv(extraEnv: Record<string, string>): Record<string, string> {
-  const base: Record<string, string> = {
-    GIT_CONFIG_NOSYSTEM: '1',
-    HOME: process.env.HOME ?? '/tmp',
-    PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
-    TERM: 'xterm-color',
-    LANG: 'C.UTF-8',
-  };
-  for (const [k, v] of Object.entries(extraEnv)) {
-    base[k] = v;
+let _confinement: ResolvedConfinement | null = null;
+
+onDaemonStarted(async () => {
+  _confinement = resolveConfinementBackend();
+  if (_confinement.backend) {
+    log.info('agent.spawn confinement active', {
+      mode: _confinement.mode,
+      reason: _confinement.reason,
+    });
+  } else if (_confinement.escapeHatch) {
+    log.warn('agent.spawn confinement DISABLED via escape hatch — spawns run unconfined', {
+      reason: _confinement.reason,
+    });
+  } else {
+    log.warn('agent.spawn has NO confinement backend — spawns will fail closed', {
+      reason: _confinement.reason,
+    });
   }
-  return base;
-}
+});
 
 // ---------------------------------------------------------------------------
 // Local parameter extraction helpers
@@ -204,11 +221,20 @@ function safeEnvRecord(v: unknown): Record<string, string> {
  * agent.spawn — fork a PTY child process and return processId + pid.
  *
  * Security:
- *   - cwd is validated to exist via stat() before passing to node-pty.
- *   - env is built from a minimal baseline (see buildSafeEnv).
+ *   - Signature-gated: requireAgent() accepts only a verified Ed25519 signer,
+ *     never a caller-supplied actorAgentId.
+ *   - Authorized: `repoPath` must be a registered root the signer owns or was
+ *     granted, and `cwd` must resolve at or beneath it (requireRootAndDir).
+ *     There is no default cwd; a missing repoPath is a hard error.
+ *   - Confined: on Linux/WSL2 the command runs inside a bwrap sandbox; on
+ *     platforms with no backend the spawn fails closed (confinement.ts).
+ *   - env is an allow-list (filterCallerEnv) over a deny-by-default baseline
+ *     with HOME pointed at the per-agent home (buildConfinedEnv).
  *   - Per-agent concurrency is capped at MAX_PROCESSES_PER_AGENT.
- *   - P4-IDENTITY TODO: signature-gate once B6 ships; add to
- *     MUTATING_OR_CONTENT_METHODS and to signing.rs requires_signature().
+ *
+ * `command` is not constrained to an allow-list — an authorized caller may run
+ * any binary — but the sandbox bounds what that binary can touch to the granted
+ * root and the agent home. A command allow-list is out of Phase 1 scope.
  */
 registerHandler('agent.spawn', async (params, db, ctx) => {
   const ownerAgentId = requireAgent(ctx, params);
@@ -217,19 +243,32 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   if (!command) throw new Error('agent.spawn: missing command');
 
   const args = stringArrayParam(params, 'args');
-  const cwd = stringParam(params, 'cwd') || (process.env.HOME ?? '/tmp');
   const cols = positiveInt(params.cols, 80);
   const rows = positiveInt(params.rows, 24);
-  const extraEnv = safeEnvRecord(params.env);
 
-  // Validate cwd exists and is a directory
-  try {
-    const s = await stat(cwd);
-    if (!s.isDirectory()) throw new Error(`agent.spawn: cwd is not a directory: ${cwd}`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`agent.spawn: cwd not accessible: ${msg}`);
+  // Authorization. The signature gate above proves WHO is asking; this proves
+  // they may run a command THERE. `repoPath` must be a root the signer opened
+  // or was granted via project.grant, and `cwd` must resolve to a real
+  // directory at or beneath it. We keep BOTH the realpath'd root (bound
+  // read-write) and the resolved cwd (started in) — see requireRootAndDir.
+  //
+  // Fail closed: `repoPath` is required. The previous default silently fell
+  // back to $HOME, so any verified agent could fork a command as the daemon UID
+  // anywhere in the operator's home directory.
+  const repoPath = stringParam(params, 'repoPath');
+  if (!repoPath) {
+    throw new Error('agent.spawn: missing repoPath (call project.open on the root first)');
   }
+  const { repoReal, cwd } = await requireRootAndDir(
+    repoPath,
+    stringParam(params, 'cwd') || undefined,
+    ownerAgentId,
+  );
+
+  // Env allow-list (spec §7). A non-allow-listed caller key (HOME, PATH, any
+  // LD_*/GIT_*/NODE_OPTIONS loader key) is rejected by name here, before any
+  // home is built or process spawned.
+  const callerEnv = filterCallerEnv(safeEnvRecord(params.env));
 
   if (liveCountForAgent(ownerAgentId) >= MAX_PROCESSES_PER_AGENT) {
     throw new Error(
@@ -237,12 +276,48 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
     );
   }
 
-  const processId = randomUUID();
-  const env = buildSafeEnv(extraEnv);
+  // Per-agent persistent home (spec §5); HOME points here inside the sandbox.
+  const dataDir = getDaemonConfig().dataDir;
+  const agentHome = await ensureAgentHome(dataDir, ownerAgentId);
+  const env = buildConfinedEnv(callerEnv, agentHome);
 
-  // P4-IDENTITY TODO: before spawning, verify the caller holds a project.grant
-  // for the command/cwd combination. Requires the grant model from the B6 lane.
-  const pty = nodePty.spawn(command, args, {
+  // Resolve the confinement backend (cached at daemon start; lazy fallback for
+  // a handler somehow invoked before the startDaemon hook fired).
+  const conf = _confinement ?? resolveConfinementBackend();
+  // Realpath'd so the overlap guard (which compares against a realpath'd
+  // repoReal) and the tmpfs bind agree on the canonical home (GAP-320a review S1).
+  const operatorHome = resolveOperatorHome();
+
+  let file: string;
+  let argv: string[];
+  let confinement: string;
+  if (conf.backend) {
+    // Confined: node-pty execs bwrap, which execs the command inside the sandbox.
+    ({ file, argv } = conf.backend.spawnConfined(command, args, {
+      repoReal,
+      cwd,
+      agentHome,
+      operatorHome,
+      dataDir,
+    }));
+    confinement = conf.mode;
+  } else if (conf.escapeHatch) {
+    // Operator explicitly disabled confinement. Spawn unconfined, but leave a
+    // receipt: warn, and persist confinement='none' on the row.
+    file = command;
+    argv = args;
+    confinement = 'none';
+    log.warn('agent.spawn running UNCONFINED via escape hatch', { command, ownerAgentId, cwd });
+  } else {
+    // No backend and no escape hatch — refuse rather than spawn unprotected.
+    throw new Error(
+      `agent.spawn: refusing to spawn without confinement (${conf.reason}). ` +
+        'Set REVDEV_SPAWN_CONFINEMENT=none in the daemon environment to override (audited).',
+    );
+  }
+
+  const processId = randomUUID();
+  const pty = nodePty.spawn(file, argv, {
     name: 'xterm-color',
     cols,
     rows,
@@ -251,9 +326,9 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   });
 
   await db.query(
-    `INSERT INTO agent_processes (id, owner_agent, command, args, cwd, pid, status)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'running')`,
-    [processId, ownerAgentId, command, JSON.stringify(args), cwd, pty.pid],
+    `INSERT INTO agent_processes (id, owner_agent, command, args, cwd, pid, status, confinement)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'running', $7)`,
+    [processId, ownerAgentId, command, JSON.stringify(args), cwd, pty.pid, confinement],
   );
 
   const entry: ProcessEntry = {

@@ -11,7 +11,7 @@ mod local_shell;
 mod platform;
 pub mod signing;
 mod spawner;
-mod ssh;
+pub mod ssh;
 mod state;
 mod tray;
 mod updater;
@@ -177,6 +177,11 @@ pub fn run() {
             updater::check_for_update,
             updater::install_update,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running RevealUI Studio");
+        .build(tauri::generate_context!())
+        .expect("error while running RevealUI Studio")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                spawner::kill_all(app.state::<SpawnerState>().sessions.clone());
+            }
+        });
 }
