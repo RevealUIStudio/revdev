@@ -325,9 +325,11 @@ const DAEMON_TOKEN_KEY = 'revdev-daemon-token';
  * Command-to-RPC method mapping for harness commands.
  * Every value MUST be a method the daemon actually registers
  * (packages/daemon registerHandler call sites) — an unregistered method
- * dies as JSON-RPC -32601 with no useful signal to the user.
+ * dies as JSON-RPC -32601 with no useful signal to the user. A studio vitest
+ * asserts every value here is a member of the protocol's RPC_METHODS, which is
+ * itself contract-tested against the daemon registry.
  */
-const HARNESS_RPC_MAP: Record<string, string> = {
+export const HARNESS_RPC_MAP: Record<string, string> = {
   harness_ping: 'ping',
   harness_sessions: 'session.list',
   harness_inbox: 'mail.inbox',

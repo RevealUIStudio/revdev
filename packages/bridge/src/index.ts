@@ -342,6 +342,28 @@ server.tool('merge_list', 'List all merge requests', {}, async () => {
   return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
 });
 
+server.tool(
+  'merge_update',
+  'Update a merge request as it moves through the pipeline (status, PR number/URL, or error)',
+  {
+    mergeId: z.string().describe('Merge request ID to update'),
+    status: z.string().optional().describe('New status (e.g. building, opened, merged, failed)'),
+    prNumber: z.number().int().optional().describe('Pull request number once opened'),
+    prUrl: z.string().optional().describe('Pull request URL once opened'),
+    errorMessage: z.string().optional().describe('Failure reason when the status is a failure'),
+  },
+  async ({ mergeId, status, prNumber, prUrl, errorMessage }) => {
+    const result = await daemon.call(RPC_METHODS['merge.update'], {
+      mergeId,
+      status,
+      prNumber,
+      prUrl,
+      errorMessage,
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
 // -- Worktree management -----------------------------------------------------
 
 server.tool(
