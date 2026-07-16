@@ -397,6 +397,13 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  'inference.delete': z
+    .object({
+      model: z.string().max(256),
+      actorAgentId,
+    })
+    .passthrough(),
+
   'inference.start': z
     .object({
       model: z.string().max(256),
@@ -537,6 +544,21 @@ export const schemas: Record<string, z.ZodType> = {
     .passthrough(),
 
   'agent.stop': z
+    .object({
+      processId: z.string().min(1),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  // agent.list takes no required params — the handler self-scopes to the
+  // verified signer's owner_agent.
+  'agent.list': z
+    .object({
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'agent.remove': z
     .object({
       processId: z.string().min(1),
       actorAgentId,

@@ -59,6 +59,8 @@ export const RPC_METHODS = {
   // Agent spawning
   'agent.spawn': 'agent.spawn',
   'agent.stop': 'agent.stop',
+  'agent.list': 'agent.list',
+  'agent.remove': 'agent.remove',
   'agent.input': 'agent.input',
   'agent.resize': 'agent.resize',
   'agent.output': 'agent.output',
@@ -66,6 +68,7 @@ export const RPC_METHODS = {
   // Inference management
   'inference.status': 'inference.status',
   'inference.pull': 'inference.pull',
+  'inference.delete': 'inference.delete',
   'inference.start': 'inference.start',
   'inference.stop': 'inference.stop',
   'inference.chat': 'inference.chat',

@@ -84,6 +84,11 @@ pub fn requires_signature(method: &str) -> bool {
             | "agent.input"
             | "agent.resize"
             | "agent.output"
+            // agent.list returns another-agent-invisible process metadata and
+            // agent.remove kills + prunes a process; both are self-scoped to the
+            // verified signer. MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
+            | "agent.list"
+            | "agent.remove"
             // session.end evicts the target's project roots and kills its PTYs.
             // Signature-required so the daemon can self-scope it to the verified
             // signer instead of a caller-supplied `sessionId`.
@@ -527,6 +532,8 @@ mod tests {
         assert!(requires_signature("agent.input"));
         assert!(requires_signature("agent.resize"));
         assert!(requires_signature("agent.output"));
+        assert!(requires_signature("agent.list"));
+        assert!(requires_signature("agent.remove"));
         assert!(requires_signature("session.end"));
         // GAP-312: same eviction primitive as session.end, fleet-wide fan-out.
         assert!(requires_signature("harness.prune"));

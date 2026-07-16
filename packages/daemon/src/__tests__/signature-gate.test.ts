@@ -57,6 +57,10 @@ const SIGNED = [
   'agent.input',
   'agent.resize',
   'agent.output',
+  // agent.list returns another-agent-invisible process metadata and agent.remove
+  // kills + prunes; both are self-scoped to the verified signer.
+  'agent.list',
+  'agent.remove',
   // session.end evicts the target's roots and kills its PTYs, and is self-scoped
   // to the verified signer. Signature-required so the signer IS the target.
   'session.end',
