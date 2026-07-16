@@ -121,6 +121,7 @@ const IDENTITY_EXEMPT = new Set([
   // MUTATING_OR_CONTENT_METHODS entry below.
   'inference.status',
   'inference.pull',
+  'inference.delete',
   'inference.start',
   'inference.stop',
   'inference.chat',
@@ -213,6 +214,13 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'agent.input',
   'agent.resize',
   'agent.output',
+  // agent.list returns another-agent-invisible process metadata (command, cwd),
+  // and agent.remove kills + prunes a process. Both are signature-required and
+  // self-scoped to the verified signer's owner_agent — an unsigned or spoofed
+  // caller can neither enumerate nor prune another agent's PTYs. Cross-language
+  // contract: signing.rs requires_signature() must mark these too.
+  'agent.list',
+  'agent.remove',
   // session.end fans out to notifyAgentEnded, which evicts the target's project
   // roots and kills every PTY it owns. It used to take a caller-supplied target
   // and sat OUTSIDE this set, so any socket peer could end an arbitrary agent's

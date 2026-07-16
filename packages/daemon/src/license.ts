@@ -124,8 +124,8 @@ const EXEMPT_METHODS = new Set([
  * Max-marketed `memory.*` (GAP-267).
  *
  * Only Max-tier methods are listed:
- *   - memory.store / memory.query   → full AI memory (working + episodic + vector)
- *   - inference.pull/start/stop     → local-model management (pull / spawn / teardown)
+ *   - memory.store / memory.query          → full AI memory (working + episodic + vector)
+ *   - inference.pull/delete/start/stop     → local-model management (pull / rm / spawn / teardown)
  * The FREE local-inference RUN surface (inference.status/chat/generate) is in
  * EXEMPT_METHODS; every other non-exempt method is Pro by default.
  */
@@ -133,6 +133,7 @@ export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
   ['memory.store', 'max'],
   ['memory.query', 'max'],
   ['inference.pull', 'max'],
+  ['inference.delete', 'max'],
   ['inference.start', 'max'],
   ['inference.stop', 'max'],
 ]);

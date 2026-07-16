@@ -35,6 +35,7 @@ export const OLLAMA_TIMEOUTS = {
   chat: readTimeoutMs('REVDEV_OLLAMA_CHAT_TIMEOUT_MS', 300_000),
   generate: readTimeoutMs('REVDEV_OLLAMA_GENERATE_TIMEOUT_MS', 300_000),
   pull: readTimeoutMs('REVDEV_OLLAMA_PULL_TIMEOUT_MS', 1_800_000),
+  delete: readTimeoutMs('REVDEV_OLLAMA_DELETE_TIMEOUT_MS', 30_000),
 } as const;
 
 interface OllamaFetchOptions extends Omit<RequestInit, 'signal'> {
@@ -125,6 +126,43 @@ registerHandler('inference.pull', async (params) => {
       return { success: false, error: timeoutMessage('pull') };
     }
     return { success: false, error: CONNECT_ERROR };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// inference.delete — remove a locally downloaded model
+// ---------------------------------------------------------------------------
+//
+// Unlike the value-returning inference.* handlers, this maps to a void caller
+// (Studio inference_ollama_delete). It THROWS on failure so the JSON-RPC error
+// path surfaces a rejection to the caller, matching the desktop `ollama rm`
+// path (a Rust Result::Err becomes a rejected invoke). Ollama exposes model
+// deletion at DELETE /api/delete with a `{ name }` body.
+
+registerHandler('inference.delete', async (params) => {
+  const { model } = params as { model: string };
+
+  try {
+    const res = await ollamaFetch('/api/delete', {
+      method: 'DELETE',
+      body: JSON.stringify({ name: model }),
+      timeoutMs: OLLAMA_TIMEOUTS.delete,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Delete failed (${res.status}): ${text}`);
+    }
+
+    return { deleted: true, model };
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      throw new Error(timeoutMessage('delete'));
+    }
+    if (err instanceof Error && err.message.startsWith('Delete failed')) {
+      throw err;
+    }
+    throw new Error(CONNECT_ERROR);
   }
 });
 

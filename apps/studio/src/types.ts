@@ -91,7 +91,12 @@ export interface AgentSessionInfo {
   id: string;
   name: string;
   model: string;
-  backend: AgentBackend;
+  /**
+   * The inference backend, or `null` for a daemon-spawned PTY session (the
+   * daemon's agent registry has no Snap/Ollama concept — see the browser-mode
+   * adapter in `lib/invoke.ts`). The desktop path always sets a backend.
+   */
+  backend: AgentBackend | null;
   prompt: string;
   status: 'running' | 'stopped' | 'errored';
   pid: number | null;

@@ -353,6 +353,8 @@ describe('handler tier-classification coverage', () => {
     // agent PTY + lifecycle
     'agent.spawn',
     'agent.stop',
+    'agent.list',
+    'agent.remove',
     'agent.input',
     'agent.output',
     'agent.resize',
