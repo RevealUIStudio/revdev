@@ -72,6 +72,9 @@ jobs:
       # #143 failure mode) then `vite build`, mirroring build-windows.ps1's frontend
       # step, catching type errors AND bundling errors on every PR.
       - run: bash apps/studio/scripts/generate-types.sh
+      # Studio's contract test imports RPC_METHODS from @revdev/protocol, a
+      # workspace dep resolved from its dist output, so build it first.
+      - run: pnpm --filter "@revdev/protocol" build
       - run: pnpm --filter studio build
 
   test:
