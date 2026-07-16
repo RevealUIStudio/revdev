@@ -231,3 +231,21 @@ describe('invoke bridge (Tauri mode)', () => {
     expect(result.wsl_running).toBe(true);
   });
 });
+
+describe('HARNESS_RPC_MAP contract', () => {
+  it('routes every command to a method the daemon actually registers', async () => {
+    const { HARNESS_RPC_MAP } = await import('../../lib/invoke');
+    const { RPC_METHODS } = await import('@revdev/protocol');
+    const known = new Set<string>(Object.values(RPC_METHODS));
+
+    const unknownTargets = Object.entries(HARNESS_RPC_MAP)
+      .filter(([, method]) => !known.has(method))
+      .map(([command, method]) => `${command} -> ${method}`)
+      .sort();
+
+    expect(
+      unknownTargets,
+      `HARNESS_RPC_MAP targets methods absent from RPC_METHODS: ${JSON.stringify(unknownTargets)}`,
+    ).toEqual([]);
+  });
+});

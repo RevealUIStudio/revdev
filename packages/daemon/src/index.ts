@@ -24,7 +24,7 @@ export {
   refreshLicense,
 } from './guard.js';
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
-export { registerHandler, startDaemon } from './server.js';
+export { listRegisteredMethods, registerHandler, startDaemon } from './server.js';
 export {
   evaluateToolAction,
   type GuardVerdict,

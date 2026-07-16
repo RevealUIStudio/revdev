@@ -3,6 +3,12 @@
  *
  * Every method the daemon exposes is listed here so Studio, Terminal,
  * and test code can reference them without string literals.
+ *
+ * This list is NOT hand-maintained: the daemon package's rpc-contract test
+ * registers all handlers exactly as production startup does and asserts that
+ * `listRegisteredMethods()` equals `Object.values(RPC_METHODS)` in both
+ * directions. A method added to or removed from the daemon that is not
+ * mirrored here fails that test, so the constant stays honest by construction.
  */
 
 export const RPC_METHODS = {
@@ -10,12 +16,6 @@ export const RPC_METHODS = {
   ping: 'ping',
 
   // Harness management
-  'harness.list': 'harness.list',
-  'harness.execute': 'harness.execute',
-  'harness.info': 'harness.info',
-  'harness.listRunning': 'harness.listRunning',
-  'harness.syncConfig': 'harness.syncConfig',
-  'harness.diffConfig': 'harness.diffConfig',
   'harness.health': 'harness.health',
   'harness.prune': 'harness.prune',
 
@@ -25,7 +25,9 @@ export const RPC_METHODS = {
   'session.update': 'session.update',
   'session.end': 'session.end',
   'session.list': 'session.list',
-  'session.history': 'session.history',
+
+  // Agent identity
+  'identity.rotate': 'identity.rotate',
 
   // Inter-agent messaging
   'mail.send': 'mail.send',
@@ -50,6 +52,10 @@ export const RPC_METHODS = {
   'events.log': 'events.log',
   'events.query': 'events.query',
 
+  // Agent memory
+  'memory.store': 'memory.store',
+  'memory.query': 'memory.query',
+
   // Agent spawning
   'agent.spawn': 'agent.spawn',
   'agent.stop': 'agent.stop',
@@ -62,6 +68,37 @@ export const RPC_METHODS = {
   'inference.pull': 'inference.pull',
   'inference.start': 'inference.start',
   'inference.stop': 'inference.stop',
+  'inference.chat': 'inference.chat',
+  'inference.generate': 'inference.generate',
+
+  // Project access
+  'project.open': 'project.open',
+  'project.grant': 'project.grant',
+  'project.revoke': 'project.revoke',
+
+  // File I/O
+  'file.read': 'file.read',
+  'file.write': 'file.write',
+  'file.delete': 'file.delete',
+  'file.stat': 'file.stat',
+
+  // Git operations
+  'git.status': 'git.status',
+  'git.diffFile': 'git.diffFile',
+  'git.diffContent': 'git.diffContent',
+  'git.readBlobAtHead': 'git.readBlobAtHead',
+  'git.readBlobAtIndex': 'git.readBlobAtIndex',
+  'git.listBranches': 'git.listBranches',
+  'git.log': 'git.log',
+  'git.stageFile': 'git.stageFile',
+  'git.unstageFile': 'git.unstageFile',
+  'git.discardFile': 'git.discardFile',
+  'git.createBranch': 'git.createBranch',
+  'git.switchBranch': 'git.switchBranch',
+  'git.deleteBranch': 'git.deleteBranch',
+  'git.commit': 'git.commit',
+  'git.push': 'git.push',
+  'git.pull': 'git.pull',
 
   // Worktree management
   'worktree.create': 'worktree.create',
@@ -73,8 +110,4 @@ export const RPC_METHODS = {
   'merge.status': 'merge.status',
   'merge.list': 'merge.list',
   'merge.update': 'merge.update',
-
-  // Agent memory
-  'memory.store': 'memory.store',
-  'memory.query': 'memory.query',
 } as const;

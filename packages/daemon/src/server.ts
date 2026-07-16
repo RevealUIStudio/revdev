@@ -346,6 +346,15 @@ export function registerHandler(method: string, handler: RpcHandler): void {
   handlers.set(method, handler);
 }
 
+/**
+ * Returns the sorted names of every RPC method currently registered on the
+ * daemon. The contract test asserts this equals the protocol's `RPC_METHODS`
+ * constant, so the two lists cannot silently drift.
+ */
+export function listRegisteredMethods(): string[] {
+  return [...handlers.keys()].sort();
+}
+
 // ---------------------------------------------------------------------------
 // Shutdown signal — module-level AbortController whose `.signal` aborts when
 // the daemon is closing. Long-running helpers (e.g. git child-process spawn
