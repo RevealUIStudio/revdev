@@ -6,6 +6,7 @@ export default defineConfig({
     cli: 'src/cli.ts',
     'agent-identity-crypto': 'src/agent-identity-crypto.ts',
     'storage/index': 'src/storage/index.ts',
+    'tool-guard/sync-vendored': 'src/tool-guard/sync-vendored.ts',
   },
   format: ['esm'],
   dts: false,

@@ -59,6 +59,7 @@ import {
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import { revvaultSet } from './revvault-client.js';
 import { migrate } from './storage/migrate.js';
+import { initToolGuard } from './tool-guard/index.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
 
 const log = createLogger({ service: 'revdev-daemon' });
@@ -1720,6 +1721,11 @@ export async function startDaemon(
 
   // Initialize license guard (logs banner)
   initLicenseGuard();
+
+  // Initialize the native security tool-guard. Fails CLOSED, like
+  // initLicenseGuard: a daemon that cannot load its safety patterns refuses to
+  // start. Runs before the socket binds, so the throw aborts startup cleanly.
+  initToolGuard();
 
   // Initialize Neon sync (GAP-154 Phase 2). No-op when POSTGRES_URL is
   // unset — daemon runs single-machine fine; sync is purely additive.

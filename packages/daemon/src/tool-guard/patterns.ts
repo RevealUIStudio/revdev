@@ -1,0 +1,698 @@
+/**
+ * tool-guard pattern loader.
+ *
+ * Loads the canonical security-pattern manifest (patterns.json), validates its
+ * shape at load, computes a stable content hash, and exposes pure predicate
+ * evaluators over commands / file paths / write content.
+ *
+ * The manifest is DATA (substrings, prefix lists, and structured matchers).
+ * Anything a substring/prefix cannot express is a NAMED typed predicate keyed
+ * from the manifest and implemented here — never a regex string, per the fleet
+ * no-regex rule. Every matcher is evaluated with character-boundary logic
+ * (isWordChar / wordBoundaryAt), not RegExp.
+ *
+ * Two consumers share this one manifest: the daemon (imports this loader) and
+ * the Claude Code PreToolUse hook (a vendored copy of patterns.json plus a CJS
+ * mirror of this evaluator). The content hash lets a divergence surface.
+ */
+
+import { createHash } from 'node:crypto';
+import rawManifest from './patterns.json';
+
+// ---------------------------------------------------------------------------
+// Manifest types
+// ---------------------------------------------------------------------------
+
+/** One element of an ordered matcher: a substring plus optional word-boundary asserts. */
+export interface Matcher {
+  s: string;
+  bStart?: boolean;
+  bEnd?: boolean;
+}
+
+export interface MatchersRule {
+  reason: string;
+  kind: 'matchers';
+  ci?: boolean;
+  matchers: Matcher[];
+}
+
+export interface PredicateRule {
+  reason: string;
+  kind: 'predicate';
+  predicate: string;
+}
+
+export type DangerousCommandRule = MatchersRule | PredicateRule;
+
+export interface ProductionDb {
+  commandTriggers: string[];
+  urlIndicators: string[];
+}
+
+export type ContentSecretSeverity = 'block' | 'warn';
+
+export interface SubstringAnySecret {
+  severity: ContentSecretSeverity;
+  reason: string;
+  kind: 'substringAny';
+  needles: string[];
+}
+
+export interface PemPrivateKeySecret {
+  severity: ContentSecretSeverity;
+  reason: string;
+  kind: 'pemPrivateKey';
+  begin: string;
+  end: string;
+  types: string[];
+}
+
+export type TokenCharset = 'alnum' | 'alnumUnderscore' | 'upperDigit';
+
+export interface TokenSecret {
+  severity: ContentSecretSeverity;
+  reason: string;
+  kind: 'token';
+  prefix: string;
+  len: number;
+  mode: 'exact' | 'min';
+  charset: TokenCharset;
+}
+
+export interface PredicateSecret {
+  severity: ContentSecretSeverity;
+  reason: string;
+  kind: 'predicate';
+  predicate: string;
+}
+
+export type ContentSecret =
+  | SubstringAnySecret
+  | PemPrivateKeySecret
+  | TokenSecret
+  | PredicateSecret;
+
+export interface PatternManifest {
+  version: number;
+  dangerousCommands: DangerousCommandRule[];
+  productionDb: ProductionDb;
+  credentialPathEndsWith: string[];
+  credentialPathContains: string[];
+  credentialPathPredicates: string[];
+  blockedWritePrefixes: string[];
+  blockedWriteHomeRelativePrefixes: string[];
+  lockFiles: string[];
+  envTemplateExact: string[];
+  envTemplateSuffixes: string[];
+  contentSecrets: ContentSecret[];
+}
+
+export interface CommandVerdict {
+  reason: string;
+}
+
+export interface ContentVerdict {
+  severity: ContentSecretSeverity;
+  reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Character helpers (no regex)
+// ---------------------------------------------------------------------------
+
+function isWordChar(ch: string | undefined): boolean {
+  if (ch === undefined || ch.length === 0) return false;
+  const c = ch.charCodeAt(0);
+  return (
+    (c >= 48 && c <= 57) || // 0-9
+    (c >= 65 && c <= 90) || // A-Z
+    (c >= 97 && c <= 122) || // a-z
+    c === 95 // _
+  );
+}
+
+function isDigit(ch: string | undefined): boolean {
+  if (ch === undefined) return false;
+  const c = ch.charCodeAt(0);
+  return c >= 48 && c <= 57;
+}
+
+function isWhitespace(ch: string | undefined): boolean {
+  if (ch === undefined) return false;
+  const c = ch.charCodeAt(0);
+  // space, tab, LF, CR, FF, VT
+  return c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11;
+}
+
+/** True when index `i` in `s` is a word boundary (word/non-word transition). */
+function wordBoundaryAt(s: string, i: number): boolean {
+  const before = i > 0 && isWordChar(s[i - 1]);
+  const after = i < s.length && isWordChar(s[i]);
+  return before !== after;
+}
+
+function inCharset(ch: string | undefined, charset: TokenCharset): boolean {
+  if (ch === undefined || ch.length === 0) return false;
+  const c = ch.charCodeAt(0);
+  const isUpper = c >= 65 && c <= 90;
+  const isLower = c >= 97 && c <= 122;
+  const isNum = c >= 48 && c <= 57;
+  switch (charset) {
+    case 'alnum':
+      return isUpper || isLower || isNum;
+    case 'alnumUnderscore':
+      return isUpper || isLower || isNum || c === 95;
+    case 'upperDigit':
+      return isUpper || isNum;
+    default:
+      return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ordered matcher engine
+// ---------------------------------------------------------------------------
+
+/**
+ * True when every matcher appears in `text` in order, each satisfying its
+ * word-boundary asserts. `ci` lower-cases both haystack and needles.
+ */
+function matchOrdered(text: string, matchers: Matcher[], ci: boolean): boolean {
+  const hay = ci ? text.toLowerCase() : text;
+  let pos = 0;
+  for (const m of matchers) {
+    const needle = ci ? m.s.toLowerCase() : m.s;
+    let idx = hay.indexOf(needle, pos);
+    let found = -1;
+    while (idx !== -1) {
+      const startOk = !m.bStart || idx === 0 || !isWordChar(hay[idx - 1]);
+      const end = idx + needle.length;
+      const endOk = !m.bEnd || end >= hay.length || !isWordChar(hay[end]);
+      if (startOk && endOk) {
+        found = idx;
+        break;
+      }
+      idx = hay.indexOf(needle, idx + 1);
+    }
+    if (found === -1) return false;
+    pos = found + needle.length;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Named command predicates
+// ---------------------------------------------------------------------------
+
+/** `powershell` (optionally `.exe`) immediately followed by whitespace, case-insensitive. */
+function powershellInvocation(command: string): boolean {
+  const lower = command.toLowerCase();
+  const token = 'powershell';
+  let idx = lower.indexOf(token);
+  while (idx !== -1) {
+    const startOk = idx === 0 || !isWordChar(lower[idx - 1]);
+    if (startOk) {
+      let pos = idx + token.length;
+      if (lower.startsWith('.exe', pos)) pos += 4;
+      if (isWhitespace(lower[pos])) return true;
+    }
+    idx = lower.indexOf(token, idx + 1);
+  }
+  return false;
+}
+
+/** `wsl.exe` + whitespace + (`--exec` | `--`) + whitespace. */
+function wslInterop(command: string): boolean {
+  const token = 'wsl.exe';
+  let idx = command.indexOf(token);
+  while (idx !== -1) {
+    const startOk = idx === 0 || !isWordChar(command[idx - 1]);
+    if (startOk) {
+      let p = idx + token.length;
+      let sawWs = false;
+      while (isWhitespace(command[p])) {
+        p += 1;
+        sawWs = true;
+      }
+      if (sawWs) {
+        if (command.startsWith('--exec', p) && isWhitespace(command[p + 6])) return true;
+        if (command.startsWith('--', p) && isWhitespace(command[p + 2])) return true;
+      }
+    }
+    idx = command.indexOf(token, idx + 1);
+  }
+  return false;
+}
+
+/** `>` then optional whitespace then `/mnt/c/`. */
+function redirectToWindows(command: string): boolean {
+  let idx = command.indexOf('>');
+  while (idx !== -1) {
+    let p = idx + 1;
+    while (isWhitespace(command[p])) p += 1;
+    if (command.startsWith('/mnt/c/', p)) return true;
+    idx = command.indexOf('>', idx + 1);
+  }
+  return false;
+}
+
+/** Match `interp\b` at position p for one of the given interpreter tokens. */
+function interpreterAt(text: string, p: number, interpreters: string[]): boolean {
+  for (const interp of interpreters) {
+    if (text.startsWith(interp, p)) {
+      let end = p + interp.length;
+      // python3? — allow an optional trailing "3".
+      if (interp === 'python' && text[end] === '3') end += 1;
+      if (end >= text.length || !isWordChar(text[end])) return true;
+    }
+  }
+  return false;
+}
+
+/** `fetcher\b` then non-pipe chars, a pipe, optional whitespace, then a listed interpreter. */
+function fetcherPipedTo(command: string, fetcher: string, interpreters: string[]): boolean {
+  let idx = command.indexOf(fetcher);
+  while (idx !== -1) {
+    const startOk = idx === 0 || !isWordChar(command[idx - 1]);
+    const end = idx + fetcher.length;
+    const endOk = end >= command.length || !isWordChar(command[end]);
+    if (startOk && endOk) {
+      const pipe = command.indexOf('|', end);
+      if (pipe !== -1) {
+        let p = pipe + 1;
+        while (isWhitespace(command[p])) p += 1;
+        if (interpreterAt(command, p, interpreters)) return true;
+      }
+    }
+    idx = command.indexOf(fetcher, idx + 1);
+  }
+  return false;
+}
+
+function curlPipedToInterpreter(command: string): boolean {
+  return fetcherPipedTo(command, 'curl', ['bash', 'sh', 'zsh', 'node', 'python', 'perl', 'ruby']);
+}
+
+function wgetPipedToShell(command: string): boolean {
+  return fetcherPipedTo(command, 'wget', ['bash', 'sh', 'zsh']);
+}
+
+/** `gh api` then, anywhere after, `-X DELETE` or `--method[ =]DELETE` (case-insensitive). */
+function ghApiDelete(command: string): boolean {
+  const lower = command.toLowerCase();
+  let idx = lower.indexOf('gh');
+  while (idx !== -1) {
+    const startOk = idx === 0 || !isWordChar(lower[idx - 1]);
+    if (startOk) {
+      let p = idx + 2;
+      let sawWs = false;
+      while (isWhitespace(lower[p])) {
+        p += 1;
+        sawWs = true;
+      }
+      if (sawWs && lower.startsWith('api', p)) {
+        const apiEnd = p + 3;
+        if (apiEnd >= lower.length || !isWordChar(lower[apiEnd])) {
+          if (deleteFormAfter(lower, apiEnd)) return true;
+        }
+      }
+    }
+    idx = lower.indexOf('gh', idx + 1);
+  }
+  return false;
+}
+
+/** `-x` (+ ws) + `delete`, or `--method` + (` ` | `=`) + ws + `delete`, in already-lowercased text. */
+function deleteFormAfter(lower: string, from: number): boolean {
+  let x = lower.indexOf('-x', from);
+  while (x !== -1) {
+    let p = x + 2;
+    while (isWhitespace(lower[p])) p += 1;
+    if (lower.startsWith('delete', p)) return true;
+    x = lower.indexOf('-x', x + 1);
+  }
+  let m = lower.indexOf('--method', from);
+  while (m !== -1) {
+    let p = m + 8;
+    if (lower[p] === ' ' || lower[p] === '=') {
+      p += 1;
+      while (isWhitespace(lower[p])) p += 1;
+      if (lower.startsWith('delete', p)) return true;
+    }
+    m = lower.indexOf('--method', m + 1);
+  }
+  return false;
+}
+
+const COMMAND_PREDICATES: Record<string, (command: string) => boolean> = {
+  powershellInvocation,
+  wslInterop,
+  redirectToWindows,
+  curlPipedToInterpreter,
+  wgetPipedToShell,
+  ghApiDelete,
+};
+
+// ---------------------------------------------------------------------------
+// Named credential-path predicates
+// ---------------------------------------------------------------------------
+
+/** `/proc/<digits>/environ` at end of path. */
+function procEnviron(path: string): boolean {
+  const tail = '/environ';
+  if (!path.endsWith(tail)) return false;
+  const digitsEnd = path.length - tail.length;
+  const marker = '/proc/';
+  let k = path.indexOf(marker);
+  while (k !== -1) {
+    const digitsStart = k + marker.length;
+    if (digitsStart < digitsEnd) {
+      let allDigits = true;
+      for (let i = digitsStart; i < digitsEnd; i += 1) {
+        if (!isDigit(path[i])) {
+          allDigits = false;
+          break;
+        }
+      }
+      if (allDigits) return true;
+    }
+    k = path.indexOf(marker, k + 1);
+  }
+  return false;
+}
+
+const CREDENTIAL_PATH_PREDICATES: Record<string, (path: string) => boolean> = {
+  procEnviron,
+};
+
+// ---------------------------------------------------------------------------
+// Named content-secret predicates + token/pem matchers
+// ---------------------------------------------------------------------------
+
+/** `sk-ant-api` + 2 digits + `-` + >=90 of [A-Za-z0-9_-]. */
+function anthropicApiKey(content: string): boolean {
+  const prefix = 'sk-ant-api';
+  let idx = content.indexOf(prefix);
+  while (idx !== -1) {
+    const startOk = idx === 0 || !isWordChar(content[idx - 1]);
+    if (startOk) {
+      let p = idx + prefix.length;
+      if (isDigit(content[p]) && isDigit(content[p + 1]) && content[p + 2] === '-') {
+        p += 3;
+        let run = 0;
+        while (p + run < content.length) {
+          const ch = content[p + run];
+          if (inCharset(ch, 'alnumUnderscore') || ch === '-') run += 1;
+          else break;
+        }
+        if (run >= 90) return true;
+      }
+    }
+    idx = content.indexOf(prefix, idx + 1);
+  }
+  return false;
+}
+
+const CONTENT_PREDICATES: Record<string, (content: string) => boolean> = {
+  anthropicApiKey,
+};
+
+function matchToken(content: string, spec: TokenSecret): boolean {
+  let idx = content.indexOf(spec.prefix);
+  while (idx !== -1) {
+    const startOk = idx === 0 || !isWordChar(content[idx - 1]);
+    if (startOk) {
+      const runStart = idx + spec.prefix.length;
+      let run = 0;
+      while (runStart + run < content.length && inCharset(content[runStart + run], spec.charset)) {
+        run += 1;
+      }
+      if (spec.mode === 'exact') {
+        if (run === spec.len && wordBoundaryAt(content, runStart + spec.len)) return true;
+      } else if (run >= spec.len && wordBoundaryAt(content, runStart + run)) {
+        return true;
+      }
+    }
+    idx = content.indexOf(spec.prefix, idx + 1);
+  }
+  return false;
+}
+
+function matchPemPrivateKey(content: string, spec: PemPrivateKeySecret): boolean {
+  for (const type of spec.types) {
+    if (content.includes(spec.begin + type + spec.end)) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Public evaluators
+// ---------------------------------------------------------------------------
+
+/** First dangerous-command rule matching `command`, or null. */
+export function evaluateCommand(command: string, manifest: PatternManifest): CommandVerdict | null {
+  for (const rule of manifest.dangerousCommands) {
+    if (rule.kind === 'matchers') {
+      if (matchOrdered(command, rule.matchers, rule.ci === true)) {
+        return { reason: rule.reason };
+      }
+    } else {
+      const pred = COMMAND_PREDICATES[rule.predicate];
+      if (pred?.(command)) return { reason: rule.reason };
+    }
+  }
+  return null;
+}
+
+/**
+ * First content-secret verdict, preferring `block` (manifest lists block
+ * entries first, so first match preserves the hook's block-before-warn order).
+ */
+export function evaluateContentSecrets(
+  content: string,
+  manifest: PatternManifest,
+): ContentVerdict | null {
+  for (const secret of manifest.contentSecrets) {
+    let hit = false;
+    switch (secret.kind) {
+      case 'substringAny':
+        hit = secret.needles.some((n) => content.includes(n));
+        break;
+      case 'pemPrivateKey':
+        hit = matchPemPrivateKey(content, secret);
+        break;
+      case 'token':
+        hit = matchToken(content, secret);
+        break;
+      default: {
+        const pred = CONTENT_PREDICATES[secret.predicate];
+        hit = pred ? pred(content) : false;
+        break;
+      }
+    }
+    if (hit) return { severity: secret.severity, reason: secret.reason };
+  }
+  return null;
+}
+
+/** True when a normalized (forward-slash) path is a protected credential file. */
+export function isCredentialPath(normPath: string, manifest: PatternManifest): boolean {
+  if (manifest.credentialPathEndsWith.some((s) => normPath.endsWith(s))) return true;
+  if (manifest.credentialPathContains.some((s) => normPath.includes(s))) return true;
+  for (const name of manifest.credentialPathPredicates) {
+    const pred = CREDENTIAL_PATH_PREDICATES[name];
+    if (pred?.(normPath)) return true;
+  }
+  return false;
+}
+
+/** True when a normalized write path falls under a protected system prefix. */
+export function isBlockedWritePath(
+  normPath: string,
+  homeDir: string,
+  manifest: PatternManifest,
+): boolean {
+  if (manifest.blockedWritePrefixes.some((p) => normPath.startsWith(p))) return true;
+  const home = homeDir.replace(/\\/g, '/');
+  for (const rel of manifest.blockedWriteHomeRelativePrefixes) {
+    if (normPath.startsWith(`${home}/${rel}/`)) return true;
+  }
+  return false;
+}
+
+/** True when a lowercased ".env"-prefixed basename is a committed-template exemption. */
+export function isEnvTemplate(lowerBasename: string, manifest: PatternManifest): boolean {
+  if (manifest.envTemplateExact.includes(lowerBasename)) return true;
+  if (!lowerBasename.startsWith('.env.')) return false;
+  for (const suffix of manifest.envTemplateSuffixes) {
+    if (lowerBasename.endsWith(suffix) && lowerBasename.length > '.env.'.length + suffix.length) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True when a basename is a protected .env file (not a committed template). */
+export function isProtectedEnvFile(basename: string, manifest: PatternManifest): boolean {
+  const lower = basename.toLowerCase();
+  return lower.startsWith('.env') && !isEnvTemplate(lower, manifest);
+}
+
+/** True when a basename is a protected lock file. */
+export function isLockFile(basename: string, manifest: PatternManifest): boolean {
+  return manifest.lockFiles.includes(basename);
+}
+
+/**
+ * True when a command targets a production database URL. The command trigger +
+ * URL indicator lists are canonical here; the consumer supplies the URL it
+ * knows about (env var, inline assignment) since the daemon and the hook read
+ * it from different places.
+ */
+export function isProductionDbCommand(
+  command: string,
+  dbUrl: string,
+  manifest: PatternManifest,
+): boolean {
+  if (!dbUrl) return false;
+  const triggered = manifest.productionDb.commandTriggers.some((t) => command.includes(t));
+  if (!triggered) return false;
+  return manifest.productionDb.urlIndicators.some((u) => dbUrl.includes(u));
+}
+
+// ---------------------------------------------------------------------------
+// Load + validate + hash
+// ---------------------------------------------------------------------------
+
+/** Deterministic serialization (recursively key-sorted) for a stable content hash. */
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
+}
+
+/** sha256 (hex) of the stably-serialized manifest. */
+export function manifestHash(manifest: PatternManifest): string {
+  return createHash('sha256').update(stableStringify(manifest)).digest('hex');
+}
+
+function assert(condition: boolean, message: string): void {
+  if (!condition) throw new Error(`tool-guard patterns.json invalid: ${message}`);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+const KNOWN_COMMAND_PREDICATES = new Set(Object.keys(COMMAND_PREDICATES));
+const KNOWN_CREDENTIAL_PREDICATES = new Set(Object.keys(CREDENTIAL_PATH_PREDICATES));
+const KNOWN_CONTENT_PREDICATES = new Set(Object.keys(CONTENT_PREDICATES));
+
+/** Validate manifest shape; throws on any structural problem (fail-closed at load). */
+export function validateManifest(value: unknown): PatternManifest {
+  assert(typeof value === 'object' && value !== null, 'not an object');
+  const m = value as Record<string, unknown>;
+  assert(typeof m.version === 'number', 'version must be a number');
+
+  assert(Array.isArray(m.dangerousCommands), 'dangerousCommands must be an array');
+  for (const rule of m.dangerousCommands as unknown[]) {
+    assert(typeof rule === 'object' && rule !== null, 'dangerousCommands entry not an object');
+    const r = rule as Record<string, unknown>;
+    assert(typeof r.reason === 'string', 'dangerousCommands.reason must be a string');
+    if (r.kind === 'matchers') {
+      assert(
+        Array.isArray(r.matchers) && r.matchers.length > 0,
+        'matchers must be a non-empty array',
+      );
+      for (const mm of r.matchers as unknown[]) {
+        const matcher = mm as Record<string, unknown>;
+        assert(
+          typeof matcher.s === 'string' && matcher.s.length > 0,
+          'matcher.s must be a non-empty string',
+        );
+      }
+    } else if (r.kind === 'predicate') {
+      assert(
+        typeof r.predicate === 'string' && KNOWN_COMMAND_PREDICATES.has(r.predicate),
+        `unknown command predicate: ${String(r.predicate)}`,
+      );
+    } else {
+      assert(false, `unknown dangerousCommands kind: ${String(r.kind)}`);
+    }
+  }
+
+  const pdb = m.productionDb as Record<string, unknown> | undefined;
+  assert(typeof pdb === 'object' && pdb !== null, 'productionDb must be an object');
+  assert(isStringArray(pdb?.commandTriggers), 'productionDb.commandTriggers must be string[]');
+  assert(isStringArray(pdb?.urlIndicators), 'productionDb.urlIndicators must be string[]');
+
+  assert(isStringArray(m.credentialPathEndsWith), 'credentialPathEndsWith must be string[]');
+  assert(isStringArray(m.credentialPathContains), 'credentialPathContains must be string[]');
+  assert(isStringArray(m.credentialPathPredicates), 'credentialPathPredicates must be string[]');
+  for (const name of m.credentialPathPredicates as string[]) {
+    assert(KNOWN_CREDENTIAL_PREDICATES.has(name), `unknown credential predicate: ${name}`);
+  }
+  assert(isStringArray(m.blockedWritePrefixes), 'blockedWritePrefixes must be string[]');
+  assert(
+    isStringArray(m.blockedWriteHomeRelativePrefixes),
+    'blockedWriteHomeRelativePrefixes must be string[]',
+  );
+  assert(isStringArray(m.lockFiles), 'lockFiles must be string[]');
+  assert(isStringArray(m.envTemplateExact), 'envTemplateExact must be string[]');
+  assert(isStringArray(m.envTemplateSuffixes), 'envTemplateSuffixes must be string[]');
+
+  assert(Array.isArray(m.contentSecrets), 'contentSecrets must be an array');
+  for (const secret of m.contentSecrets as unknown[]) {
+    const s = secret as Record<string, unknown>;
+    assert(s.severity === 'block' || s.severity === 'warn', 'contentSecrets.severity invalid');
+    assert(typeof s.reason === 'string', 'contentSecrets.reason must be a string');
+    switch (s.kind) {
+      case 'substringAny':
+        assert(
+          isStringArray(s.needles) && (s.needles as string[]).length > 0,
+          'substringAny.needles invalid',
+        );
+        break;
+      case 'pemPrivateKey':
+        assert(typeof s.begin === 'string', 'pemPrivateKey.begin must be a string');
+        assert(typeof s.end === 'string', 'pemPrivateKey.end must be a string');
+        assert(isStringArray(s.types), 'pemPrivateKey.types must be string[]');
+        break;
+      case 'token':
+        assert(
+          typeof s.prefix === 'string' && (s.prefix as string).length > 0,
+          'token.prefix invalid',
+        );
+        assert(typeof s.len === 'number' && (s.len as number) > 0, 'token.len invalid');
+        assert(s.mode === 'exact' || s.mode === 'min', 'token.mode invalid');
+        assert(
+          s.charset === 'alnum' || s.charset === 'alnumUnderscore' || s.charset === 'upperDigit',
+          'token.charset invalid',
+        );
+        break;
+      case 'predicate':
+        assert(
+          typeof s.predicate === 'string' && KNOWN_CONTENT_PREDICATES.has(s.predicate as string),
+          `unknown content predicate: ${String(s.predicate)}`,
+        );
+        break;
+      default:
+        assert(false, `unknown contentSecrets kind: ${String(s.kind)}`);
+    }
+  }
+
+  return value as PatternManifest;
+}
+
+let cached: { manifest: PatternManifest; hash: string } | null = null;
+
+/** Load, validate, and hash the manifest once. Throws on an invalid manifest. */
+export function loadPatterns(): { manifest: PatternManifest; hash: string } {
+  if (cached) return cached;
+  const manifest = validateManifest(rawManifest);
+  cached = { manifest, hash: manifestHash(manifest) };
+  return cached;
+}
