@@ -321,7 +321,12 @@ const MOCK_DATA: Record<string, unknown> = {
 const DAEMON_URL_KEY = 'revdev-daemon-url';
 const DAEMON_TOKEN_KEY = 'revdev-daemon-token';
 
-/** Command-to-RPC method mapping for harness commands */
+/**
+ * Command-to-RPC method mapping for harness commands.
+ * Every value MUST be a method the daemon actually registers
+ * (packages/daemon registerHandler call sites) — an unregistered method
+ * dies as JSON-RPC -32601 with no useful signal to the user.
+ */
 const HARNESS_RPC_MAP: Record<string, string> = {
   harness_ping: 'ping',
   harness_sessions: 'session.list',
@@ -340,22 +345,32 @@ const HARNESS_RPC_MAP: Record<string, string> = {
   // Agent spawner
   agent_spawn: 'agent.spawn',
   agent_stop: 'agent.stop',
-  agent_list: 'agent.list',
-  agent_remove: 'agent.remove',
   agent_input: 'agent.input',
   agent_resize: 'agent.resize',
-  // Inference engine management
-  inference_ollama_status: 'inference.ollama.status',
-  inference_ollama_models: 'inference.ollama.models',
-  inference_ollama_pull: 'inference.ollama.pull',
-  inference_ollama_delete: 'inference.ollama.delete',
-  inference_ollama_start: 'inference.ollama.start',
-  inference_ollama_stop: 'inference.ollama.stop',
-  inference_snap_list: 'inference.snap.list',
-  inference_snap_status: 'inference.snap.status',
-  inference_snap_install: 'inference.snap.install',
-  inference_snap_remove: 'inference.snap.remove',
 };
+
+/**
+ * Commands implemented only by the Tauri (Rust) backend. The daemon has no
+ * RPC equivalent: agent.list / agent.remove are not registered, and the
+ * daemon's inference.* surface (inference.status/pull/start/stop) differs
+ * from these commands in both namespace and result shape. When a remote
+ * daemon IS configured, these fail loudly instead of silently calling a
+ * nonexistent method or serving fabricated mock state next to real data.
+ */
+const DESKTOP_ONLY_COMMANDS = new Set([
+  'agent_list',
+  'agent_remove',
+  'inference_ollama_status',
+  'inference_ollama_models',
+  'inference_ollama_pull',
+  'inference_ollama_delete',
+  'inference_ollama_start',
+  'inference_ollama_stop',
+  'inference_snap_list',
+  'inference_snap_status',
+  'inference_snap_install',
+  'inference_snap_remove',
+]);
 
 /** Map Tauri command args (snake_case) to RPC params (camelCase) */
 function toRpcParams(cmd: string, args?: Record<string, unknown>): Record<string, unknown> {
@@ -482,6 +497,17 @@ function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
         .catch(() => false as T);
     }
     return httpRpc<T>(rpcMethod, params);
+  }
+
+  // Desktop-only commands with a live daemon configured: reject with a real
+  // explanation. Falling through to mock data here would show fabricated
+  // agent/inference state alongside real daemon data.
+  if (DESKTOP_ONLY_COMMANDS.has(cmd) && getDaemonUrl()) {
+    return Promise.reject(
+      new Error(
+        `${cmd} is only available in the desktop app. The remote daemon has no equivalent RPC yet.`,
+      ),
+    );
   }
 
   // Fallback: mock data for non-harness commands. Serving fabricated system
