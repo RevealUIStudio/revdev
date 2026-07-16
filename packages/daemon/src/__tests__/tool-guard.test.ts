@@ -67,7 +67,7 @@ describe('evaluateToolAction — read', () => {
   });
 
   it('allows reading an ordinary repo file', () => {
-    expect(evaluateToolAction({ kind: 'read', path: '/home/dev/repo/src/index.ts' }).allowed).toBe(
+    expect(evaluateToolAction({ kind: 'read', path: '/work/repo/src/index.ts' }).allowed).toBe(
       true,
     );
   });
@@ -81,7 +81,7 @@ describe('evaluateToolAction — write', () => {
   });
 
   it('blocks a write of an env file', () => {
-    const v = evaluateToolAction({ kind: 'write', path: '/home/dev/repo/.env', content: 'x' });
+    const v = evaluateToolAction({ kind: 'write', path: '/work/repo/.env', content: 'x' });
     expect(v.allowed).toBe(false);
     expect(v.rule).toBe('protected-env-file');
   });
@@ -89,7 +89,7 @@ describe('evaluateToolAction — write', () => {
   it('blocks a write of a lock file', () => {
     const v = evaluateToolAction({
       kind: 'write',
-      path: '/home/dev/repo/pnpm-lock.yaml',
+      path: '/work/repo/pnpm-lock.yaml',
       content: 'x',
     });
     expect(v.allowed).toBe(false);
@@ -99,7 +99,7 @@ describe('evaluateToolAction — write', () => {
   it('blocks a write whose content carries secret material (Stripe live key)', () => {
     const v = evaluateToolAction({
       kind: 'write',
-      path: '/home/dev/repo/config.ts',
+      path: '/work/repo/config.ts',
       content: `const k = "${STRIPE_LIVE}";`,
     });
     expect(v.allowed).toBe(false);
@@ -109,7 +109,7 @@ describe('evaluateToolAction — write', () => {
   it('allows an ordinary write', () => {
     const v = evaluateToolAction({
       kind: 'write',
-      path: '/home/dev/repo/src/index.ts',
+      path: '/work/repo/src/index.ts',
       content: 'export const x = 1;',
     });
     expect(v.allowed).toBe(true);
@@ -118,7 +118,7 @@ describe('evaluateToolAction — write', () => {
   it('allows a write of a committed env template', () => {
     const v = evaluateToolAction({
       kind: 'write',
-      path: '/home/dev/repo/.env.example',
+      path: '/work/repo/.env.example',
       content: 'API_KEY=',
     });
     expect(v.allowed).toBe(true);
@@ -127,7 +127,7 @@ describe('evaluateToolAction — write', () => {
   it('does not block on a warn-severity secret', () => {
     const v = evaluateToolAction({
       kind: 'write',
-      path: '/home/dev/repo/notes.md',
+      path: '/work/repo/notes.md',
       content: `token ${GH_PAT_36}`,
     });
     expect(v.allowed).toBe(true);
@@ -142,7 +142,7 @@ describe('evaluateToolAction — delete', () => {
   });
 
   it('allows deleting an ordinary repo file', () => {
-    expect(evaluateToolAction({ kind: 'delete', path: '/home/dev/repo/tmp.txt' }).allowed).toBe(
+    expect(evaluateToolAction({ kind: 'delete', path: '/work/repo/tmp.txt' }).allowed).toBe(
       true,
     );
   });

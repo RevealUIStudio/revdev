@@ -30,3 +30,9 @@ docs/INDEX.md                                              private-jv-repo
 # issue bodies. This is the config that enforces the rule, not a leak of
 # it (mirrors the ci.yml anti-regression entries).
 .gitleaks.issues.toml                   lit-username,abs-home-path,private-jv-repo,private-jv-name
+
+# The native tool-guard manifest carries external-drive mount prefixes as
+# blocked-WRITE-path data (defensive, extracted verbatim from the Claude Code
+# PreToolUse hook): they tell the guard to REFUSE writes under those mounts.
+# This is a denylist entry, not a reference to a real drive location.
+packages/daemon/src/tool-guard/patterns.json              lts-drive
