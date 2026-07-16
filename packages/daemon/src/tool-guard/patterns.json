@@ -233,16 +233,7 @@
   ],
   "credentialPathContains": ["/.gnupg/", "/run/secrets/"],
   "credentialPathPredicates": ["procEnviron"],
-  "blockedWritePrefixes": [
-    "/mnt/c/",
-    "/mnt/e/",
-    "/etc/",
-    "/usr/",
-    "/var/",
-    "/boot/",
-    "/sys/",
-    "/proc/"
-  ],
+  "blockedWritePrefixes": ["/mnt/c/", "/etc/", "/usr/", "/var/", "/boot/", "/sys/", "/proc/"],
   "blockedWriteHomeRelativePrefixes": [".ssh", ".aws", ".gnupg", ".config/gh"],
   "lockFiles": [
     "package-lock.json",

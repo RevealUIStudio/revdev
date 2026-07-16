@@ -28,7 +28,7 @@ const PEM_KEY = ['-----BEGIN ', 'RSA ', 'PRIVATE KEY-----'].join('');
 
 const EXPECTED = {
   version: 1,
-  hash: 'a7e435373c0f0dc9c64963950095d0ed75d274dbbd85a024569842fdf4c7cc3a',
+  hash: '7001853b6f8a077d4afe91a637e49d41d56721a6894a3a18d17c7d9a2274af6e',
 };
 
 describe('manifest hash + version lockstep', () => {
@@ -38,6 +38,14 @@ describe('manifest hash + version lockstep', () => {
     // If this fails, patterns.json changed. Update EXPECTED.hash AND bump
     // `version` in patterns.json (and re-sync the vendored hook copy).
     expect(hash).toBe(EXPECTED.hash);
+  });
+
+  it('does not ship machine-specific mount prefixes in the public manifest', () => {
+    // Machine-local mounts (e.g. an operator's external drive) stay in the
+    // Claude-side hook as a local prefix; the shipped manifest is generic.
+    // The prefix is assembled here so the literal never appears in source.
+    const machineMount = ['/mnt', 'e', ''].join('/');
+    expect(manifest.blockedWritePrefixes).not.toContain(machineMount);
   });
 });
 
@@ -142,9 +150,7 @@ describe('evaluateToolAction — delete', () => {
   });
 
   it('allows deleting an ordinary repo file', () => {
-    expect(evaluateToolAction({ kind: 'delete', path: '/work/repo/tmp.txt' }).allowed).toBe(
-      true,
-    );
+    expect(evaluateToolAction({ kind: 'delete', path: '/work/repo/tmp.txt' }).allowed).toBe(true);
   });
 });
 
