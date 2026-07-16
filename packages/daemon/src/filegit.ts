@@ -33,6 +33,7 @@ import { createLogger } from '@revealui/utils/logger';
 import { findNeverBoundOverlap, neverBoundSet, resolveOperatorHome } from './confinement.js';
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { getDaemonConfig, registerHandler } from './server.js';
+import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
 import { runGit, type ShellResult } from './vcs.js';
 
 const log = createLogger({ service: 'revdev-daemon/filegit' });
@@ -799,19 +800,27 @@ registerHandler('project.revoke', async (params, _db, ctx) => {
 // file.*
 // ---------------------------------------------------------------------------
 
-registerHandler('file.read', async (params, _db, ctx) => {
+registerHandler('file.read', async (params, db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), true);
+  const verdict = evaluateToolAction({ kind: 'read', path: target });
+  if (!verdict.allowed) {
+    throw await denyToolAction(db, 'file.read', ctx.agentId, verdict, { path: target });
+  }
   const buf = await readFile(target);
   return inlineContent(buf);
 });
 
-registerHandler('file.write', async (params, _db, ctx) => {
+registerHandler('file.write', async (params, db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const filePathRaw = requireStr(params.filePath, 'filePath');
   const target = await resolveInRoot(repoReal, filePathRaw, false);
   assertNotGitInternal(repoReal, target, filePathRaw);
   const content = str(params.content) ?? '';
+  const verdict = evaluateToolAction({ kind: 'write', path: target, content });
+  if (!verdict.allowed) {
+    throw await denyToolAction(db, 'file.write', ctx.agentId, verdict, { path: target });
+  }
   // Open with O_NOFOLLOW so a symlink swapped in at the FINAL component between
   // resolveInRoot's parent-realpath check and the write (leaf TOCTOU) is
   // refused (ELOOP) — a write can't be redirected outside the registered root.
@@ -829,11 +838,15 @@ registerHandler('file.write', async (params, _db, ctx) => {
   return { success: true, bytes: Buffer.byteLength(content, 'utf8') };
 });
 
-registerHandler('file.delete', async (params, _db, ctx) => {
+registerHandler('file.delete', async (params, db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
   const filePathRaw = requireStr(params.filePath, 'filePath');
   const target = await resolveInRoot(repoReal, filePathRaw, true);
   assertNotGitInternal(repoReal, target, filePathRaw);
+  const verdict = evaluateToolAction({ kind: 'delete', path: target });
+  if (!verdict.allowed) {
+    throw await denyToolAction(db, 'file.delete', ctx.agentId, verdict, { path: target });
+  }
   await unlink(target);
   return { success: true };
 });

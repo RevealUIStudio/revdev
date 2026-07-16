@@ -43,6 +43,7 @@ import {
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { requireRootAndDir } from './filegit.js';
 import { getDaemonConfig, registerHandler, type SocketContext } from './server.js';
+import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
 
@@ -243,6 +244,18 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   if (!command) throw new Error('agent.spawn: missing command');
 
   const args = stringArrayParam(params, 'args');
+
+  // Native tool-guard command-class check. Composes with (never replaces) the
+  // authorization + confinement gates below: the sandbox bounds WHAT a command
+  // can touch, this refuses a command that matches a dangerous pattern (curl |
+  // sh, inline eval, credential reads) before any process is forked.
+  const commandLine = args.length > 0 ? `${command} ${args.join(' ')}` : command;
+  const guardVerdict = evaluateToolAction({ kind: 'command', command: commandLine });
+  if (!guardVerdict.allowed) {
+    throw await denyToolAction(db, 'agent.spawn', ownerAgentId, guardVerdict, {
+      command: commandLine,
+    });
+  }
   const cols = positiveInt(params.cols, 80);
   const rows = positiveInt(params.rows, 24);
 

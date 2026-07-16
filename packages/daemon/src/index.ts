@@ -25,6 +25,15 @@ export {
 } from './guard.js';
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
 export { registerHandler, startDaemon } from './server.js';
+export {
+  evaluateToolAction,
+  type GuardVerdict,
+  initToolGuard,
+  TOOL_GUARD_DENIED,
+  type ToolAction,
+  ToolGuardError,
+} from './tool-guard/index.js';
+export { loadPatterns, manifestHash, type PatternManifest } from './tool-guard/patterns.js';
 
 // Side-effect imports: register built-in handler groups.
 import './inference.js';

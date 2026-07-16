@@ -1,0 +1,346 @@
+{
+  "version": 1,
+  "dangerousCommands": [
+    {
+      "reason": "reading SSH key files",
+      "kind": "matchers",
+      "matchers": [{ "s": "cat", "bStart": true, "bEnd": true }, { "s": "/.ssh/" }]
+    },
+    {
+      "reason": "reading AWS credentials",
+      "kind": "matchers",
+      "matchers": [{ "s": "cat", "bStart": true, "bEnd": true }, { "s": "/.aws/" }]
+    },
+    {
+      "reason": "reading GitHub CLI tokens",
+      "kind": "matchers",
+      "matchers": [{ "s": "cat", "bStart": true, "bEnd": true }, { "s": "/.config/gh/" }]
+    },
+    {
+      "reason": "reading npm auth tokens",
+      "kind": "matchers",
+      "matchers": [{ "s": "cat", "bStart": true, "bEnd": true }, { "s": "/.npmrc" }]
+    },
+    {
+      "reason": "reading .netrc credentials",
+      "kind": "matchers",
+      "matchers": [{ "s": "cat", "bStart": true, "bEnd": true }, { "s": "/.netrc" }]
+    },
+    {
+      "reason": "piping environment to network",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "env", "bStart": true, "bEnd": true },
+        { "s": "|" },
+        { "s": "curl", "bEnd": true }
+      ]
+    },
+    {
+      "reason": "piping environment to network",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "env", "bStart": true, "bEnd": true },
+        { "s": "|" },
+        { "s": "wget", "bEnd": true }
+      ]
+    },
+    {
+      "reason": "piping environment to network",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "env", "bStart": true, "bEnd": true },
+        { "s": "|" },
+        { "s": "nc", "bEnd": true }
+      ]
+    },
+    {
+      "reason": "piping environment to network",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "env", "bStart": true, "bEnd": true },
+        { "s": "|" },
+        { "s": "socat", "bEnd": true }
+      ]
+    },
+    {
+      "reason": "curl in command substitution",
+      "kind": "matchers",
+      "matchers": [{ "s": "$(curl", "bEnd": true }]
+    },
+    {
+      "reason": "curl in backtick substitution",
+      "kind": "matchers",
+      "matchers": [{ "s": "`curl", "bEnd": true }]
+    },
+    {
+      "reason": "Windows cmd.exe execution",
+      "kind": "matchers",
+      "ci": true,
+      "matchers": [{ "s": "cmd.exe", "bStart": true, "bEnd": true }]
+    },
+    { "reason": "PowerShell execution", "kind": "predicate", "predicate": "powershellInvocation" },
+    {
+      "reason": "Windows system directory access",
+      "kind": "matchers",
+      "ci": true,
+      "matchers": [{ "s": "/mnt/c/windows/" }]
+    },
+    { "reason": "WSL interop execution bypass", "kind": "predicate", "predicate": "wslInterop" },
+    {
+      "reason": "Python socket (potential reverse shell)",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "python", "bStart": true },
+        { "s": "-c", "bEnd": true },
+        { "s": "socket" }
+      ]
+    },
+    {
+      "reason": "Python subprocess (potential escape)",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "python", "bStart": true },
+        { "s": "-c", "bEnd": true },
+        { "s": "subprocess" }
+      ]
+    },
+    {
+      "reason": "redirect to Windows filesystem",
+      "kind": "predicate",
+      "predicate": "redirectToWindows"
+    },
+    {
+      "reason": "drizzle-kit push (use migrate instead)",
+      "kind": "matchers",
+      "matchers": [{ "s": "drizzle-kit" }, { "s": "push", "bStart": true, "bEnd": true }]
+    },
+    {
+      "reason": "printing GitHub auth token to stdout",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "gh", "bStart": true, "bEnd": true },
+        { "s": "auth", "bStart": true, "bEnd": true },
+        { "s": "token", "bStart": true, "bEnd": true }
+      ]
+    },
+    {
+      "reason": "npm token management",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "npm", "bStart": true, "bEnd": true },
+        { "s": "token", "bStart": true, "bEnd": true },
+        { "s": "create", "bStart": true, "bEnd": true }
+      ]
+    },
+    {
+      "reason": "npm token management",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "npm", "bStart": true, "bEnd": true },
+        { "s": "token", "bStart": true, "bEnd": true },
+        { "s": "revoke", "bStart": true, "bEnd": true }
+      ]
+    },
+    {
+      "reason": "npm token management",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "npm", "bStart": true, "bEnd": true },
+        { "s": "token", "bStart": true, "bEnd": true },
+        { "s": "list", "bStart": true, "bEnd": true }
+      ]
+    },
+    {
+      "reason": "curl piped to an interpreter (remote code execution)",
+      "kind": "predicate",
+      "predicate": "curlPipedToInterpreter"
+    },
+    {
+      "reason": "wget piped to a shell (remote code execution)",
+      "kind": "predicate",
+      "predicate": "wgetPipedToShell"
+    },
+    {
+      "reason": "inline node eval (node -e / -p)",
+      "kind": "matchers",
+      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "-e", "bEnd": true }]
+    },
+    {
+      "reason": "inline node eval (node -e / -p)",
+      "kind": "matchers",
+      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "--eval", "bEnd": true }]
+    },
+    {
+      "reason": "inline node eval (node -e / -p)",
+      "kind": "matchers",
+      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "-p", "bEnd": true }]
+    },
+    {
+      "reason": "inline node eval (node -e / -p)",
+      "kind": "matchers",
+      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "--print", "bEnd": true }]
+    },
+    {
+      "reason": "inline python eval (python -c)",
+      "kind": "matchers",
+      "matchers": [{ "s": "python", "bStart": true }, { "s": "-c", "bEnd": true }]
+    },
+    {
+      "reason": "pnpm dlx (downloads + runs a remote package)",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "pnpm", "bStart": true, "bEnd": true },
+        { "s": "dlx", "bStart": true, "bEnd": true }
+      ]
+    },
+    {
+      "reason": "npm exec (runs an arbitrary package)",
+      "kind": "matchers",
+      "matchers": [
+        { "s": "npm", "bStart": true, "bEnd": true },
+        { "s": "exec", "bStart": true, "bEnd": true }
+      ]
+    },
+    {
+      "reason": "npx --yes (unprompted remote package execution)",
+      "kind": "matchers",
+      "matchers": [{ "s": "npx", "bStart": true, "bEnd": true }, { "s": "-y", "bEnd": true }]
+    },
+    {
+      "reason": "npx --yes (unprompted remote package execution)",
+      "kind": "matchers",
+      "matchers": [{ "s": "npx", "bStart": true, "bEnd": true }, { "s": "--yes", "bEnd": true }]
+    },
+    { "reason": "destructive gh api DELETE", "kind": "predicate", "predicate": "ghApiDelete" }
+  ],
+  "productionDb": {
+    "commandTriggers": ["drizzle-kit", "psql", "db:migrate"],
+    "urlIndicators": ["neon.tech", "supabase.co", ".prod."]
+  },
+  "credentialPathEndsWith": [
+    "/.ssh/id_rsa",
+    "/.ssh/id_ed25519",
+    "/.ssh/id_ecdsa",
+    "/.ssh/id_dsa",
+    "/.ssh/authorized_keys",
+    "/.ssh/known_hosts",
+    "/.ssh/config",
+    "/.aws/credentials",
+    "/.aws/config",
+    "/.config/gh/hosts.yml",
+    "/.npmrc",
+    "/.netrc"
+  ],
+  "credentialPathContains": ["/.gnupg/", "/run/secrets/"],
+  "credentialPathPredicates": ["procEnviron"],
+  "blockedWritePrefixes": [
+    "/mnt/c/",
+    "/mnt/e/",
+    "/etc/",
+    "/usr/",
+    "/var/",
+    "/boot/",
+    "/sys/",
+    "/proc/"
+  ],
+  "blockedWriteHomeRelativePrefixes": [".ssh", ".aws", ".gnupg", ".config/gh"],
+  "lockFiles": [
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "bun.lockb",
+    "bun.lock",
+    "flake.lock",
+    "deno.lock",
+    "Cargo.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+    "pdm.lock",
+    "uv.lock",
+    "Gemfile.lock",
+    "go.sum",
+    "composer.lock"
+  ],
+  "envTemplateExact": [".env.example", ".env.template", ".env.test"],
+  "envTemplateSuffixes": [".example", ".template"],
+  "contentSecrets": [
+    {
+      "severity": "block",
+      "reason": "private key material",
+      "kind": "pemPrivateKey",
+      "begin": "-----BEGIN ",
+      "end": "PRIVATE KEY-----",
+      "types": ["", "RSA ", "EC ", "OPENSSH ", "DSA "]
+    },
+    {
+      "severity": "block",
+      "reason": "Stripe live secret key",
+      "kind": "token",
+      "prefix": "sk_live_",
+      "len": 20,
+      "mode": "min",
+      "charset": "alnum"
+    },
+    {
+      "severity": "warn",
+      "reason": "Anthropic API key",
+      "kind": "predicate",
+      "predicate": "anthropicApiKey"
+    },
+    {
+      "severity": "warn",
+      "reason": "GitHub personal access token",
+      "kind": "token",
+      "prefix": "ghp_",
+      "len": 36,
+      "mode": "exact",
+      "charset": "alnum"
+    },
+    {
+      "severity": "warn",
+      "reason": "GitHub server token",
+      "kind": "token",
+      "prefix": "ghs_",
+      "len": 36,
+      "mode": "exact",
+      "charset": "alnum"
+    },
+    {
+      "severity": "warn",
+      "reason": "GitHub OAuth token",
+      "kind": "token",
+      "prefix": "gho_",
+      "len": 36,
+      "mode": "exact",
+      "charset": "alnum"
+    },
+    {
+      "severity": "warn",
+      "reason": "GitHub fine-grained PAT",
+      "kind": "token",
+      "prefix": "github_pat_",
+      "len": 82,
+      "mode": "exact",
+      "charset": "alnumUnderscore"
+    },
+    {
+      "severity": "warn",
+      "reason": "npm token",
+      "kind": "token",
+      "prefix": "npm_",
+      "len": 36,
+      "mode": "exact",
+      "charset": "alnum"
+    },
+    {
+      "severity": "warn",
+      "reason": "AWS access key ID",
+      "kind": "token",
+      "prefix": "AKIA",
+      "len": 16,
+      "mode": "exact",
+      "charset": "upperDigit"
+    }
+  ]
+}
