@@ -93,7 +93,7 @@ export default function SpawnerPanel() {
                   {s.name}
                 </span>
                 <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">
-                  {s.backend === 'Snap' ? 'Snap' : 'Ollama'}
+                  {s.backend ?? 'PTY'}
                 </span>
               </div>
               <p className="mt-1 truncate text-[10px] text-fg-subtle">{s.model}</p>

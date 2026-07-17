@@ -1,6 +1,6 @@
 {
   "name": "studio",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Native AI experience — agent coordination hub, local inference management, visual agent dashboard (Tauri 2 + React 19)",
   "private": true,
   "dependencies": {
@@ -29,6 +29,7 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@revdev/protocol": "workspace:*",
     "@tailwindcss/vite": "^4.3.2",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^6.9.1",

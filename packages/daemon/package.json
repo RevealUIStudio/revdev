@@ -1,6 +1,6 @@
 {
   "name": "@revdev/daemon",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Harness daemon — AI agent coordination, PTY management, and inter-agent messaging",
   "repository": {
     "type": "git",
@@ -39,6 +39,7 @@
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
     "start:detached": "node dist/cli.js --detach",
+    "sync:tool-guard": "node dist/tool-guard/sync-vendored.js",
     "setup:systemd": "bash systemd/install.sh",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",

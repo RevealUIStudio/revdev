@@ -43,6 +43,7 @@ import {
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { requireRootAndDir } from './filegit.js';
 import { getDaemonConfig, registerHandler, type SocketContext } from './server.js';
+import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
 
@@ -243,6 +244,18 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   if (!command) throw new Error('agent.spawn: missing command');
 
   const args = stringArrayParam(params, 'args');
+
+  // Native tool-guard command-class check. Composes with (never replaces) the
+  // authorization + confinement gates below: the sandbox bounds WHAT a command
+  // can touch, this refuses a command that matches a dangerous pattern (curl |
+  // sh, inline eval, credential reads) before any process is forked.
+  const commandLine = args.length > 0 ? `${command} ${args.join(' ')}` : command;
+  const guardVerdict = evaluateToolAction({ kind: 'command', command: commandLine });
+  if (!guardVerdict.allowed) {
+    throw await denyToolAction(db, 'agent.spawn', ownerAgentId, guardVerdict, {
+      command: commandLine,
+    });
+  }
   const cols = positiveInt(params.cols, 80);
   const rows = positiveInt(params.rows, 24);
 
@@ -394,6 +407,88 @@ registerHandler('agent.stop', async (params, db, ctx) => {
   );
 
   return { stopped: processId, status: 'killed' };
+});
+
+/**
+ * agent.list — enumerate the caller's spawned PTY processes.
+ *
+ * Scoped to the verified signer (owner_agent = ctx.agentId): a caller only
+ * ever sees its own processes, never another agent's — the same per-agent
+ * scoping git.status/list/log use, and why this method is signature-required
+ * (server.ts MUTATING_OR_CONTENT_METHODS). Rows are read from `agent_processes`
+ * (the persistent record), so exited/killed history is included until pruned by
+ * agent.remove. Fields are daemon-native — the caller (Studio invoke.ts) adapts
+ * them to its AgentSessionInfo shape; `command` is the only human label the
+ * daemon has (agent.spawn is a generic command spawner with no model/prompt).
+ */
+registerHandler('agent.list', async (params, db, ctx) => {
+  const callerAgentId = requireAgent(ctx, params);
+
+  const rows = await db.query<{
+    id: string;
+    command: string;
+    cwd: string;
+    pid: number | null;
+    status: string;
+    exit_code: number | null;
+  }>(
+    `SELECT id, command, cwd, pid, status, exit_code
+       FROM agent_processes
+      WHERE owner_agent = $1
+      ORDER BY created_at DESC`,
+    [callerAgentId],
+  );
+
+  return rows.rows.map((r) => ({
+    processId: r.id,
+    command: r.command,
+    cwd: r.cwd,
+    pid: r.pid,
+    status: r.status,
+    exitCode: r.exit_code,
+  }));
+});
+
+/**
+ * agent.remove — stop the process if it is live, then prune its record.
+ *
+ * Unlike agent.stop (which only kills and marks the row 'killed'), this
+ * removes the `agent_processes` row entirely; `agent_process_output` cascades
+ * (FK ON DELETE CASCADE). Ownership is checked against the verified signer,
+ * from the live registry when the process is running and from the persisted
+ * row otherwise, so a caller can never prune another agent's process.
+ */
+registerHandler('agent.remove', async (params, db, ctx) => {
+  const callerAgentId = requireAgent(ctx, params);
+  const processId = stringParam(params, 'processId');
+  if (!processId) throw new Error('agent.remove: missing processId');
+
+  const entry = registry.get(processId);
+  if (entry) {
+    if (entry.ownerAgentId !== callerAgentId) {
+      throw new Error(`agent.remove: process ${processId} is not owned by caller`);
+    }
+    try {
+      entry.pty.kill();
+    } catch {
+      // PTY kill is best-effort; it may already be dead
+    }
+    registry.delete(processId);
+  } else {
+    const row = await db.query<{ owner_agent: string }>(
+      `SELECT owner_agent FROM agent_processes WHERE id = $1`,
+      [processId],
+    );
+    if (row.rows.length === 0) throw new Error(`agent.remove: unknown processId ${processId}`);
+    const r = row.rows[0];
+    if (r && r.owner_agent !== callerAgentId) {
+      throw new Error(`agent.remove: process ${processId} is not owned by caller`);
+    }
+  }
+
+  await db.query(`DELETE FROM agent_processes WHERE id = $1`, [processId]);
+
+  return { removed: processId };
 });
 
 /**

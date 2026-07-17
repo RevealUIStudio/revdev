@@ -321,8 +321,15 @@ const MOCK_DATA: Record<string, unknown> = {
 const DAEMON_URL_KEY = 'revdev-daemon-url';
 const DAEMON_TOKEN_KEY = 'revdev-daemon-token';
 
-/** Command-to-RPC method mapping for harness commands */
-const HARNESS_RPC_MAP: Record<string, string> = {
+/**
+ * Command-to-RPC method mapping for harness commands.
+ * Every value MUST be a method the daemon actually registers
+ * (packages/daemon registerHandler call sites) — an unregistered method
+ * dies as JSON-RPC -32601 with no useful signal to the user. A studio vitest
+ * asserts every value here is a member of the protocol's RPC_METHODS, which is
+ * itself contract-tested against the daemon registry.
+ */
+export const HARNESS_RPC_MAP: Record<string, string> = {
   harness_ping: 'ping',
   harness_sessions: 'session.list',
   harness_inbox: 'mail.inbox',
@@ -344,18 +351,38 @@ const HARNESS_RPC_MAP: Record<string, string> = {
   agent_remove: 'agent.remove',
   agent_input: 'agent.input',
   agent_resize: 'agent.resize',
-  // Inference engine management
-  inference_ollama_status: 'inference.ollama.status',
-  inference_ollama_models: 'inference.ollama.models',
-  inference_ollama_pull: 'inference.ollama.pull',
-  inference_ollama_delete: 'inference.ollama.delete',
-  inference_ollama_start: 'inference.ollama.start',
-  inference_ollama_stop: 'inference.ollama.stop',
-  inference_snap_list: 'inference.snap.list',
-  inference_snap_status: 'inference.snap.status',
-  inference_snap_install: 'inference.snap.install',
-  inference_snap_remove: 'inference.snap.remove',
+  // Local inference (Ollama) — the daemon's inference.* handlers ARE the Ollama
+  // HTTP integration. Result shapes differ from the Tauri path and are adapted
+  // back to the Studio types by RESULT_ADAPTERS below. `inference_ollama_models`
+  // reuses inference.status because that method already returns the model list;
+  // there is no separate daemon "models" method to add.
+  inference_ollama_status: 'inference.status',
+  inference_ollama_models: 'inference.status',
+  inference_ollama_pull: 'inference.pull',
+  inference_ollama_delete: 'inference.delete',
 };
+
+/**
+ * Commands implemented only by the Tauri (Rust) backend, with no daemon
+ * equivalent. When a remote daemon IS configured, these fail loudly instead of
+ * silently calling a nonexistent method or serving fabricated mock state next
+ * to real data.
+ *
+ *   - inference_ollama_start / _stop manage the Ollama SERVER lifecycle
+ *     (`ollama serve` / `pkill`). The daemon only speaks HTTP to an
+ *     already-running Ollama, so it cannot start or stop a host process. (The
+ *     daemon's inference.start/stop are model warm/unload, a different op.)
+ *   - inference_snap_* are host snap package management (sudo snap
+ *     install/remove); the daemon does not manage host packages.
+ */
+const DESKTOP_ONLY_COMMANDS = new Set([
+  'inference_ollama_start',
+  'inference_ollama_stop',
+  'inference_snap_list',
+  'inference_snap_status',
+  'inference_snap_install',
+  'inference_snap_remove',
+]);
 
 /** Map Tauri command args (snake_case) to RPC params (camelCase) */
 function toRpcParams(cmd: string, args?: Record<string, unknown>): Record<string, unknown> {
@@ -368,8 +395,113 @@ function toRpcParams(cmd: string, args?: Record<string, unknown>): Record<string
   }
   // Special cases for harness_ping which returns boolean
   if (cmd === 'harness_ping') return {};
+  // The Ollama model commands take a `modelName` arg on the Studio wrappers, but
+  // the daemon's inference.pull/delete handlers read `model`. Rename so the
+  // daemon receives the key its schema requires.
+  if (
+    (cmd === 'inference_ollama_pull' || cmd === 'inference_ollama_delete') &&
+    params.modelName !== undefined
+  ) {
+    params.model = params.modelName;
+    delete params.modelName;
+  }
   return params;
 }
+
+// ── Browser-mode result adapters ────────────────────────────────────────────
+// The daemon's inference.* and agent.list results use the daemon's own vocabulary
+// and differ from the shapes the Tauri (Rust) path returns. These adapters map a
+// daemon result back to the Studio type so browser mode and desktop mode return
+// identical shapes to callers.
+
+interface DaemonOllamaStatus {
+  running?: boolean;
+  version?: string;
+  models?: Array<{ name: string; sizeMb: number; modified: string }>;
+}
+
+/** Format a daemon `sizeMb` integer as the human string the Tauri path emits. */
+function formatModelSize(sizeMb: number): string {
+  if (!Number.isFinite(sizeMb) || sizeMb <= 0) return '';
+  if (sizeMb >= 1000) return `${(sizeMb / 1000).toFixed(1)} GB`;
+  return `${sizeMb} MB`;
+}
+
+function adaptOllamaStatus(raw: unknown): OllamaStatus {
+  const s = (raw ?? {}) as DaemonOllamaStatus;
+  // The daemon speaks HTTP to Ollama; it can only confirm `installed` when the
+  // server answers. A not-running server is indistinguishable from a missing
+  // one over HTTP, so `installed` tracks `running` — the honest best effort.
+  const running = s.running === true;
+  return { installed: running, running, version: s.version ?? null };
+}
+
+function adaptOllamaModels(raw: unknown): OllamaModel[] {
+  const s = (raw ?? {}) as DaemonOllamaStatus;
+  return (s.models ?? []).map((m) => ({
+    name: m.name,
+    size: formatModelSize(m.sizeMb),
+    modified: m.modified,
+  }));
+}
+
+interface DaemonPullResult {
+  success?: boolean;
+  status?: string;
+  model?: string;
+  error?: string;
+}
+
+function adaptOllamaPull(raw: unknown): ModelPullResult {
+  const r = (raw ?? {}) as DaemonPullResult;
+  const success = r.success === true;
+  if (success) {
+    return { success: true, message: r.status ?? `Pulled ${r.model ?? ''}`.trim() };
+  }
+  return { success: false, message: r.error ?? 'Pull failed' };
+}
+
+interface DaemonAgentProcess {
+  processId: string;
+  command: string;
+  pid: number | null;
+  status: string;
+  exitCode: number | null;
+}
+
+function daemonStatusToSession(
+  status: string,
+  exitCode: number | null,
+): AgentSessionInfo['status'] {
+  if (status === 'running') return 'running';
+  if (status === 'exited') return exitCode !== null && exitCode !== 0 ? 'errored' : 'stopped';
+  // 'killed' and any unrecognized terminal state read as a clean stop.
+  return 'stopped';
+}
+
+function adaptAgentList(raw: unknown): AgentSessionInfo[] {
+  const rows = Array.isArray(raw) ? (raw as DaemonAgentProcess[]) : [];
+  // The daemon's agent.spawn is a generic command spawner: its registry has no
+  // inference backend, model, or prompt. `command` is the only human label; the
+  // rest are empty and `backend` is null (a daemon-spawned PTY, not Snap/Ollama).
+  return rows.map((r) => ({
+    id: r.processId,
+    name: r.command,
+    model: '',
+    backend: null,
+    prompt: '',
+    status: daemonStatusToSession(r.status, r.exitCode),
+    pid: r.pid,
+  }));
+}
+
+/** Per-command adapters applied to the daemon RPC result in browser mode. */
+const RESULT_ADAPTERS: Record<string, (raw: unknown) => unknown> = {
+  agent_list: adaptAgentList,
+  inference_ollama_status: adaptOllamaStatus,
+  inference_ollama_models: adaptOllamaModels,
+  inference_ollama_pull: adaptOllamaPull,
+};
 
 /** Get the configured daemon URL from localStorage */
 export function getDaemonUrl(): string | null {
@@ -481,7 +613,20 @@ function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
         .then(() => true as T)
         .catch(() => false as T);
     }
-    return httpRpc<T>(rpcMethod, params);
+    const call = httpRpc<unknown>(rpcMethod, params);
+    const adapter = RESULT_ADAPTERS[cmd];
+    return (adapter ? call.then(adapter) : call) as Promise<T>;
+  }
+
+  // Desktop-only commands with a live daemon configured: reject with a real
+  // explanation. Falling through to mock data here would show fabricated
+  // agent/inference state alongside real daemon data.
+  if (DESKTOP_ONLY_COMMANDS.has(cmd) && getDaemonUrl()) {
+    return Promise.reject(
+      new Error(
+        `${cmd} is only available in the desktop app. The remote daemon has no equivalent RPC yet.`,
+      ),
+    );
   }
 
   // Fallback: mock data for non-harness commands. Serving fabricated system

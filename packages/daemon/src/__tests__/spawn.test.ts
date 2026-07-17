@@ -595,3 +595,80 @@ describe('agent.output', () => {
     ).rejects.toThrow(/unknown processId/);
   });
 });
+
+interface ListedProcess {
+  processId: string;
+  command: string;
+  pid: number | null;
+  status: string;
+  exitCode: number | null;
+}
+
+// `owner` is already at the per-agent live-process cap (10) by the time these
+// run (every spawn above leaves a mock pty that never exits). `other` has
+// spawned nothing, so it drives the spawns here; `owner` is the cross-agent
+// foil for scoping/ownership checks.
+describe('agent.list', () => {
+  it("returns the caller's spawned processes, scoped to the verified signer", async () => {
+    const { processId } = (await signedRpc(other, 'agent.spawn', {
+      command: 'bash',
+      repoPath: otherRoot,
+    })) as { processId: string };
+
+    const mine = (await signedRpc(other, 'agent.list')) as ListedProcess[];
+    const found = mine.find((p) => p.processId === processId);
+    expect(found).toBeDefined();
+    expect(found?.command).toBe('bash');
+    expect(found?.status).toBe('running');
+
+    // A different agent never sees another agent's processes.
+    const theirs = (await signedRpc(owner, 'agent.list')) as ListedProcess[];
+    expect(theirs.some((p) => p.processId === processId)).toBe(false);
+  });
+
+  it('requires a signature (rejects an unsigned call)', async () => {
+    const resp = await rpcFrame(socketPath, 'agent.list', {});
+    expect(resp.error).toBeDefined();
+    expect(resp.result).toBeUndefined();
+  });
+});
+
+describe('agent.remove', () => {
+  it('stops a running process and prunes it from the list', async () => {
+    const { processId } = (await signedRpc(other, 'agent.spawn', {
+      command: 'bash',
+      repoPath: otherRoot,
+    })) as { processId: string };
+
+    const result = (await signedRpc(other, 'agent.remove', { processId })) as { removed: string };
+    expect(result.removed).toBe(processId);
+    expect(_lastPty?.kill).toHaveBeenCalled();
+
+    // The row is gone — the process no longer appears in the caller's list.
+    const mine = (await signedRpc(other, 'agent.list')) as ListedProcess[];
+    expect(mine.some((p) => p.processId === processId)).toBe(false);
+
+    // And the DB row (plus its cascaded output) is deleted.
+    const row = await db.query(`SELECT id FROM agent_processes WHERE id = $1`, [processId]);
+    expect(row.rows.length).toBe(0);
+  });
+
+  it('rejects removing a process owned by another agent', async () => {
+    const { processId } = (await signedRpc(other, 'agent.spawn', {
+      command: 'bash',
+      repoPath: otherRoot,
+    })) as { processId: string };
+
+    await expect(signedRpc(owner, 'agent.remove', { processId })).rejects.toThrow(
+      /not owned by caller/,
+    );
+  });
+
+  it('rejects removing an unknown processId', async () => {
+    await expect(
+      signedRpc(other, 'agent.remove', {
+        processId: '00000000-0000-0000-0000-000000000002',
+      }),
+    ).rejects.toThrow(/unknown processId/);
+  });
+});

@@ -58,7 +58,9 @@ import {
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import { revvaultSet } from './revvault-client.js';
+import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
+import { initToolGuard } from './tool-guard/index.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
 
 const log = createLogger({ service: 'revdev-daemon' });
@@ -120,6 +122,7 @@ const IDENTITY_EXEMPT = new Set([
   // MUTATING_OR_CONTENT_METHODS entry below.
   'inference.status',
   'inference.pull',
+  'inference.delete',
   'inference.start',
   'inference.stop',
   'inference.chat',
@@ -212,6 +215,13 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'agent.input',
   'agent.resize',
   'agent.output',
+  // agent.list returns another-agent-invisible process metadata (command, cwd),
+  // and agent.remove kills + prunes a process. Both are signature-required and
+  // self-scoped to the verified signer's owner_agent — an unsigned or spoofed
+  // caller can neither enumerate nor prune another agent's PTYs. Cross-language
+  // contract: signing.rs requires_signature() must mark these too.
+  'agent.list',
+  'agent.remove',
   // session.end fans out to notifyAgentEnded, which evicts the target's project
   // roots and kills every PTY it owns. It used to take a caller-supplied target
   // and sat OUTSIDE this set, so any socket peer could end an arbitrary agent's
@@ -343,6 +353,15 @@ const handlers = new Map<string, RpcHandler>();
 /** Register an RPC method handler. */
 export function registerHandler(method: string, handler: RpcHandler): void {
   handlers.set(method, handler);
+}
+
+/**
+ * Returns the sorted names of every RPC method currently registered on the
+ * daemon. The contract test asserts this equals the protocol's `RPC_METHODS`
+ * constant, so the two lists cannot silently drift.
+ */
+export function listRegisteredMethods(): string[] {
+  return [...handlers.keys()].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -752,6 +771,12 @@ registerHandler('session.register', async (params, db, ctx) => {
     ? await registerClientIdentity(db, id, clientPublicKeyPem)
     : await bootstrapAgentIdentity(db, id);
 
+  // Run the registered session-lifecycle advisory checks and surface their
+  // warnings to the client. Best-effort by construction: runSessionChecks
+  // catches per-check throws and always resolves, so registration can never
+  // fail on a check error.
+  const warnings = await runSessionChecks({ workDir, agentId: id });
+
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
   return {
@@ -761,6 +786,7 @@ registerHandler('session.register', async (params, db, ctx) => {
     backend,
     did,
     publicKeyPem,
+    warnings,
     session: { id, env, task: workDir },
   };
 });
@@ -1712,9 +1738,19 @@ export async function startDaemon(
   // Initialize license guard (logs banner)
   initLicenseGuard();
 
+  // Initialize the native security tool-guard. Fails CLOSED, like
+  // initLicenseGuard: a daemon that cannot load its safety patterns refuses to
+  // start. Runs before the socket binds, so the throw aborts startup cleanly.
+  initToolGuard();
+
   // Initialize Neon sync (GAP-154 Phase 2). No-op when POSTGRES_URL is
   // unset — daemon runs single-machine fine; sync is purely additive.
   initNeonSync();
+
+  // Register the built-in session-lifecycle advisory checks. Ships with an
+  // empty rule set (a no-op) so nothing project-specific is baked in; a
+  // consuming project supplies canonical-path rules to activate them.
+  initSessionChecks();
 
   // Ensure data directory exists
   await mkdir(cfg.dataDir, { recursive: true });

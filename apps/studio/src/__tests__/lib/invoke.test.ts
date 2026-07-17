@@ -231,3 +231,125 @@ describe('invoke bridge (Tauri mode)', () => {
     expect(result.wsl_running).toBe(true);
   });
 });
+
+describe('HARNESS_RPC_MAP contract', () => {
+  it('routes every command to a method the daemon actually registers', async () => {
+    const { HARNESS_RPC_MAP } = await import('../../lib/invoke');
+    const { RPC_METHODS } = await import('@revdev/protocol');
+    const known = new Set<string>(Object.values(RPC_METHODS));
+
+    const unknownTargets = Object.entries(HARNESS_RPC_MAP)
+      .filter(([, method]) => !known.has(method))
+      .map(([command, method]) => `${command} -> ${method}`)
+      .sort();
+
+    expect(
+      unknownTargets,
+      `HARNESS_RPC_MAP targets methods absent from RPC_METHODS: ${JSON.stringify(unknownTargets)}`,
+    ).toEqual([]);
+  });
+});
+
+// Browser mode routes the newly-wired commands over the daemon HTTP gateway and
+// adapts each daemon result back to the Studio type. These drive the real
+// invoke() path with a mocked fetch so the mapping, param rename, and result
+// adapters are all exercised end to end.
+describe('browser-mode daemon adapters', () => {
+  const DAEMON_URL = 'https://daemon.test';
+
+  /** A fetch stub returning a JSON-RPC success envelope wrapping `result`. */
+  function rpcOk(result: unknown): ReturnType<typeof vi.fn> {
+    return vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+    } as unknown as Response);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    localStorage.setItem('revdev-daemon-url', DAEMON_URL);
+    localStorage.setItem('revdev-daemon-token', 'test-token');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('adapts inference.status into OllamaStatus', async () => {
+    vi.stubGlobal(
+      'fetch',
+      rpcOk({ running: true, version: '0.1.30', url: 'http://localhost:11434', models: [] }),
+    );
+    const { inferenceOllamaStatus } = await import('../../lib/invoke');
+    const status = await inferenceOllamaStatus();
+    expect(status).toEqual({ installed: true, running: true, version: '0.1.30' });
+  });
+
+  it('adapts inference.status models into OllamaModel[] with a formatted size', async () => {
+    vi.stubGlobal(
+      'fetch',
+      rpcOk({
+        running: true,
+        version: '0.1.30',
+        models: [{ name: 'llama3:8b', sizeMb: 4700, modified: '2026-01-01' }],
+      }),
+    );
+    const { inferenceOllamaModels } = await import('../../lib/invoke');
+    const models = await inferenceOllamaModels();
+    expect(models).toEqual([{ name: 'llama3:8b', size: '4.7 GB', modified: '2026-01-01' }]);
+  });
+
+  it('renames modelName to model and adapts inference.pull into ModelPullResult', async () => {
+    const fetchMock = rpcOk({ success: true, model: 'llama3', status: 'success' });
+    vi.stubGlobal('fetch', fetchMock);
+    const { inferenceOllamaPull } = await import('../../lib/invoke');
+    const result = await inferenceOllamaPull('llama3');
+    expect(result).toEqual({ success: true, message: 'success' });
+    // The daemon schema requires `model`, not the wrapper's `modelName`.
+    const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body.params).toEqual({ model: 'llama3' });
+    expect(body.method).toBe('inference.pull');
+  });
+
+  it('adapts agent.list rows into AgentSessionInfo with a null backend', async () => {
+    vi.stubGlobal(
+      'fetch',
+      rpcOk([
+        {
+          processId: 'p1',
+          command: 'bash',
+          cwd: '/repo',
+          pid: 42,
+          status: 'running',
+          exitCode: null,
+        },
+        {
+          processId: 'p2',
+          command: 'node',
+          cwd: '/repo',
+          pid: null,
+          status: 'exited',
+          exitCode: 1,
+        },
+      ]),
+    );
+    const { agentList } = await import('../../lib/invoke');
+    const sessions = await agentList();
+    expect(sessions).toEqual([
+      { id: 'p1', name: 'bash', model: '', backend: null, prompt: '', status: 'running', pid: 42 },
+      {
+        id: 'p2',
+        name: 'node',
+        model: '',
+        backend: null,
+        prompt: '',
+        status: 'errored',
+        pid: null,
+      },
+    ]);
+  });
+});
