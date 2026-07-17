@@ -71,6 +71,11 @@ jobs:
         shell: bash
         run: bash apps/studio/scripts/generate-types.sh
 
+      - name: Build workspace deps (@revdev/protocol)
+        # studio's typecheck imports @revdev/protocol (RPC_METHODS contract
+        # test); repo CI builds it before typecheck, this workflow must too.
+        run: pnpm --filter @revdev/protocol build
+
 
       - name: Build Studio (Tauri)
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
