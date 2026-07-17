@@ -58,6 +58,7 @@ import {
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import { revvaultSet } from './revvault-client.js';
+import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
 import { initToolGuard } from './tool-guard/index.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
@@ -770,6 +771,12 @@ registerHandler('session.register', async (params, db, ctx) => {
     ? await registerClientIdentity(db, id, clientPublicKeyPem)
     : await bootstrapAgentIdentity(db, id);
 
+  // Run the registered session-lifecycle advisory checks and surface their
+  // warnings to the client. Best-effort by construction: runSessionChecks
+  // catches per-check throws and always resolves, so registration can never
+  // fail on a check error.
+  const warnings = await runSessionChecks({ workDir, agentId: id });
+
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
   return {
@@ -779,6 +786,7 @@ registerHandler('session.register', async (params, db, ctx) => {
     backend,
     did,
     publicKeyPem,
+    warnings,
     session: { id, env, task: workDir },
   };
 });
@@ -1738,6 +1746,11 @@ export async function startDaemon(
   // Initialize Neon sync (GAP-154 Phase 2). No-op when POSTGRES_URL is
   // unset — daemon runs single-machine fine; sync is purely additive.
   initNeonSync();
+
+  // Register the built-in session-lifecycle advisory checks. Ships with an
+  // empty rule set (a no-op) so nothing project-specific is baked in; a
+  // consuming project supplies canonical-path rules to activate them.
+  initSessionChecks();
 
   // Ensure data directory exists
   await mkdir(cfg.dataDir, { recursive: true });
