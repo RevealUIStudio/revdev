@@ -140,15 +140,15 @@ describe('dup-work-claim check (injected lister)', () => {
   it('extracts claims from branch names as well as paths', async () => {
     // The path basename omits the marker; only the branch carries it.
     const porcelain = [
-      'worktree /home/dev/project',
+      'worktree /work/project',
       'HEAD 1111111111111111111111111111111111111111',
       'branch refs/heads/main',
       '',
-      'worktree /home/dev/alpha',
+      'worktree /work/alpha',
       'HEAD 2222222222222222222222222222222222222222',
       'branch refs/heads/feat/gap-7-x',
       '',
-      'worktree /home/dev/beta',
+      'worktree /work/beta',
       'HEAD 3333333333333333333333333333333333333333',
       'branch refs/heads/fix/gap-7-y',
       '',
@@ -156,12 +156,12 @@ describe('dup-work-claim check (injected lister)', () => {
     const check = createDupWorkClaimCheck({ claimMarkers: ['GAP-'] }, async () =>
       okResult(porcelain),
     );
-    const result = await check({ workDir: '/home/dev/project', agentId: CTX_AGENT });
+    const result = await check({ workDir: '/work/project', agentId: CTX_AGENT });
 
     expect(result.ok).toBe(false);
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toContain("'gap-7' is claimed by 2 worktrees");
-    expect(result.warnings[0]).toContain('/home/dev/alpha');
-    expect(result.warnings[0]).toContain('/home/dev/beta');
+    expect(result.warnings[0]).toContain('/work/alpha');
+    expect(result.warnings[0]).toContain('/work/beta');
   });
 });
