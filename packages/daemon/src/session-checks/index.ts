@@ -18,6 +18,7 @@
 
 import { createLogger } from '@revealui/utils/logger';
 import { createDocLocationsCheck, type DocLocationsConfig } from './doc-locations.js';
+import { createDupWorkClaimCheck, type DupWorkClaimConfig } from './dup-work-claim.js';
 
 const log = createLogger({ service: 'revdev-daemon/session-checks' });
 
@@ -94,13 +95,16 @@ export async function runSessionChecks(ctx: SessionCheckContext): Promise<string
  * Register the daemon's built-in advisory checks. Called once from
  * startDaemon. Idempotent (each check registers under a fixed name).
  *
- * The built-in doc-locations check ships with an EMPTY ruleset, so it is a
- * no-op until a consuming project supplies canonical-path rules. This keeps the
- * surface provider-agnostic: nothing about RevFleet's own doc layout is baked
- * into the daemon.
+ * Every built-in check ships with an EMPTY config, so each is a no-op until a
+ * consuming project supplies rules (doc-locations) or claim markers
+ * (dup-work-claim). This keeps the surface provider-agnostic: nothing about
+ * RevFleet's own doc layout or work-tracking scheme is baked into the daemon.
  */
-export function initSessionChecks(config: { docLocations?: DocLocationsConfig } = {}): void {
+export function initSessionChecks(
+  config: { docLocations?: DocLocationsConfig; dupWorkClaim?: DupWorkClaimConfig } = {},
+): void {
   registerSessionCheck('doc-locations', createDocLocationsCheck(config.docLocations ?? {}));
+  registerSessionCheck('dup-work-claim', createDupWorkClaimCheck(config.dupWorkClaim ?? {}));
 }
 
 export type {
@@ -109,3 +113,5 @@ export type {
   RestrictedDirRule,
 } from './doc-locations.js';
 export { createDocLocationsCheck } from './doc-locations.js';
+export type { DupWorkClaimConfig, WorktreeLister } from './dup-work-claim.js';
+export { createDupWorkClaimCheck } from './dup-work-claim.js';

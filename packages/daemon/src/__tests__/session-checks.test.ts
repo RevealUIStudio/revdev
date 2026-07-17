@@ -167,4 +167,54 @@ describe('doc-locations check', () => {
     const result = await check({ workDir: root, agentId: 'a' });
     expect(result).toEqual({ ok: true, warnings: [] });
   });
+
+  it('skips a restrictedDirs rule whose dir escapes the project root and reads nothing outside', async () => {
+    // Lay out base/{project, outside}. A rule dir of '../outside' resolves to a
+    // sibling of the project root; it must be skipped, not read.
+    const base = await mkdtemp(join(tmpdir(), 'revdev-doc-loc-escape-'));
+    try {
+      const project = join(base, 'project');
+      await mkdir(project, { recursive: true });
+      const outside = join(base, 'outside');
+      await mkdir(outside, { recursive: true });
+      // A file that WOULD be flagged as misplaced if the rule read outside root.
+      await writeFile(join(outside, 'SECRET.md'), '# outside');
+
+      const check = createDocLocationsCheck({
+        restrictedDirs: [{ dir: '../outside', allowedFiles: [] }],
+      });
+      const result = await check({ workDir: project, agentId: 'a' });
+
+      expect(result.ok).toBe(false);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toBe(
+        "doc-locations: rule dir '../outside' escapes the project root, skipped",
+      );
+      // Proves the outside directory was never read.
+      expect(result.warnings[0]).not.toContain('SECRET.md');
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it('skips a requiredFileInSubdirs rule whose parentDir escapes the project root', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'revdev-doc-loc-escape-'));
+    try {
+      const project = join(base, 'project');
+      await mkdir(project, { recursive: true });
+      // A subdirectory outside root that lacks the required file — would warn if read.
+      await mkdir(join(base, 'outside', 'sub'), { recursive: true });
+
+      const check = createDocLocationsCheck({
+        requiredFileInSubdirs: [{ parentDir: '../outside', requiredFile: 'plan.md' }],
+      });
+      const result = await check({ workDir: project, agentId: 'a' });
+
+      expect(result.warnings).toEqual([
+        "doc-locations: rule parentDir '../outside' escapes the project root, skipped",
+      ]);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
 });

@@ -15,7 +15,7 @@
  */
 
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { SessionCheck, SessionCheckResult } from './index.js';
 
 /**
@@ -60,6 +60,30 @@ function withHint(message: string, hint: string | undefined): string {
   return hint ? `${message} (${hint})` : message;
 }
 
+/**
+ * True when `target` is `root` itself or a descendant of it. Separator-safe
+ * (never a bare `startsWith`, which would treat `/a/bc` as within `/a/b`).
+ * Same shape as the confinement layer's `within()` (confinement.ts) — mirrored
+ * here so this check carries no dependency on the confinement module. Zero regex.
+ */
+function within(root: string, target: string): boolean {
+  return target === root || target.startsWith(root + sep);
+}
+
+/**
+ * Resolve `rel` beneath `root`, returning the absolute joined path only when it
+ * stays inside `root`. A config-supplied `dir` / `parentDir` carrying a `../`
+ * segment would otherwise resolve OUTSIDE the project root, and reading there
+ * would let an operator config walk out of the tree it is scoped to. Returning
+ * null for that case lets the caller skip the rule and warn instead of reading
+ * outside root. Zero regex — `resolve` + the separator-safe containment check.
+ */
+function resolveWithinRoot(root: string, rel: string): string | null {
+  const rootAbs = resolve(root);
+  const target = resolve(rootAbs, rel);
+  return within(rootAbs, target) ? target : null;
+}
+
 /** Read a directory's entries, treating an absent/unreadable dir as empty. */
 async function readEntries(dir: string): Promise<import('node:fs').Dirent[]> {
   try {
@@ -77,7 +101,11 @@ async function checkRestrictedDir(
 ): Promise<void> {
   const allowedFiles = new Set(rule.allowedFiles ?? []);
   const allowedSubdirs = new Set(rule.allowedSubdirs ?? []);
-  const dirPath = join(root, rule.dir);
+  const dirPath = resolveWithinRoot(root, rule.dir);
+  if (dirPath === null) {
+    warnings.push(`doc-locations: rule dir '${rule.dir}' escapes the project root, skipped`);
+    return;
+  }
   for (const entry of await readEntries(dirPath)) {
     if (entry.isDirectory()) {
       if (!allowedSubdirs.has(entry.name)) {
@@ -105,7 +133,13 @@ async function checkRequiredFileInSubdirs(
   warnings: string[],
 ): Promise<void> {
   const ignore = new Set(rule.ignoreSubdirs ?? []);
-  const parentPath = join(root, rule.parentDir);
+  const parentPath = resolveWithinRoot(root, rule.parentDir);
+  if (parentPath === null) {
+    warnings.push(
+      `doc-locations: rule parentDir '${rule.parentDir}' escapes the project root, skipped`,
+    );
+    return;
+  }
   for (const entry of await readEntries(parentPath)) {
     if (!entry.isDirectory()) continue;
     if (ignore.has(entry.name)) continue;
