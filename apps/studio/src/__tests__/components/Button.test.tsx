@@ -72,12 +72,23 @@ describe('Button', () => {
     expect(button.className).toContain('bg-success');
   });
 
-  it('applies size styles', () => {
-    const { rerender } = render(<Button size="sm">Small</Button>);
-    expect(screen.getByRole('button').className).toContain('h-10');
+  it('applies a compact size override for size="sm" (h-8, denser than presentation\'s h-10 base)', () => {
+    render(<Button size="sm">Small</Button>);
+    const button = screen.getByRole('button');
+    expect(button.className).toContain('h-8');
+    expect(button.className).not.toContain('h-10');
+  });
 
-    rerender(<Button size="lg">Large</Button>);
-    expect(screen.getByRole('button').className).toContain('h-12');
+  it('applies presentation\'s smallest built-in size for size="md" (the default)', () => {
+    render(<Button>Default size</Button>);
+    expect(screen.getByRole('button').className).toContain('h-10');
+  });
+
+  it('applies presentation\'s default size for size="lg"', () => {
+    render(<Button size="lg">Large</Button>);
+    const button = screen.getByRole('button');
+    expect(button.className).toContain('h-11');
+    expect(button.className).not.toContain('h-12');
   });
 
   it('has type="button" by default', () => {
