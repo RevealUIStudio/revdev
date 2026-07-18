@@ -26,12 +26,17 @@ describe('Input', () => {
 
   it('applies mono font class when mono prop is true', () => {
     render(<Input mono />);
-    expect(screen.getByRole('textbox').className).toContain('font-mono');
+    // presentation's headless Input wraps the real <input> in a control span;
+    // className only accepts on that wrapper, so mono is a descendant-selector
+    // variant applied there rather than a class on the input itself.
+    const wrapper = screen.getByRole('textbox').parentElement;
+    expect(wrapper?.className).toContain('[&_input]:font-mono');
   });
 
   it('does not apply mono font by default', () => {
     render(<Input />);
-    expect(screen.getByRole('textbox').className).not.toContain('font-mono');
+    const wrapper = screen.getByRole('textbox').parentElement;
+    expect(wrapper?.className ?? '').not.toContain('font-mono');
   });
 
   it('forwards HTML input attributes', () => {

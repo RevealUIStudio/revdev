@@ -45,25 +45,25 @@ describe('Button', () => {
   it('applies primary variant styles', () => {
     render(<Button variant="primary">Primary</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('bg-brand');
+    expect(button.className).toContain('bg-primary');
   });
 
   it('applies secondary variant styles by default', () => {
     render(<Button>Default</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('bg-surface-2');
+    expect(button.className).toContain('bg-secondary');
   });
 
   it('applies ghost variant styles', () => {
     render(<Button variant="ghost">Ghost</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('text-fg-muted');
+    expect(button.className).toContain('hover:text-accent-foreground');
   });
 
   it('applies danger variant styles', () => {
     render(<Button variant="danger">Delete</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('text-error');
+    expect(button.className).toContain('bg-destructive');
   });
 
   it('applies success variant styles', () => {
@@ -74,10 +74,10 @@ describe('Button', () => {
 
   it('applies size styles', () => {
     const { rerender } = render(<Button size="sm">Small</Button>);
-    expect(screen.getByRole('button').className).toContain('text-xs');
+    expect(screen.getByRole('button').className).toContain('h-10');
 
     rerender(<Button size="lg">Large</Button>);
-    expect(screen.getByRole('button').className).toContain('py-2');
+    expect(screen.getByRole('button').className).toContain('h-12');
   });
 
   it('has type="button" by default', () => {
