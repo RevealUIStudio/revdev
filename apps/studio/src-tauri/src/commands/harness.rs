@@ -461,6 +461,147 @@ pub async fn harness_check_file(
     }
 }
 
+// ── Confined agent spawn (INIT-002 PW-SPAWN / Phase 3a) ─────────────────────
+//
+// Primary multi-agent seat: signed + bwrap-confined daemon agent.* RPCs.
+// Local Snap/Ollama process spawn stays in commands/spawner.rs (local inference).
+
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct HarnessAgentProcess {
+    pub process_id: String,
+    pub command: String,
+    pub cwd: Option<String>,
+    pub pid: Option<i64>,
+    pub status: String,
+    pub exit_code: Option<i32>,
+}
+
+#[tauri::command]
+pub async fn harness_agent_spawn(
+    command: String,
+    args: Vec<String>,
+    repo_path: String,
+    cwd: Option<String>,
+    cols: Option<u32>,
+    rows: Option<u32>,
+) -> Result<HarnessAgentProcess, StudioError> {
+    if command.trim().is_empty() {
+        return Err(StudioError::Other("harness_agent_spawn: command is required".into()));
+    }
+    if repo_path.trim().is_empty() {
+        return Err(StudioError::Other(
+            "harness_agent_spawn: repo_path is required (project root)".into(),
+        ));
+    }
+    let mut params = serde_json::json!({
+        "command": command,
+        "args": args,
+        "repoPath": repo_path,
+        "cols": cols.unwrap_or(80),
+        "rows": rows.unwrap_or(24),
+    });
+    if let Some(c) = cwd {
+        if !c.is_empty() {
+            params
+                .as_object_mut()
+                .unwrap()
+                .insert("cwd".into(), serde_json::Value::String(c));
+        }
+    }
+    // repo_rpc opens the project root (signature-required) then spawns under it.
+    let result = harness::repo_rpc("agent.spawn", &repo_path, params)
+        .await
+        .map_err(StudioError::Other)?;
+    let process_id = result
+        .get("processId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| StudioError::Other("agent.spawn: missing processId".into()))?
+        .to_string();
+    let pid = result.get("pid").and_then(|v| v.as_i64());
+    Ok(HarnessAgentProcess {
+        process_id: process_id.clone(),
+        command,
+        cwd: None,
+        pid,
+        status: "running".into(),
+        exit_code: None,
+    })
+}
+
+#[tauri::command]
+pub async fn harness_agent_list() -> Result<Vec<HarnessAgentProcess>, StudioError> {
+    let result = harness::rpc_call("agent.list", serde_json::json!({}))
+        .await
+        .map_err(StudioError::Other)?;
+    // Daemon returns a bare array of process objects.
+    let rows = result.as_array().cloned().unwrap_or_default();
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let o = row.as_object().cloned().unwrap_or_default();
+        let process_id = o
+            .get("processId")
+            .or_else(|| o.get("process_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if process_id.is_empty() {
+            continue;
+        }
+        let command = o
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let cwd = o
+            .get("cwd")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let pid = o.get("pid").and_then(|v| v.as_i64());
+        let status = o
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let exit_code = o
+            .get("exitCode")
+            .or_else(|| o.get("exit_code"))
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32);
+        out.push(HarnessAgentProcess {
+            process_id,
+            command,
+            cwd,
+            pid,
+            status,
+            exit_code,
+        });
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn harness_agent_stop(process_id: String) -> Result<(), StudioError> {
+    harness::rpc_call(
+        "agent.stop",
+        serde_json::json!({ "processId": process_id }),
+    )
+    .await
+    .map_err(StudioError::Other)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn harness_agent_remove(process_id: String) -> Result<(), StudioError> {
+    harness::rpc_call(
+        "agent.remove",
+        serde_json::json!({ "processId": process_id }),
+    )
+    .await
+    .map_err(StudioError::Other)?;
+    Ok(())
+}
+
 // ── Permissions (GAP-294 Phase 2) ───────────────────────────────────────────
 
 #[tauri::command]

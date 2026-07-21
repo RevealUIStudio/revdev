@@ -78,7 +78,10 @@ impl Default for SpawnerState {
 
 // ── Core logic ──────────────────────────────────────────────────────
 
-/// Spawn an agent process using local inference (Snap or Ollama).
+/// Spawn a **local inference** agent (Snap or Ollama).
+///
+/// Not the primary multi-agent seat — see `harness_agent_spawn` for confined
+/// daemon `agent.spawn` (INIT-002 PW-SPAWN).
 /// Returns the session ID.
 pub fn spawn(
     name: String,

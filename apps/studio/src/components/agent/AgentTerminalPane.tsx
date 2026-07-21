@@ -8,11 +8,36 @@
 
 import type { Terminal } from '@xterm/xterm';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { agentInput, agentList, agentResize, agentSpawn, agentStop } from '../../lib/invoke';
-import type { AgentSessionInfo } from '../../types';
+import {
+  agentInput,
+  agentResize,
+  harnessAgentList,
+  harnessAgentSpawn,
+  harnessAgentStop,
+} from '../../lib/invoke';
+import type { AgentSessionInfo, HarnessAgentProcess } from '../../types';
 import TerminalView from '../terminal/TerminalView';
 import Button from '../ui/Button';
 import StatusDot from '../ui/StatusDot';
+
+function harnessRowsToSessions(rows: HarnessAgentProcess[]): AgentSessionInfo[] {
+  return rows.map((r) => ({
+    id: r.process_id,
+    name: r.command,
+    model: '',
+    backend: null,
+    prompt: r.cwd ?? '',
+    status:
+      r.status === 'running'
+        ? 'running'
+        : r.status === 'exited' && (r.exit_code ?? 0) !== 0
+          ? 'errored'
+          : 'stopped',
+    pid: r.pid,
+    harness: true,
+    cwd: r.cwd,
+  }));
+}
 
 function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -31,7 +56,7 @@ export default function AgentTerminalPane() {
 
     async function poll() {
       try {
-        const list = await agentList();
+        const list = harnessRowsToSessions(await harnessAgentList());
         if (!cancelled) setSessions(list);
       } catch {
         // daemon unreachable
@@ -110,16 +135,21 @@ export default function AgentTerminalPane() {
     try {
       const cols = terminalRef.current?.cols ?? 120;
       const rows = terminalRef.current?.rows ?? 30;
-      const sessionId = await agentSpawn(
-        `agent-${Date.now().toString(36)}`,
-        'Snap',
-        'default',
-        '',
-        { cols, rows },
-      );
-      setActiveSession(sessionId);
-      // Refresh session list
-      const list = await agentList();
+      const repoPath =
+        (typeof localStorage !== 'undefined' && localStorage.getItem('git-repo-path')) || '';
+      if (!repoPath) {
+        throw new Error('Set a project root (git repo path) before spawning a confined agent');
+      }
+      // Confined harness path (INIT-002 PW-SPAWN) — not local Snap/Ollama.
+      const proc = await harnessAgentSpawn({
+        command: 'bash',
+        args: ['-l'],
+        repoPath,
+        cols,
+        rows,
+      });
+      setActiveSession(proc.process_id);
+      const list = harnessRowsToSessions(await harnessAgentList());
       setSessions(list);
     } catch (err) {
       terminalRef.current?.writeln(
@@ -132,9 +162,9 @@ export default function AgentTerminalPane() {
 
   async function stopSession(sessionId: string) {
     try {
-      await agentStop(sessionId);
+      await harnessAgentStop(sessionId);
       if (activeSession === sessionId) setActiveSession(null);
-      const list = await agentList();
+      const list = harnessRowsToSessions(await harnessAgentList());
       setSessions(list);
     } catch {
       // already stopped
@@ -178,7 +208,7 @@ export default function AgentTerminalPane() {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-fg">{s.name}</div>
                 <div className="truncate text-xs text-fg-subtle">
-                  {s.backend} · {s.status}
+                  {s.harness ? 'confined' : (s.backend ?? 'PTY')} · {s.status}
                 </div>
               </div>
               {s.status === 'running' && (
