@@ -1097,3 +1097,50 @@ describe('GAP-257: session activity-state', () => {
     expect(row?.blocked_reason).toBeFalsy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// GAP-307: tool-use events.log advances session heartbeat (updated_at)
+// ---------------------------------------------------------------------------
+
+describe('GAP-307: events.log tool-use heartbeats session.list active', () => {
+  it('tool-use with payload.sessionId bumps updated_at and restores active', async () => {
+    await seedIdentity('gap307-hb');
+    await db.query(
+      `UPDATE agent_sessions SET updated_at = NOW() - INTERVAL '500 seconds' WHERE id = $1`,
+      ['gap307-hb'],
+    );
+    let row = (await listLocal()).find((s) => s.id === 'gap307-hb');
+    expect(row?.active).toBe(false);
+
+    // track-tools.js shape: actorAgentId + agentId + eventType tool-use + sessionId
+    await rpc(socketPath, 'events.log', {
+      actorAgentId: 'gap307-hb',
+      agentId: 'gap307-hb',
+      eventType: 'tool-use',
+      payload: { tool: 'Bash', sessionId: 'gap307-hb' },
+    });
+
+    // Allow fire-and-forget UPDATE to land
+    await new Promise((r) => setTimeout(r, 50));
+    row = (await listLocal()).find((s) => s.id === 'gap307-hb');
+    expect(row?.active).toBe(true);
+    expect(row?.staleSeconds).toBeLessThan(30);
+  });
+
+  it('non-tool-use events do not revive a stale session', async () => {
+    await seedIdentity('gap307-other');
+    await db.query(
+      `UPDATE agent_sessions SET updated_at = NOW() - INTERVAL '500 seconds' WHERE id = $1`,
+      ['gap307-other'],
+    );
+    await rpc(socketPath, 'events.log', {
+      actorAgentId: 'gap307-other',
+      agentId: 'gap307-other',
+      eventType: 'custom',
+      payload: { sessionId: 'gap307-other' },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const row = (await listLocal()).find((s) => s.id === 'gap307-other');
+    expect(row?.active).toBe(false);
+  });
+});
