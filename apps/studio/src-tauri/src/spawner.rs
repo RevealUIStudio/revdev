@@ -58,6 +58,9 @@ pub struct AgentProcess {
     pub prompt: String,
     pub child: Child,
     pub status: String,
+    /// Daemon session creds (INIT-002 Phase 1) — Snap/Ollama agents register
+    /// as governed sessions, same as Claude/Grok hooks.
+    pub daemon_creds: Option<crate::harness::InferenceAgentCreds>,
 }
 
 /// Managed Tauri state for spawned agent sessions.
@@ -150,6 +153,7 @@ pub fn spawn(
                 prompt: prompt.clone(),
                 child,
                 status: "running".to_string(),
+                daemon_creds: None,
             },
         );
     }
@@ -287,6 +291,38 @@ fn wait_for_exit(state: &Arc<Mutex<HashMap<String, AgentProcess>>>, sid: &str) -
     }
 }
 
+/// Backend string recorded on the daemon session (harness-agnostic catalog).
+pub fn backend_daemon_label(backend: &AgentBackend) -> &'static str {
+    match backend {
+        AgentBackend::Snap => "inference-snap",
+        AgentBackend::Ollama => "ollama",
+    }
+}
+
+/// Attach daemon register creds to a running local agent (best-effort).
+pub fn set_daemon_creds(
+    session_id: &str,
+    state: Arc<Mutex<HashMap<String, AgentProcess>>>,
+    creds: crate::harness::InferenceAgentCreds,
+) -> Result<(), String> {
+    let mut sessions = state.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+    if let Some(proc) = sessions.get_mut(session_id) {
+        proc.daemon_creds = Some(creds);
+        Ok(())
+    } else {
+        Err(format!("No agent session with id {session_id}"))
+    }
+}
+
+/// Take daemon creds for a session (for signed session.end).
+pub fn take_daemon_creds(
+    session_id: &str,
+    state: Arc<Mutex<HashMap<String, AgentProcess>>>,
+) -> Option<crate::harness::InferenceAgentCreds> {
+    let mut sessions = state.lock().ok()?;
+    sessions.get_mut(session_id).and_then(|p| p.daemon_creds.take())
+}
+
 /// Stop a running agent process.
 pub fn stop(
     session_id: &str,
@@ -408,6 +444,7 @@ mod tests {
             prompt: "hi".into(),
             child,
             status: status.into(),
+            daemon_creds: None,
         }
     }
 
@@ -502,6 +539,7 @@ mod tests {
             prompt: "hi".into(),
             child,
             status: "running".into(),
+            daemon_creds: None,
         }
     }
 

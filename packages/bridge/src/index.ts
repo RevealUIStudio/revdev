@@ -36,7 +36,12 @@ server.tool(
   {
     agentName: z.string().describe('Name for this agent (e.g. "agent-main")'),
     workDir: z.string().describe('Working directory for this session'),
-    backend: z.string().optional().describe('Backend identifier (default: "mcp-agent")'),
+    backend: z
+      .string()
+      .optional()
+      .describe(
+        'Harness backend label (default: "mcp-agent"). Examples: claude-code, grok, inference-snap, ollama, studio',
+      ),
   },
   async ({ agentName, workDir, backend }) => {
     const result = await daemon.call(RPC_METHODS['session.register'], {
