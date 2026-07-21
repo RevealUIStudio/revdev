@@ -1602,6 +1602,32 @@ registerHandler('events.log', async (params, db, ctx) => {
     eventType,
     JSON.stringify(payload),
   ]);
+  // GAP-307: fold liveness into the existing high-frequency tool-use path.
+  // track-tools.js already logs tool-use after every tool with
+  // payload.sessionId = daemon session id cache. Bump updated_at so
+  // session.list's server-side `active` window reflects real work without a
+  // new RPC or a new hook process.
+  if (eventType === 'tool-use') {
+    const payloadObj =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : {};
+    const sessionKey =
+      (typeof payloadObj.sessionId === 'string' && payloadObj.sessionId) ||
+      (agentId !== 'anonymous' ? agentId : null);
+    if (sessionKey) {
+      void db
+        .query(
+          `UPDATE agent_sessions
+              SET updated_at = NOW()
+            WHERE id = $1 AND ended_at IS NULL`,
+          [sessionKey],
+        )
+        .catch(() => {
+          /* non-fatal — liveness is best-effort */
+        });
+    }
+  }
   // Best-effort dual-write to coordination_events (GAP-154 Phase 3).
   await syncEventLog({ agentId, type: eventType, payload });
   return { logged: true };
