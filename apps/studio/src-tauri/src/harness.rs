@@ -135,6 +135,84 @@ pub async fn ensure_session() -> Result<String, String> {
     Ok(id)
 }
 
+/// Register a local inference agent (Ubuntu Inference Snap or Ollama) as a
+/// daemon session under a daemon-minted identity. Returns the one-shot
+/// private key so the caller can sign `session.end` later.
+///
+/// This is the Studio counterpart to Claude/Grok hook identity (INIT-002 Phase 1):
+/// every daily-driver agent harness — frontier hooks **and** local snaps — is a
+/// governed session on the same daemon, not a free-floating process.
+pub async fn register_inference_agent(
+    agent_id: &str,
+    agent_name: &str,
+    backend: &str,
+    work_dir: &str,
+) -> Result<InferenceAgentCreds, String> {
+    let result = rpc_call_raw(
+        "session.register",
+        serde_json::json!({
+            "agentId": agent_id,
+            "agentName": agent_name,
+            "workDir": work_dir,
+            "backend": backend,
+        }),
+        None,
+    )
+    .await?;
+    let did = result
+        .get("did")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "session.register did not return did".to_string())?
+        .to_string();
+    // One-shot private key only on first mint; re-spawn of same agentId may omit it.
+    let private_key_pem = result
+        .get("privateKeyPem")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    Ok(InferenceAgentCreds {
+        agent_id: agent_id.to_string(),
+        did,
+        private_key_pem,
+    })
+}
+
+/// Creds for a local inference agent session registered with the daemon.
+#[derive(Clone)]
+pub struct InferenceAgentCreds {
+    pub agent_id: String,
+    pub did: String,
+    /// Present only on first mint for this agentId.
+    pub private_key_pem: Option<String>,
+}
+
+/// End a local inference agent session with a verified signature when the
+/// one-shot private key is available; otherwise best-effort unsigned (prune
+/// still reaps). Prefer signed end for clean coordination state.
+pub async fn end_inference_agent(creds: &InferenceAgentCreds) -> Result<(), String> {
+    let params = serde_json::json!({
+        "exitSummary": format!("inference-agent-stop:{}", creds.agent_id),
+    });
+    let signature = match &creds.private_key_pem {
+        Some(pem) => {
+            let identity = signing::EphemeralAgentIdentity::from_daemon_mint(&creds.did, pem)?;
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| format!("system clock before epoch: {e}"))?
+                .as_secs() as i64;
+            Some(identity.sign_request("session.end", &params, ts))
+        }
+        None => None,
+    };
+    match rpc_call_raw("session.end", params, signature).await {
+        Ok(_) => Ok(()),
+        Err(e) if e.contains("-32003") || e.contains("signed request") => {
+            // Unsigned end is expected when re-spawn had no private key re-emit.
+            Err(e)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Send a JSON-RPC request to the daemon, automatically injecting the cached
 /// Studio agent ID as `actorAgentId` so the daemon can attribute the call.
 ///

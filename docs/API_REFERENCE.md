@@ -91,7 +91,16 @@ Register a new agent session. Returns a sessionId to use as identity. Two owners
 
 **Response**: `{ sessionId: string, agentId: string, agentName: string, backend: string, did: string, publicKeyPem: string, privateKeyPem?: string, warnings?: unknown[], session: { id, env, task } }`
 
-`privateKeyPem` is returned **only** on the first daemon-minted bootstrap (headless hooks). It is never returned for client-owned enroll or for re-register of an existing identity. Cache it (hooks write `~/.local/share/revealui/hook-identities/<agentId>.json`) or load from revvault `revdev/agents/<agentId>/identity/ed25519-private` for subsequent signed calls (`session.end`, file/git mutations, …).
+`privateKeyPem` is returned **only** on the first daemon-minted bootstrap. It is never returned for client-owned enroll or for re-register of an existing identity. Intended consumers (all daily-driver harnesses, not Claude alone):
+
+| Client | How it stores the key |
+|--------|------------------------|
+| Claude Code / Grok hooks | `~/.local/share/revealui/hook-identities/<agentId>.json` |
+| Studio Ubuntu Inference Snap / Ollama spawn | in-memory on the agent process for signed `session.end` |
+| MCP bridge | `REVDEV_AGENT_DID` + `REVDEV_AGENT_PRIVATE_KEY_PEM` env |
+| Fallback | revvault `revdev/agents/<agentId>/identity/ed25519-private` |
+
+`backend` on register should name the harness: e.g. `claude-code`, `grok`, `inference-snap`, `ollama`, `mcp-agent`, `studio`.
 
 ---
 

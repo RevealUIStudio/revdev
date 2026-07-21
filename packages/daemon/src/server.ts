@@ -782,10 +782,12 @@ registerHandler('session.register', async (params, db, ctx) => {
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
   //
   // `privateKeyPem` is returned ONLY on first daemon-minted bootstrap so
-  // headless clients (Claude/Grok hooks) can cache a signing key for
-  // session.end and other MUTATING_OR_CONTENT_METHODS. Client-owned enroll
-  // never returns a private key (Studio keeps it). Re-register of an
-  // existing identity never re-emits the private key — load from cache or
+  // headless harness clients can cache a signing key for session.end and
+  // other MUTATING_OR_CONTENT_METHODS. Consumers include Claude Code hooks,
+  // Grok dual-harness hooks, Ubuntu Inference Snap / Ollama agents registered
+  // from Studio, and the MCP bridge — not Claude/Grok alone. Client-owned
+  // enroll never returns a private key (Studio UI keeps it). Re-register of
+  // an existing identity never re-emits the private key — load from cache or
   // revvault (`revdev/agents/<id>/identity/ed25519-private`).
   return {
     sessionId: id,

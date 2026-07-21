@@ -195,6 +195,78 @@ pub struct StudioIdentity {
     pub public_key_pem: String,
 }
 
+/// Signing identity for a daemon-minted local agent (Ubuntu Inference Snap,
+/// Ollama, or other headless runner). Built from the one-shot `privateKeyPem`
+/// returned by `session.register` so Studio can sign `session.end` for that
+/// agent without reusing the Studio UI's client-owned key.
+pub struct EphemeralAgentIdentity {
+    signing_key: SigningKey,
+    pub did: String,
+    pub fingerprint: String,
+}
+
+impl EphemeralAgentIdentity {
+    /// Reconstruct from daemon register response (`did` + PKCS8 `privateKeyPem`).
+    /// Node `generateKeyPairSync('ed25519')` PKCS8 DER ends with the 32-byte seed.
+    pub fn from_daemon_mint(did: &str, private_key_pem: &str) -> Result<Self, String> {
+        let fingerprint = did
+            .rsplit(':')
+            .next()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| format!("invalid did (no fingerprint): {did}"))?
+            .to_string();
+        let signing_key = signing_key_from_pkcs8_pem(private_key_pem)?;
+        Ok(Self {
+            signing_key,
+            did: did.to_string(),
+            fingerprint,
+        })
+    }
+
+    pub fn sign_request(&self, method: &str, params: &Value, now_unix_secs: i64) -> String {
+        let header_b64 = b64url(HEADER_JSON.as_bytes());
+        let mut nonce_bytes = [0u8; 16];
+        {
+            use rand::RngCore;
+            rand::rng().fill_bytes(&mut nonce_bytes);
+        }
+        let payload = SignaturePayload {
+            did: &self.did,
+            kid: &self.fingerprint,
+            nonce: hex::encode(nonce_bytes),
+            ts: now_unix_secs,
+            method,
+            params_hash: hash_params(method, params),
+        };
+        let payload_json = serde_json::to_string(&payload).expect("payload serializes");
+        let payload_b64 = b64url(payload_json.as_bytes());
+        let message = format!("{header_b64}.{payload_b64}");
+        let signature = self.signing_key.sign(message.as_bytes());
+        let sig_b64 = b64url(&signature.to_bytes());
+        format!("{message}.{sig_b64}")
+    }
+}
+
+/// Extract the 32-byte Ed25519 seed from a PKCS8 PEM private key (Node/OpenSSL
+/// shape). The seed is the trailing 32 bytes of the DER payload.
+fn signing_key_from_pkcs8_pem(pem: &str) -> Result<SigningKey, String> {
+    use base64::Engine;
+    let b64: String = pem
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("-----"))
+        .collect();
+    let der = base64::engine::general_purpose::STANDARD
+        .decode(b64.as_bytes())
+        .map_err(|e| format!("invalid private key PEM base64: {e}"))?;
+    if der.len() < 32 {
+        return Err("invalid private key PEM: too short".to_string());
+    }
+    let mut seed = [0u8; 32];
+    seed.copy_from_slice(&der[der.len() - 32..]);
+    Ok(SigningKey::from_bytes(&seed))
+}
+
 impl StudioIdentity {
     /// Generate a fresh identity from OS randomness.
     pub fn generate(agent_id: String) -> Self {
@@ -447,6 +519,24 @@ mod tests {
             hash_params("git.status", &Value::Null),
             hash_params("git.status", &json!({}))
         );
+    }
+
+    #[test]
+    fn ephemeral_agent_from_pkcs8_trailing_seed() {
+        use base64::Engine;
+        let seed = [9u8; 32];
+        // Minimal DER: trailing 32 bytes are the seed (matches our parser).
+        let der = seed.to_vec();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&der);
+        let pem = format!("-----BEGIN PRIVATE KEY-----\n{b64}\n-----END PRIVATE KEY-----\n");
+        let studio = StudioIdentity::from_seed("snap-agent".into(), &seed);
+        let eph = EphemeralAgentIdentity::from_daemon_mint(&studio.did, &pem).unwrap();
+        assert_eq!(eph.did, studio.did);
+        assert_eq!(eph.fingerprint, studio.fingerprint);
+        // Signatures for the same method/params/ts differ by nonce but both verify shape.
+        let params = json!({ "exitSummary": "test" });
+        let env = eph.sign_request("session.end", &params, 1_700_000_000);
+        assert_eq!(env.split('.').count(), 3);
     }
 
     #[test]
