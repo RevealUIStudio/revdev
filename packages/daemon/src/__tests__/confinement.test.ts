@@ -15,11 +15,13 @@ import {
   buildConfinedEnv,
   ensureAgentHome,
   filterCallerEnv,
+  isTrustedBwrapOwner,
   linuxBubblewrapBackend,
   neverBoundSet,
   resolveBwrapAbsPath,
   resolveConfinementBackend,
   resolveOperatorHome,
+  systemRootUidIsSquashedToNobody,
 } from '../confinement.js';
 
 // ---------------------------------------------------------------------------
@@ -245,6 +247,23 @@ describe('resolveBwrapAbsPath', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('isTrustedBwrapOwner', () => {
+  it('trusts uid 0 always', () => {
+    expect(isTrustedBwrapOwner({ uid: 0 })).toBe(true);
+  });
+
+  it('rejects ordinary non-root uids', () => {
+    expect(isTrustedBwrapOwner({ uid: 1000 })).toBe(false);
+  });
+
+  it('treats uid 65534 as trusted only when system root is idmap-squashed', () => {
+    // On a normal Linux CI runner /usr/bin/true is uid 0, so squash is false
+    // and 65534 remains untrusted. On WSL systemd-user both report 65534.
+    const squashed = systemRootUidIsSquashedToNobody();
+    expect(isTrustedBwrapOwner({ uid: 65534 })).toBe(squashed);
   });
 });
 
