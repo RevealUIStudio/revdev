@@ -87,11 +87,43 @@ export interface ConfinementBackend {
 const BWRAP_CANDIDATE = '/usr/bin/bwrap';
 
 /**
- * Resolve `bwrap` to an absolute realpath and verify it is root-owned and not
- * group- or other-writable (spec §4.2 invariant 1). Never resolved through a
+ * Under systemd-user on WSL (and some idmapped mounts), `stat.uid` for
+ * root-owned files in `/usr` is reported as 65534 (`nobody`) even though the
+ * file is truly root:root on the host. Detect that squash by checking a
+ * known system binary that is always root-owned on a sane distro.
+ *
+ * When the squash is active, accepting uid 65534 for a non-group/other-writable
+ * `/usr/bin/bwrap` is the only way confinement can arm inside a user unit.
+ * When the squash is NOT active, uid 65534 remains untrusted.
+ */
+export function systemRootUidIsSquashedToNobody(): boolean {
+  try {
+    const st = statSync('/usr/bin/true');
+    return st.isFile() && st.uid === 65534;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the stat result is an acceptable owner for the bwrap binary.
+ * - Normal: uid 0 (root)
+ * - WSL systemd-user idmap: uid 65534 only if the whole system root→nobody
+ *   squash is observed on `/usr/bin/true` as well
+ */
+export function isTrustedBwrapOwner(st: { uid: number }): boolean {
+  if (st.uid === 0) return true;
+  if (st.uid === 65534 && systemRootUidIsSquashedToNobody()) return true;
+  return false;
+}
+
+/**
+ * Resolve `bwrap` to an absolute realpath and verify it is root-owned (or
+ * idmap-squashed root — see `isTrustedBwrapOwner`) and not group- or
+ * other-writable (spec §4.2 invariant 1). Never resolved through a
  * caller-influenced PATH — a bare-name reference is shadowable, so the parent
  * spec's finding forbids it. Returns the abspath, or null if bwrap is absent,
- * not a regular file, not root-owned, or writable by non-root.
+ * not a regular file, not trusted-owned, or writable by non-root.
  */
 export function resolveBwrapAbsPath(candidate: string = BWRAP_CANDIDATE): string | null {
   let real: string;
@@ -107,7 +139,7 @@ export function resolveBwrapAbsPath(candidate: string = BWRAP_CANDIDATE): string
     return null;
   }
   if (!st.isFile()) return null;
-  if (st.uid !== 0) {
+  if (!isTrustedBwrapOwner(st)) {
     log.warn('bwrap is not root-owned; refusing to use it', { path: real, uid: st.uid });
     return null;
   }
