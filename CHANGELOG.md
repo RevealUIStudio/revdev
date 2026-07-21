@@ -13,7 +13,12 @@ Dates are ISO 8601 (UTC).
   (`routine` / `consequential` / `critical` per owner-countersigned map) and
   emits `permission.would_allow` / `permission.would_require_approval` events
   without blocking. Simulated mode via `REVDEV_PERMISSION_SHADOW_AS=manual|auto`
-  (default manual). Enforcement (-32004 queue) is Phase 1.
+  (default manual).
+- **GAP-294 Phase 1 manual/auto enforce (headless).** With
+  `REVDEV_PERMISSION_MODE=manual|auto`, consequential/critical calls get
+  reject-with-receipt (`-32004`, `pending_approvals` queue). `permission.pending`
+  + signed `permission.decide` (no self-approval). Migration 0007. Default remains
+  shadow until the operator sets the env.
 
 ### Fixed
 

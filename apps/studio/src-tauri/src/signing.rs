@@ -100,6 +100,8 @@ pub fn requires_signature(method: &str) -> bool {
             // (`staleDays: 0` selects `started_at < NOW()`). GAP-312.
             // MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
             | "harness.prune"
+            // GAP-294 Phase 1 — approval decisions are signature-required.
+            | "permission.decide"
     )
 }
 
@@ -627,10 +629,13 @@ mod tests {
         assert!(requires_signature("session.end"));
         // GAP-312: same eviction primitive as session.end, fleet-wide fan-out.
         assert!(requires_signature("harness.prune"));
+        // GAP-294 Phase 1.
+        assert!(requires_signature("permission.decide"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
         // harness.health is a read; it stays unsigned. Guards against a
         // copy-paste that gates the wrong half of the harness.* surface.
         assert!(!requires_signature("harness.health"));
+        assert!(!requires_signature("permission.pending"));
     }
 }
