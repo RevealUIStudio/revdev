@@ -5,6 +5,7 @@ import { RPC_METHODS } from '@revdev/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   classifyMethod,
+  decideEnforcement,
   evaluateShadow,
   expectedClassifiedMethods,
   METHOD_ACTION_CLASS,
@@ -102,5 +103,32 @@ describe('owner-countersigned judgment calls', () => {
   });
   it('memory.store is routine', () => {
     expect(classifyMethod('memory.store')).toBe('routine');
+  });
+});
+
+describe('decideEnforcement (Phase 1)', () => {
+  afterEach(() => {
+    delete process.env.REVDEV_PERMISSION_MODE;
+    delete process.env.REVDEV_PERMISSION_DENY_METHODS;
+  });
+
+  it('shadow mode is not used by decideEnforcement callers for block', () => {
+    // decideEnforcement under manual requires approval for critical
+    const d = decideEnforcement('git.push', 'manual');
+    expect(d.action).toBe('require_approval');
+  });
+
+  it('manual allows routine', () => {
+    expect(decideEnforcement('ping', 'manual').action).toBe('allow');
+  });
+
+  it('auto allows consequential and requires approval for critical', () => {
+    expect(decideEnforcement('file.write', 'auto').action).toBe('allow');
+    expect(decideEnforcement('agent.spawn', 'auto').action).toBe('require_approval');
+  });
+
+  it('deny-list absorbs', () => {
+    process.env.REVDEV_PERMISSION_DENY_METHODS = 'git.pull,file.write';
+    expect(decideEnforcement('git.pull', 'auto').action).toBe('deny');
   });
 });
