@@ -15,11 +15,14 @@ import type {
   GitPullResult,
   GitPushResult,
   GitStatusResult,
+  HarnessApproval,
   HarnessClaimResult,
+  HarnessDecideResult,
   HarnessMessage,
   HarnessReservation,
   HarnessReserveResult,
   HarnessSession,
+  HarnessSetModeResult,
   HarnessTask,
   ModelPullResult,
   MountStatus,
@@ -314,6 +317,24 @@ const MOCK_DATA: Record<string, unknown> = {
   ] satisfies HarnessReservation[],
   harness_reserve_file: { success: true } satisfies HarnessReserveResult,
   harness_check_file: null,
+  harness_permission_pending: [
+    {
+      id: 'apr-mock-1',
+      agent_id: 'agent-ext-1',
+      method: 'git.push',
+      params_hash: 'abc123',
+      summary: 'git.push origin main',
+      requested_at: new Date(Date.now() - 60_000).toISOString(),
+      expires_at: new Date(Date.now() + 1_800_000).toISOString(),
+      status: 'pending',
+    },
+  ] satisfies HarnessApproval[],
+  harness_permission_decide: { id: 'apr-mock-1', status: 'approved' } satisfies HarnessDecideResult,
+  harness_permission_set_mode: {
+    agent_id: 'agent-ext-1',
+    permission_mode: 'manual',
+    daemon_default: 'shadow',
+  } satisfies HarnessSetModeResult,
 };
 
 // ── Remote daemon HTTP transport (browser mode) ─────────────────────────────
@@ -344,6 +365,10 @@ export const HARNESS_RPC_MAP: Record<string, string> = {
   harness_reservations: 'files.list',
   harness_reserve_file: 'files.reserve',
   harness_check_file: 'files.check',
+  // GAP-294 permission modes
+  harness_permission_pending: 'permission.pending',
+  harness_permission_decide: 'permission.decide',
+  harness_permission_set_mode: 'permission.setMode',
   // Agent spawner
   agent_spawn: 'agent.spawn',
   agent_stop: 'agent.stop',
@@ -495,12 +520,88 @@ function adaptAgentList(raw: unknown): AgentSessionInfo[] {
   }));
 }
 
+function adaptPermissionPending(raw: unknown): HarnessApproval[] {
+  const r = (raw ?? {}) as { approvals?: unknown[] };
+  const rows = Array.isArray(r.approvals) ? r.approvals : Array.isArray(raw) ? raw : [];
+  return rows.map((row) => {
+    const o = (row ?? {}) as Record<string, unknown>;
+    return {
+      id: String(o.id ?? ''),
+      agent_id: String(o.agentId ?? o.agent_id ?? ''),
+      method: String(o.method ?? ''),
+      params_hash: String(o.paramsHash ?? o.params_hash ?? ''),
+      summary: String(o.summary ?? ''),
+      requested_at: String(o.requestedAt ?? o.requested_at ?? ''),
+      expires_at: String(o.expiresAt ?? o.expires_at ?? ''),
+      status: String(o.status ?? 'pending'),
+    };
+  });
+}
+
+function adaptPermissionDecide(raw: unknown): HarnessDecideResult {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return { id: String(o.id ?? ''), status: String(o.status ?? '') };
+}
+
+function adaptPermissionSetMode(raw: unknown): HarnessSetModeResult {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return {
+    agent_id: String(o.agentId ?? o.agent_id ?? ''),
+    permission_mode:
+      o.permissionMode === null || o.permissionMode === undefined
+        ? null
+        : String(o.permissionMode ?? o.permission_mode ?? ''),
+    daemon_default:
+      o.daemonDefault === null || o.daemonDefault === undefined
+        ? null
+        : String(o.daemonDefault ?? o.daemon_default ?? ''),
+  };
+}
+
+function adaptHarnessSessions(raw: unknown): HarnessSession[] {
+  const r = (raw ?? {}) as { sessions?: unknown[] };
+  const rows = Array.isArray(r.sessions) ? r.sessions : Array.isArray(raw) ? raw : [];
+  return rows.map((row) => {
+    const o = (row ?? {}) as Record<string, unknown>;
+    return {
+      id: String(o.id ?? ''),
+      env: String(o.env ?? ''),
+      task: String(o.task ?? ''),
+      files: o.files == null ? null : String(o.files),
+      pid: typeof o.pid === 'number' ? o.pid : null,
+      started_at: String(o.started_at ?? o.startedAt ?? ''),
+      updated_at: String(o.updated_at ?? o.updatedAt ?? ''),
+      ended_at: o.ended_at == null && o.endedAt == null ? null : String(o.ended_at ?? o.endedAt),
+      exit_summary:
+        o.exit_summary == null && o.exitSummary == null
+          ? null
+          : String(o.exit_summary ?? o.exitSummary),
+      activity_state:
+        o.activity_state == null && o.activityState == null
+          ? null
+          : String(o.activity_state ?? o.activityState),
+      blocked_reason:
+        o.blocked_reason == null && o.blockedReason == null
+          ? null
+          : String(o.blocked_reason ?? o.blockedReason),
+      permission_mode:
+        o.permission_mode == null && o.permissionMode == null
+          ? null
+          : String(o.permission_mode ?? o.permissionMode),
+    };
+  });
+}
+
 /** Per-command adapters applied to the daemon RPC result in browser mode. */
 const RESULT_ADAPTERS: Record<string, (raw: unknown) => unknown> = {
   agent_list: adaptAgentList,
   inference_ollama_status: adaptOllamaStatus,
   inference_ollama_models: adaptOllamaModels,
   inference_ollama_pull: adaptOllamaPull,
+  harness_sessions: adaptHarnessSessions,
+  harness_permission_pending: adaptPermissionPending,
+  harness_permission_decide: adaptPermissionDecide,
+  harness_permission_set_mode: adaptPermissionSetMode,
 };
 
 /** Get the configured daemon URL from localStorage */
@@ -1127,6 +1228,32 @@ export function harnessReserveFile(
     agentId,
     ttlSeconds,
     reason,
+  });
+}
+
+export function harnessPermissionPending(agentId?: string): Promise<HarnessApproval[]> {
+  return invoke<HarnessApproval[]>('harness_permission_pending', {
+    agentId: agentId ?? null,
+  });
+}
+
+export function harnessPermissionDecide(
+  approvalId: string,
+  verdict: 'approved' | 'denied',
+): Promise<HarnessDecideResult> {
+  return invoke<HarnessDecideResult>('harness_permission_decide', {
+    approvalId,
+    verdict,
+  });
+}
+
+export function harnessPermissionSetMode(
+  agentId: string,
+  mode: string | null,
+): Promise<HarnessSetModeResult> {
+  return invoke<HarnessSetModeResult>('harness_permission_set_mode', {
+    agentId,
+    mode,
   });
 }
 

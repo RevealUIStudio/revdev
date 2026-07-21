@@ -114,6 +114,7 @@ const EXEMPT_METHODS = new Set([
   // (Decide is still signature-gated; self-approval is rejected.)
   'permission.pending',
   'permission.decide',
+  'permission.setMode',
 ]);
 
 /**

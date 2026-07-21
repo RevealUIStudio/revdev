@@ -128,6 +128,35 @@ export interface HarnessSession {
   updated_at: string;
   ended_at: string | null;
   exit_summary: string | null;
+  /** GAP-257: active | blocked | idle when present */
+  activity_state?: string | null;
+  /** Why blocked (e.g. permission) */
+  blocked_reason?: string | null;
+  /** GAP-294 per-session mode override; null = daemon default */
+  permission_mode?: string | null;
+}
+
+/** Pending approval from permission.pending (GAP-294) */
+export interface HarnessApproval {
+  id: string;
+  agent_id: string;
+  method: string;
+  params_hash: string;
+  summary: string;
+  requested_at: string;
+  expires_at: string;
+  status: string;
+}
+
+export interface HarnessDecideResult {
+  id: string;
+  status: string;
+}
+
+export interface HarnessSetModeResult {
+  agent_id: string;
+  permission_mode: string | null;
+  daemon_default?: string | null;
 }
 
 /** Inter-agent message */

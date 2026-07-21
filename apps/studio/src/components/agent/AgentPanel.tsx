@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import ConfirmDialog from '../ui/ConfirmDialog';
 import AgentChat from './AgentChat';
+import ApprovalQueue from './ApprovalQueue';
 import FileReservations from './FileReservations';
 import MessageInbox from './MessageInbox';
 import SpawnerPanel from './SpawnerPanel';
@@ -16,7 +17,7 @@ import TaskBoard from './TaskBoard';
 
 const AGENT_POLL_INTERVAL_MS = 30_000;
 
-type RightTab = 'changes' | 'chat' | 'messages' | 'tasks' | 'reservations';
+type RightTab = 'changes' | 'chat' | 'messages' | 'tasks' | 'reservations' | 'approvals';
 
 import { useHarness } from '../../hooks/use-harness';
 import { useSettingsContext } from '../../hooks/use-settings';
@@ -212,16 +213,31 @@ function SessionCard({ session }: { session: AgentSession }) {
 function HarnessSessionCard({ session }: { session: import('../../types').HarnessSession }) {
   const isEnded = session.ended_at !== null;
   const hasFiles = session.files !== null && session.files.trim() !== '';
+  const isBlocked = session.activity_state === 'blocked' || session.blocked_reason === 'permission';
 
   return (
     <div className="rounded-lg border border-edge bg-surface-1/60 p-2.5">
       <div className="flex items-center gap-2">
         <span
           className={`size-2 shrink-0 rounded-full ${
-            isEnded ? 'bg-surface-3' : 'animate-pulse bg-info'
+            isEnded
+              ? 'bg-surface-3'
+              : isBlocked
+                ? 'animate-pulse bg-warning'
+                : 'animate-pulse bg-info'
           }`}
         />
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{session.id}</span>
+        {isBlocked ? (
+          <span className="shrink-0 rounded bg-warning-subtle px-1.5 py-0.5 text-[10px] text-warning">
+            blocked
+          </span>
+        ) : null}
+        {session.permission_mode ? (
+          <span className="shrink-0 rounded bg-info-subtle px-1.5 py-0.5 text-[10px] text-info">
+            {session.permission_mode}
+          </span>
+        ) : null}
         <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">
           {session.env}
         </span>
@@ -618,6 +634,17 @@ export default function AgentPanel() {
               </span>
             ) : null}
           </button>
+          <button
+            type="button"
+            onClick={() => setRightTab('approvals')}
+            className={`px-4 py-2 text-xs font-medium transition-colors ${
+              rightTab === 'approvals'
+                ? 'border-b-2 border-info text-info'
+                : 'text-fg-subtle hover:text-fg-muted'
+            }`}
+          >
+            Approvals
+          </button>
           {rightTab === 'changes' ? (
             <div className="ml-auto flex items-center gap-1 pr-2">
               {(gitState?.unstaged.length ?? 0) + (gitState?.untracked.length ?? 0) > 0 ? (
@@ -799,6 +826,13 @@ export default function AgentPanel() {
         ) : null}
         {rightTab === 'reservations' ? (
           <FileReservations reservations={harness.reservations} agentId="studio" />
+        ) : null}
+        {rightTab === 'approvals' ? (
+          <ApprovalQueue
+            sessions={harness.sessions}
+            connected={harness.connected}
+            onChanged={() => void harness.refresh()}
+          />
         ) : null}
       </div>
       <ConfirmDialog
