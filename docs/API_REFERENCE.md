@@ -89,7 +89,9 @@ Register a new agent session. Returns a sessionId to use as identity. Two owners
 | `pid` | number? | Caller process ID |
 | `publicKeyPem` | string? | Client-owned Ed25519 SPKI PEM public key (Studio zero-9P model); the fingerprint must be in the daemon's trust anchor or registration fails with -32004 |
 
-**Response**: `{ sessionId: string, agentId: string, agentName: string, backend: string, did: string, publicKeyPem: string, session: { id, env, task } }`
+**Response**: `{ sessionId: string, agentId: string, agentName: string, backend: string, did: string, publicKeyPem: string, privateKeyPem?: string, warnings?: unknown[], session: { id, env, task } }`
+
+`privateKeyPem` is returned **only** on the first daemon-minted bootstrap (headless hooks). It is never returned for client-owned enroll or for re-register of an existing identity. Cache it (hooks write `~/.local/share/revealui/hook-identities/<agentId>.json`) or load from revvault `revdev/agents/<agentId>/identity/ed25519-private` for subsequent signed calls (`session.end`, file/git mutations, …).
 
 ---
 
@@ -124,12 +126,12 @@ Update the current session's task/files description, or self-scoped activity sta
 ---
 
 ### `session.end`
-**Tier**: Free
-**Signature**: required
+**Tier**: Free · **Signature: required**
 
-End the current session. Optionally record an exit summary. Self-scoped to the verified signer; a caller-supplied session/agent override is not honored.
+Self-scoped to the verified Ed25519 signer. The caller may not end another agent’s session via params (the old `sessionId` override was removed). Unsigned frames return an error before the handler runs.
 
-**Params**: `{ exitSummary?: string }`
+**Params**: `{ exitSummary?: string, summary?: string }` (aliases). Hook clients pass `actorAgentId` only for local identity cache lookup; it is not used as an end-target.
+
 **Response**: `{ ended: string }`
 
 ---

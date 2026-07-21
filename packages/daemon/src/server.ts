@@ -767,9 +767,10 @@ registerHandler('session.register', async (params, db, ctx) => {
   //   - DAEMON-MINTED (headless hooks): no key supplied, so the daemon
   //     generates the keypair and mirrors it to revvault, as before.
   const clientPublicKeyPem = strOrNull(params.publicKeyPem);
-  const { did, publicKeyPem } = clientPublicKeyPem
+  const identity = clientPublicKeyPem
     ? await registerClientIdentity(db, id, clientPublicKeyPem)
     : await bootstrapAgentIdentity(db, id);
+  const { did, publicKeyPem } = identity;
 
   // Run the registered session-lifecycle advisory checks and surface their
   // warnings to the client. Best-effort by construction: runSessionChecks
@@ -779,6 +780,13 @@ registerHandler('session.register', async (params, db, ctx) => {
 
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
+  //
+  // `privateKeyPem` is returned ONLY on first daemon-minted bootstrap so
+  // headless clients (Claude/Grok hooks) can cache a signing key for
+  // session.end and other MUTATING_OR_CONTENT_METHODS. Client-owned enroll
+  // never returns a private key (Studio keeps it). Re-register of an
+  // existing identity never re-emits the private key — load from cache or
+  // revvault (`revdev/agents/<id>/identity/ed25519-private`).
   return {
     sessionId: id,
     agentId: id,
@@ -786,6 +794,7 @@ registerHandler('session.register', async (params, db, ctx) => {
     backend,
     did,
     publicKeyPem,
+    ...(identity.privateKeyPem !== undefined ? { privateKeyPem: identity.privateKeyPem } : {}),
     warnings,
     session: { id, env, task: workDir },
   };
@@ -794,6 +803,11 @@ registerHandler('session.register', async (params, db, ctx) => {
 interface IdentityResult {
   did: string;
   publicKeyPem: string;
+  /**
+   * Present only when this call freshly minted a daemon-held keypair.
+   * Never on client-owned enroll or re-register of an existing identity.
+   */
+  privateKeyPem?: string;
 }
 
 async function bootstrapAgentIdentity(db: PGlite, agentId: string): Promise<IdentityResult> {
@@ -823,9 +837,12 @@ async function bootstrapAgentIdentity(db: PGlite, agentId: string): Promise<Iden
     [fingerprint, agentId, kp.publicKeyPem],
   );
 
-  void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
+  // Await vault mirror so hooks can fall back to revvault get if the one-shot
+  // privateKeyPem response is lost (INIT-002 Phase 1). Still best-effort: vault
+  // failures log and do not fail registration.
+  await persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
 
-  return { did, publicKeyPem: kp.publicKeyPem };
+  return { did, publicKeyPem: kp.publicKeyPem, privateKeyPem: kp.privateKeyPem };
 }
 
 /** Thrown when a client (agentId, key) pair is not in the trust anchor. */
