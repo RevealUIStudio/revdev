@@ -340,7 +340,16 @@ describe('browser-mode daemon adapters', () => {
     const { agentList } = await import('../../lib/invoke');
     const sessions = await agentList();
     expect(sessions).toEqual([
-      { id: 'p1', name: 'bash', model: '', backend: null, prompt: '', status: 'running', pid: 42 },
+      {
+        id: 'p1',
+        name: 'bash',
+        model: '',
+        backend: null,
+        prompt: '',
+        status: 'running',
+        pid: 42,
+        harness: true,
+      },
       {
         id: 'p2',
         name: 'node',
@@ -349,6 +358,7 @@ describe('browser-mode daemon adapters', () => {
         prompt: '',
         status: 'errored',
         pid: null,
+        harness: true,
       },
     ]);
   });

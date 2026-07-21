@@ -15,6 +15,7 @@ import type {
   GitPullResult,
   GitPushResult,
   GitStatusResult,
+  HarnessAgentProcess,
   HarnessApproval,
   HarnessClaimResult,
   HarnessDecideResult,
@@ -174,6 +175,26 @@ const MOCK_DATA: Record<string, unknown> = {
   git_read_file: '// Mock file content\nexport default function example() {}\n',
   git_write_file: undefined,
   agent_spawn: 'mock-agent-session-id',
+  harness_agent_spawn: {
+    process_id: 'mock-harness-proc',
+    command: 'bash',
+    cwd: '/tmp/repo',
+    pid: 4242,
+    status: 'running',
+    exit_code: null,
+  } satisfies HarnessAgentProcess,
+  harness_agent_list: [
+    {
+      process_id: 'mock-harness-proc',
+      command: 'bash',
+      cwd: '/tmp/repo',
+      pid: 4242,
+      status: 'running',
+      exit_code: null,
+    },
+  ] satisfies HarnessAgentProcess[],
+  harness_agent_stop: undefined,
+  harness_agent_remove: undefined,
   agent_stop: undefined,
   agent_list: [] satisfies AgentSessionInfo[],
   agent_remove: undefined,
@@ -370,12 +391,18 @@ export const HARNESS_RPC_MAP: Record<string, string> = {
   harness_permission_decide: 'permission.decide',
   harness_permission_set_mode: 'permission.setMode',
   // Agent spawner
+  // Local inference (Tauri-only in desktop); browser maps to daemon agent.*
   agent_spawn: 'agent.spawn',
   agent_stop: 'agent.stop',
   agent_list: 'agent.list',
   agent_remove: 'agent.remove',
   agent_input: 'agent.input',
   agent_resize: 'agent.resize',
+  // Confined harness spawn (INIT-002 PW-SPAWN) — same daemon methods, explicit commands
+  harness_agent_spawn: 'agent.spawn',
+  harness_agent_list: 'agent.list',
+  harness_agent_stop: 'agent.stop',
+  harness_agent_remove: 'agent.remove',
   // Local inference (Ollama) — the daemon's inference.* handlers ARE the Ollama
   // HTTP integration. Result shapes differ from the Tauri path and are adapted
   // back to the Studio types by RESULT_ADAPTERS below. `inference_ollama_models`
@@ -420,6 +447,31 @@ function toRpcParams(cmd: string, args?: Record<string, unknown>): Record<string
   }
   // Special cases for harness_ping which returns boolean
   if (cmd === 'harness_ping') return {};
+  // Harness agent spawn: map Studio args → daemon agent.spawn params.
+  if (cmd === 'harness_agent_spawn') {
+    return {
+      command: params.command,
+      args: Array.isArray(params.args) ? params.args : [],
+      repoPath: params.repoPath ?? params.repo_path,
+      cwd: params.cwd ?? undefined,
+      cols: params.cols ?? 80,
+      rows: params.rows ?? 24,
+    };
+  }
+  if (cmd === 'harness_agent_stop' || cmd === 'harness_agent_remove') {
+    return { processId: params.processId ?? params.process_id };
+  }
+  if (cmd === 'agent_spawn' && params.command) {
+    // Browser mode confined spawn when callers pass command/repoPath.
+    return {
+      command: params.command,
+      args: Array.isArray(params.args) ? params.args : [],
+      repoPath: params.repoPath ?? params.repo_path,
+      cwd: params.cwd ?? undefined,
+      cols: params.cols ?? 80,
+      rows: params.rows ?? 24,
+    };
+  }
   // The Ollama model commands take a `modelName` arg on the Studio wrappers, but
   // the daemon's inference.pull/delete handlers read `model`. Rename so the
   // daemon receives the key its schema requires.
@@ -517,6 +569,7 @@ function adaptAgentList(raw: unknown): AgentSessionInfo[] {
     prompt: '',
     status: daemonStatusToSession(r.status, r.exitCode),
     pid: r.pid,
+    harness: true,
   }));
 }
 
@@ -592,9 +645,33 @@ function adaptHarnessSessions(raw: unknown): HarnessSession[] {
   });
 }
 
+function adaptHarnessAgentSpawn(raw: unknown): HarnessAgentProcess {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return {
+    process_id: String(o.processId ?? o.process_id ?? ''),
+    command: String(o.command ?? ''),
+    cwd: o.cwd == null ? null : String(o.cwd),
+    pid: typeof o.pid === 'number' ? o.pid : null,
+    status: String(o.status ?? 'running'),
+    exit_code:
+      typeof o.exitCode === 'number'
+        ? o.exitCode
+        : typeof o.exit_code === 'number'
+          ? o.exit_code
+          : null,
+  };
+}
+
+function adaptHarnessAgentList(raw: unknown): HarnessAgentProcess[] {
+  const rows = Array.isArray(raw) ? raw : [];
+  return rows.map((row) => adaptHarnessAgentSpawn(row));
+}
+
 /** Per-command adapters applied to the daemon RPC result in browser mode. */
 const RESULT_ADAPTERS: Record<string, (raw: unknown) => unknown> = {
   agent_list: adaptAgentList,
+  harness_agent_list: adaptHarnessAgentList,
+  harness_agent_spawn: adaptHarnessAgentSpawn,
   inference_ollama_status: adaptOllamaStatus,
   inference_ollama_models: adaptOllamaModels,
   inference_ollama_pull: adaptOllamaPull,
@@ -1041,6 +1118,7 @@ export function agentSpawn(
   prompt: string,
   options?: { cwd?: string; cols?: number; rows?: number },
 ): Promise<string> {
+  // Local inference only (Snap/Ollama). Confined agents: harnessAgentSpawn.
   return invoke<string>('agent_spawn', {
     name,
     backend,
@@ -1050,6 +1128,37 @@ export function agentSpawn(
     cols: options?.cols ?? null,
     rows: options?.rows ?? null,
   });
+}
+
+/** Confined daemon agent.spawn (INIT-002 PW-SPAWN primary path). */
+export function harnessAgentSpawn(params: {
+  command: string;
+  args?: string[];
+  repoPath: string;
+  cwd?: string;
+  cols?: number;
+  rows?: number;
+}): Promise<HarnessAgentProcess> {
+  return invoke<HarnessAgentProcess>('harness_agent_spawn', {
+    command: params.command,
+    args: params.args ?? [],
+    repoPath: params.repoPath,
+    cwd: params.cwd ?? null,
+    cols: params.cols ?? null,
+    rows: params.rows ?? null,
+  });
+}
+
+export function harnessAgentList(): Promise<HarnessAgentProcess[]> {
+  return invoke<HarnessAgentProcess[]>('harness_agent_list');
+}
+
+export function harnessAgentStop(processId: string): Promise<void> {
+  return invoke<void>('harness_agent_stop', { processId });
+}
+
+export function harnessAgentRemove(processId: string): Promise<void> {
+  return invoke<void>('harness_agent_remove', { processId });
 }
 
 export function agentStop(sessionId: string): Promise<void> {

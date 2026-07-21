@@ -94,12 +94,25 @@ export interface AgentSessionInfo {
   /**
    * The inference backend, or `null` for a daemon-spawned PTY session (the
    * daemon's agent registry has no Snap/Ollama concept — see the browser-mode
-   * adapter in `lib/invoke.ts`). The desktop path always sets a backend.
+   * adapter in `lib/invoke.ts`). Local inference always sets a backend.
    */
   backend: AgentBackend | null;
   prompt: string;
   status: 'running' | 'stopped' | 'errored';
   pid: number | null;
+  /** true when this row is a confined daemon agent.spawn process */
+  harness?: boolean;
+  cwd?: string | null;
+}
+
+/** Daemon agent.spawn result / agent.list row (INIT-002 PW-SPAWN) */
+export interface HarnessAgentProcess {
+  process_id: string;
+  command: string;
+  cwd: string | null;
+  pid: number | null;
+  status: string;
+  exit_code: number | null;
 }
 
 /** Streamed output from an agent process */

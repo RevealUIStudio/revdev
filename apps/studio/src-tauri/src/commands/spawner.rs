@@ -3,11 +3,12 @@ use tauri::State;
 use super::error::StudioError;
 use crate::spawner::{backend_daemon_label, AgentBackend, SpawnerState};
 
-/// Spawn a new agent process using local inference (Ubuntu Inference Snap or Ollama).
+/// Spawn a **local inference** agent (Ubuntu Inference Snap or Ollama).
 ///
-/// Also registers a daemon-minted session (INIT-002 Phase 1) so Snap/Ollama
-/// agents appear in coordination as governed users — same identity model as
-/// Claude/Grok hooks, not a free-floating local process.
+/// INIT-002 PW-SPAWN: this is **not** the primary multi-agent seat. Confined
+/// harness agents go through `harness_agent_spawn` → daemon `agent.spawn`
+/// (signed + bwrap). This path stays for local-model lifecycle only and still
+/// best-effort registers a daemon session so the process appears as a governed user.
 #[tauri::command]
 pub async fn agent_spawn(
     name: String,
