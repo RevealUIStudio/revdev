@@ -2,7 +2,8 @@
  * RPC license guard — enforces runtime paywall on daemon methods.
  *
  * Free tier: session management only (register, update, end, list, ping).
- * Pro+: full access to spawning, inference, merge pipeline, memory, etc.
+ * Pro+: multi-agent coordination (spawn, mail, tasks, merge, …).
+ * Max: + full AI memory + local-model management (pull/start/stop/delete).
  *
  * This is the runtime enforcement layer. The FSL-1.1-MIT license provides
  * legal protection; this guard provides operational protection.
@@ -109,8 +110,10 @@ export function initLicenseGuard(): { tier: LicenseTier; valid: boolean } {
     logExpiryWarning(ev);
   } else {
     console.log('[license] RevDev daemon running in FREE (degraded) mode');
-    console.log('[license] Set REVEALUI_LICENSE_KEY to unlock Pro features');
-    console.log('[license] Available: agent spawning, inference, merge pipeline, memory');
+    console.log('[license] Set REVEALUI_LICENSE_KEY to unlock Pro/Max features');
+    console.log(
+      '[license] Pro: multi-agent coordination (spawn, mail, tasks, merge, …). Max: + memory.* + inference management',
+    );
   }
 
   return cachedLicense;

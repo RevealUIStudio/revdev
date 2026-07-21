@@ -5,6 +5,28 @@ All notable changes to RevealUI Studio are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates are ISO 8601 (UTC).
 
+## [Unreleased]
+
+### Fixed
+
+- **CLI / free-mode license help honesty.** Tier help is sourced from
+  `LICENSE_TIER_HELP` (aligned with `EXEMPT_METHODS` + `METHOD_MIN_TIER`): free
+  includes single-repo file/git + local inference run; Pro is multi-agent
+  coordination; Max is memory.* + inference management. CLI version string
+  matches package `0.2.0`.
+- **Bridge worktree tools (revdev#182).** `worktree_create` / `worktree_remove`
+  require `repoPath` and a signed client (`REVDEV_AGENT_DID` +
+  `REVDEV_AGENT_PRIVATE_KEY_PEM`); fail with an actionable error when unsigned
+  instead of a silent `-32003` / missing-param path.
+- **agent.* load-order stubs.** Header and errors no longer claim spawn is
+  desktop-only; production path is daemon PTY (`spawn.ts`) overwriting stubs.
+
+### Changed
+
+- **PLAN.md / SPEC.md truth-sweep (INIT-002 Phase 0).** W4 dogfood Phase 2 and
+  W8–W13 remediation marked shipped where code already landed; SPEC method
+  table matches the real registry (no phantom `harness.stats` / `events.tail`).
+
 ## [0.2.0] — 2026-07-17
 
 ### Added

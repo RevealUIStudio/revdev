@@ -370,16 +370,24 @@ server.tool(
 );
 
 // -- Worktree management -----------------------------------------------------
+// worktree.create/remove are signature-required and require a project.open'd
+// repoPath (revdev#182 / INIT-002 Phase 0). The bridge only succeeds when
+// REVDEV_AGENT_DID + REVDEV_AGENT_PRIVATE_KEY_PEM are set (DaemonClient signs).
 
 server.tool(
   'worktree_create',
-  'Create a git worktree for isolated work',
+  'Create a git worktree for isolated work under a project.open root (signed; requires repoPath)',
   {
+    repoPath: z
+      .string()
+      .describe('Absolute path of a root opened via project.open that this agent owns or was granted'),
     branch: z.string().describe('Branch name for the worktree'),
     baseBranch: z.string().optional().describe('Base branch (default: main)'),
   },
-  async ({ branch, baseBranch }) => {
+  async ({ repoPath, branch, baseBranch }) => {
+    daemon.requireSigned('worktree.create');
     const result = await daemon.call(RPC_METHODS['worktree.create'], {
+      repoPath,
       branch,
       baseBranch: baseBranch ?? 'main',
     });
@@ -387,19 +395,30 @@ server.tool(
   },
 );
 
-server.tool('worktree_list', 'List active git worktrees', {}, async () => {
-  const result = await daemon.call(RPC_METHODS['worktree.list']);
-  return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-});
+server.tool(
+  'worktree_list',
+  'List git worktrees tracked by the daemon (optional agentId filter)',
+  {
+    agentId: z.string().optional().describe('When set, list worktrees for this agent only'),
+  },
+  async ({ agentId }) => {
+    const result = await daemon.call(RPC_METHODS['worktree.list'], agentId ? { agentId } : {});
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
 
 server.tool(
   'worktree_remove',
-  'Remove a git worktree',
+  'Remove a git worktree previously created under a project.open root (signed; requires repoPath)',
   {
+    repoPath: z
+      .string()
+      .describe('Absolute path of the same project.open root used at create time'),
     branch: z.string().describe('Branch name of the worktree to remove'),
   },
-  async ({ branch }) => {
-    const result = await daemon.call(RPC_METHODS['worktree.remove'], { branch });
+  async ({ repoPath, branch }) => {
+    daemon.requireSigned('worktree.remove');
+    const result = await daemon.call(RPC_METHODS['worktree.remove'], { repoPath, branch });
     return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
   },
 );

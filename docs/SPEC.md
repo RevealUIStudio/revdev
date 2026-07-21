@@ -116,14 +116,21 @@ Method categories (the **authoritative method list** is `@revdev/protocol` plus 
 
 | Category | Representative methods | Purpose |
 |---|---|---|
-| `session.*` | `register`, `attach`, `list`, `end` | Logical agent identity lifecycle; `register` also bootstraps the agent's DID (see §Identity) |
+| `session.*` | `register`, `attach`, `list`, `end`, `update` | Logical agent identity lifecycle; `register` also bootstraps the agent's DID (see §Identity) |
 | `mail.*` | `send`, `inbox`, `broadcast`, `markRead` | Inter-agent messaging |
 | `files.*` | `reserve`, `release`, `check`, `list` | Advisory file-locking for conflict prevention |
 | `tasks.*` | `create`, `claim`, `complete`, `release`, `list` | Task queue across agent sessions (CAS claiming) |
-| `events.*` | `log`, `tail`, `subscribe` | Audit + observability |
-| `inference.*` | `status`, `pull`, `start`, `stop`, `chat`, `generate` | Local open-model inference management |
-| `harness.*` | `prune`, `stats`, `health`, `version` | Daemon ops; `health` reports `neonSyncActive` + identity signature mode |
-| `ping` | — | Liveness; returns `{pong: true, serverTimeMs, ...}` |
+| `events.*` | `log`, `query` | Audit + observability (no `tail`/`subscribe` RPC today) |
+| `agent.*` | `spawn`, `stop`, `list`, `remove`, `input`, `resize`, `output` | PTY spawn under bwrap confinement (Pro; signature-required) |
+| `project.*` / `file.*` / `git.*` | open/grant/revoke, read/write, status/commit/… | Single-repo I/O (Free; mutations signature-required) |
+| `worktree.*` / `merge.*` | create/list/remove, request/status/list/update | Isolation + merge pipeline |
+| `memory.*` | `store`, `query` | Full AI memory (**Max**) |
+| `inference.*` | `status`, `chat`, `generate` (Free run); `pull`, `delete`, `start`, `stop` (**Max** management) | Local open-model inference |
+| `harness.*` | `health`, `prune` only | Daemon ops; no `stats`/`version` RPC (use `ping` + package version) |
+| `identity.rotate` | — | DID key rotation (signature-required) |
+| `ping` | — | Liveness; returns `{pong: true, …}` |
+
+Authoritative enumeration: `@revdev/protocol` `RPC_METHODS` ↔ daemon `listRegisteredMethods()` (rpc-contract test).
 
 ### Health check
 
