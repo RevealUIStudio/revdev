@@ -401,13 +401,14 @@ describe('pairWithDaemon (GAP-397 challenge-response)', () => {
   });
 
   it('completes GET nonce → HMAC → POST and stores bearer token', async () => {
-    const { hmacSha256Hex, pairWithDaemon, getDaemonToken, getDaemonUrl } =
-      await import('../../lib/invoke');
+    const { hmacSha256Hex, pairWithDaemon, getDaemonToken, getDaemonUrl } = await import(
+      '../../lib/invoke'
+    );
     const expectedHmac = await hmacSha256Hex(secret, nonce);
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === `${base}/api/pair` && (!init || !init.method || init.method === 'GET')) {
+      if (url === `${base}/api/pair` && (!init?.method || init.method === 'GET')) {
         return new Response(JSON.stringify({ nonce, expiresIn: 120 }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -447,7 +448,9 @@ describe('pairWithDaemon (GAP-397 challenge-response)', () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.endsWith('/api/pair') && (!init?.method || init.method === 'GET')) {
-          return new Response(JSON.stringify({ nonce, expiresIn: 120 }), { status: 200 });
+          return new Response(JSON.stringify({ nonce, expiresIn: 120 }), {
+            status: 200,
+          });
         }
         return new Response(JSON.stringify({ error: 'Invalid pairing response' }), {
           status: 403,
