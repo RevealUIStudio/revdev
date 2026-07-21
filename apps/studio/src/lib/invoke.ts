@@ -535,19 +535,92 @@ export function setDaemonToken(token: string | null): void {
   }
 }
 
-/** Pair with a remote daemon using a 6-digit code */
-export async function pairWithDaemon(daemonUrl: string, code: string): Promise<string> {
-  const res = await fetch(`${daemonUrl}/api/pair`, {
+/**
+ * HMAC-SHA256(secret, message) → hex digest.
+ * Matches @revealui/harnesses HttpGateway (GAP-353): secret and nonce are
+ * hex strings treated as UTF-8 for createHmac / SubtleCrypto.
+ */
+export async function hmacSha256Hex(secret: string, message: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export interface PairWithDaemonOptions {
+  /** Absolute gateway base URL (e.g. http://127.0.0.1:8787) */
+  daemonUrl: string;
+  /**
+   * Contents of the 0600 pairing-secret file printed at gateway boot
+   * (hex string). Used only as a local HMAC key — never sent on the wire.
+   */
+  secret: string;
+  /** Optional operator label stored with the durable token */
+  label?: string;
+}
+
+/**
+ * Pair with a fail-closed harness HTTP gateway (challenge-response).
+ *
+ * Contract (GAP-353 / @revealui/harnesses):
+ *   1. GET  /api/pair → { nonce, expiresIn }
+ *   2. POST /api/pair { nonce, hmac, label? } where hmac = HMAC-SHA256(secret, nonce)
+ *   3. Response { token, expiresAt } — store as bearer for /rpc
+ *
+ * The retired 6-digit pairing-code POST is gone; do not reintroduce it.
+ */
+export async function pairWithDaemon(options: PairWithDaemonOptions): Promise<string> {
+  const { daemonUrl, secret, label } = options;
+  const base = daemonUrl.replace(/\/$/, '');
+  if (!secret.trim()) {
+    throw new Error('Pairing secret is required (read the 0600 pairing-secret file).');
+  }
+
+  const nonceRes = await fetch(`${base}/api/pair`);
+  if (!nonceRes.ok) {
+    let detail = `Pairing challenge failed: ${nonceRes.status}`;
+    try {
+      const err = (await nonceRes.json()) as { error?: string };
+      if (err.error) detail = err.error;
+    } catch {
+      /* ignore non-JSON body */
+    }
+    throw new Error(detail);
+  }
+  const { nonce } = (await nonceRes.json()) as { nonce: string };
+  if (typeof nonce !== 'string' || !nonce) {
+    throw new Error('Pairing challenge returned no nonce');
+  }
+
+  const hmac = await hmacSha256Hex(secret.trim(), nonce);
+  const pairRes = await fetch(`${base}/api/pair`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ nonce, hmac, ...(label ? { label } : {}) }),
   });
-  if (!res.ok) {
-    const err = (await res.json()) as { error: string };
-    throw new Error(err.error ?? `Pairing failed: ${res.status}`);
+  if (!pairRes.ok) {
+    let detail = `Pairing failed: ${pairRes.status}`;
+    try {
+      const err = (await pairRes.json()) as { error?: string };
+      if (err.error) detail = err.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
   }
-  const { token } = (await res.json()) as { token: string };
-  setDaemonUrl(daemonUrl);
+  const { token } = (await pairRes.json()) as { token: string };
+  if (typeof token !== 'string' || !token) {
+    throw new Error('Pairing succeeded but no token was returned');
+  }
+  setDaemonUrl(base);
   setDaemonToken(token);
   return token;
 }
