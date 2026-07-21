@@ -57,7 +57,18 @@ import {
   syncTaskRelease,
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
-import { emitPermissionShadowEvent, evaluateShadow } from './permission.js';
+import {
+  ApprovalRequiredError,
+  decideApproval,
+  decideEnforcement,
+  emitPermissionShadowEvent,
+  evaluateShadow,
+  isShadowOnly,
+  listPendingApprovals,
+  queueApprovalRequired,
+  resolvePermissionMode,
+  tryConsumeApproval,
+} from './permission.js';
 import { revvaultSet } from './revvault-client.js';
 import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
@@ -244,6 +255,9 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // Cross-language contract: signing.rs requires_signature() must mark this too.
   // GAP-312. Sibling of the session.end fix (GAP-288, revdev#261).
   'harness.prune',
+  // GAP-294 Phase 1: approval decisions are signature-required mutations.
+  // permission.setMode lands with Studio UI (Phase 2).
+  'permission.decide',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1686,6 +1700,28 @@ registerHandler('harness.prune', async (params, db, ctx) => {
   };
 });
 
+// -- Permission (GAP-294) ----------------------------------------------------
+
+registerHandler('permission.pending', async (params, db, ctx) => {
+  // Read surface: list pending approvals. Optional agentId filter.
+  // Operator tools typically list all; agents may filter to self.
+  const filter =
+    strOrNull(params.agentId) ?? (ctx.agentId && params.scope === 'self' ? ctx.agentId : null);
+  const approvals = await listPendingApprovals(db, filter);
+  return { approvals };
+});
+
+registerHandler('permission.decide', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Self-approval rejected in decideApproval.
+  const decider = await requireVerifiedAgent(ctx, db, params);
+  const approvalId = str(params.approvalId);
+  const verdictRaw = str(params.verdict).toLowerCase();
+  if (verdictRaw !== 'approved' && verdictRaw !== 'denied') {
+    throw new Error("permission.decide: verdict must be 'approved' or 'denied'");
+  }
+  return decideApproval(db, approvalId, verdictRaw, decider);
+});
+
 // -- Memory -----------------------------------------------------------------
 
 registerHandler('memory.store', async (params, db, ctx) => {
@@ -2065,17 +2101,82 @@ export async function startDaemon(
           continue;
         }
 
-        // Permission gate (GAP-294 Phase 0 SHADOW). After identity, before
-        // shutdown/dispatch. Classifies the method and emits permission.would_*
-        // events; NEVER blocks. Phase 1+ will refuse with -32004 here.
+        // Permission gate (GAP-294). After identity, before shutdown/dispatch.
+        // Shadow (default): would_* events only. manual/auto: enforce with
+        // reject-with-receipt (-32004) + pending_approvals queue.
         {
-          const shadow = evaluateShadow(req.method);
           const agentForEvent =
             ctx.agentId ??
             (req.params && typeof req.params.actorAgentId === 'string'
               ? req.params.actorAgentId
               : null);
-          emitPermissionShadowEvent(db, agentForEvent, req.method, shadow);
+          const mode = resolvePermissionMode();
+          if (isShadowOnly()) {
+            emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
+          } else {
+            // Still emit would_* for soak continuity under enforce modes.
+            emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
+            const decision = decideEnforcement(req.method, mode);
+            if (decision.action === 'deny') {
+              socket.write(
+                `${JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: req.id,
+                  error: {
+                    code: -32004,
+                    message: `Permission denied for ${req.method}`,
+                    data: {
+                      kind: 'permission-denied',
+                      method: req.method,
+                      reason: decision.reason,
+                    },
+                  },
+                })}\n`,
+              );
+              continue;
+            }
+            if (decision.action === 'require_approval') {
+              if (!agentForEvent) {
+                socket.write(
+                  `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: req.id,
+                    error: {
+                      code: -32002,
+                      message: `Not registered: call session.register before ${req.method}`,
+                    },
+                  })}\n`,
+                );
+                continue;
+              }
+              const paramsObj =
+                req.params && typeof req.params === 'object' && !Array.isArray(req.params)
+                  ? (req.params as Record<string, unknown>)
+                  : {};
+              try {
+                const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
+                if (!consumed) {
+                  await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+                }
+              } catch (permErr) {
+                if (permErr instanceof ApprovalRequiredError) {
+                  socket.write(
+                    `${JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: req.id,
+                      error: {
+                        code: permErr.code,
+                        message: permErr.message,
+                        data: permErr.data,
+                      },
+                    })}\n`,
+                  );
+                  continue;
+                }
+                throw permErr;
+              }
+            }
+          }
         }
 
         // Shutdown gate. close() sets _closing BEFORE the drain so a
@@ -2109,6 +2210,7 @@ export async function startDaemon(
           // the JSON-RPC `code` field — those fall back to the generic -32000.
           const rawCode = (err as { code?: unknown }).code;
           const code = typeof rawCode === 'number' ? rawCode : -32000;
+          const data = (err as { data?: unknown }).data;
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
@@ -2116,6 +2218,7 @@ export async function startDaemon(
               error: {
                 code,
                 message: err instanceof Error ? err.message : 'Internal error',
+                ...(data !== undefined ? { data } : {}),
               },
             })}\n`,
           );
