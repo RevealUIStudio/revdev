@@ -7,6 +7,14 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+### Added
+
+- **GAP-294 Phase 0 permission shadow gate.** Every RPC is classified
+  (`routine` / `consequential` / `critical` per owner-countersigned map) and
+  emits `permission.would_allow` / `permission.would_require_approval` events
+  without blocking. Simulated mode via `REVDEV_PERMISSION_SHADOW_AS=manual|auto`
+  (default manual). Enforcement (-32004 queue) is Phase 1.
+
 ### Fixed
 
 - **CLI / free-mode license help honesty.** Tier help is sourced from
