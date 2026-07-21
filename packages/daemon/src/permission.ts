@@ -514,3 +514,80 @@ export async function decideApproval(
 
   return { id: approvalId, status };
 }
+
+/** Per-session overrides (migration 0007). Daemon default still from env. */
+export const SESSION_PERMISSION_MODES = ['manual', 'auto', 'agent-scoped', 'shadow'] as const;
+export type SessionPermissionMode = (typeof SESSION_PERMISSION_MODES)[number];
+
+export function parseSessionPermissionMode(raw: unknown): SessionPermissionMode | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw !== 'string') return null;
+  const m = raw.trim().toLowerCase();
+  if ((SESSION_PERMISSION_MODES as readonly string[]).includes(m)) {
+    return m as SessionPermissionMode;
+  }
+  return null;
+}
+
+/**
+ * Effective mode for a call: session `permission_mode` override, else daemon default.
+ * Spec §3: effective = per-session override ?? daemon default.
+ */
+export async function resolveEffectiveMode(
+  db: PGlite,
+  agentId: string | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<PermissionMode> {
+  const daemonDefault = resolvePermissionMode(env);
+  if (!agentId) return daemonDefault;
+  const r = await db.query<{ permission_mode: string | null }>(
+    `SELECT permission_mode FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,
+    [agentId],
+  );
+  const override = parseSessionPermissionMode(r.rows[0]?.permission_mode);
+  return override ?? daemonDefault;
+}
+
+/**
+ * Operator-only per-session mode override (GAP-294 Phase 2).
+ * A session can never set its own mode (self-defeat).
+ */
+export async function setSessionPermissionMode(
+  db: PGlite,
+  targetAgentId: string,
+  mode: SessionPermissionMode | null,
+  operatorAgentId: string,
+): Promise<{ agentId: string; permissionMode: SessionPermissionMode | null }> {
+  if (!targetAgentId) {
+    throw new Error('permission.setMode: agentId is required');
+  }
+  if (operatorAgentId === targetAgentId) {
+    throw new Error('permission.setMode: a session cannot set its own mode');
+  }
+
+  const existing = await db.query<{ id: string }>(
+    `SELECT id FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,
+    [targetAgentId],
+  );
+  if (!existing.rows[0]) {
+    throw new Error(`permission.setMode: no live session for agentId ${targetAgentId}`);
+  }
+
+  await db.query(
+    `UPDATE agent_sessions
+     SET permission_mode = $2, updated_at = NOW()
+     WHERE id = $1 AND ended_at IS NULL`,
+    [targetAgentId, mode],
+  );
+
+  void db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+    targetAgentId,
+    'permission.mode_set',
+    JSON.stringify({
+      permissionMode: mode,
+      setBy: operatorAgentId,
+    }),
+  ]);
+
+  return { agentId: targetAgentId, permissionMode: mode };
+}

@@ -63,10 +63,12 @@ import {
   decideEnforcement,
   emitPermissionShadowEvent,
   evaluateShadow,
-  isShadowOnly,
   listPendingApprovals,
+  parseSessionPermissionMode,
   queueApprovalRequired,
+  resolveEffectiveMode,
   resolvePermissionMode,
+  setSessionPermissionMode,
   tryConsumeApproval,
 } from './permission.js';
 import { revvaultSet } from './revvault-client.js';
@@ -256,8 +258,9 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // GAP-312. Sibling of the session.end fix (GAP-288, revdev#261).
   'harness.prune',
   // GAP-294 Phase 1: approval decisions are signature-required mutations.
-  // permission.setMode lands with Studio UI (Phase 2).
+  // Phase 2: operator mode overrides are signature-required too.
   'permission.decide',
+  'permission.setMode',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1722,6 +1725,28 @@ registerHandler('permission.decide', async (params, db, ctx) => {
   return decideApproval(db, approvalId, verdictRaw, decider);
 });
 
+registerHandler('permission.setMode', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Operator sets another session's override.
+  const operator = await requireVerifiedAgent(ctx, db, params);
+  const target = str(params.agentId);
+  // null / "" / "default" clears the override (falls back to daemon default).
+  const rawMode = params.mode;
+  let mode: ReturnType<typeof parseSessionPermissionMode> = null;
+  if (rawMode !== null && rawMode !== undefined && rawMode !== '' && rawMode !== 'default') {
+    mode = parseSessionPermissionMode(rawMode);
+    if (mode === null) {
+      throw new Error(
+        "permission.setMode: mode must be 'manual' | 'auto' | 'agent-scoped' | 'shadow' | null",
+      );
+    }
+  }
+  const result = await setSessionPermissionMode(db, target, mode, operator);
+  return {
+    ...result,
+    daemonDefault: resolvePermissionMode(),
+  };
+});
+
 // -- Memory -----------------------------------------------------------------
 
 registerHandler('memory.store', async (params, db, ctx) => {
@@ -2110,8 +2135,11 @@ export async function startDaemon(
             (req.params && typeof req.params.actorAgentId === 'string'
               ? req.params.actorAgentId
               : null);
-          const mode = resolvePermissionMode();
-          if (isShadowOnly()) {
+          // Spec §3: per-session override ?? daemon default (env).
+          const mode = await resolveEffectiveMode(db, agentForEvent);
+          // Shadow only when *effective* mode is shadow (session override can
+          // promote a session out of daemon-default shadow for dogfood).
+          if (mode === 'shadow') {
             emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
           } else {
             // Still emit would_* for soak continuity under enforce modes.

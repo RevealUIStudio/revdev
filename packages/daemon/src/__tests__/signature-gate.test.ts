@@ -69,6 +69,8 @@ const SIGNED = [
   'harness.prune',
   // GAP-294 Phase 1: approval decisions are signature-required mutations.
   'permission.decide',
+  // Phase 2: operator mode override.
+  'permission.setMode',
 ];
 
 // Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.

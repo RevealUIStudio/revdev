@@ -102,6 +102,8 @@ pub fn requires_signature(method: &str) -> bool {
             | "harness.prune"
             // GAP-294 Phase 1 — approval decisions are signature-required.
             | "permission.decide"
+            // Phase 2 — operator mode override.
+            | "permission.setMode"
     )
 }
 
@@ -631,6 +633,7 @@ mod tests {
         assert!(requires_signature("harness.prune"));
         // GAP-294 Phase 1.
         assert!(requires_signature("permission.decide"));
+        assert!(requires_signature("permission.setMode"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
         // harness.health is a read; it stays unsigned. Guards against a

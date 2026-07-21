@@ -9,6 +9,7 @@ import {
   evaluateShadow,
   expectedClassifiedMethods,
   METHOD_ACTION_CLASS,
+  parseSessionPermissionMode,
   shadowWouldAuto,
   shadowWouldManual,
 } from '../permission.js';
@@ -130,5 +131,25 @@ describe('decideEnforcement (Phase 1)', () => {
   it('deny-list absorbs', () => {
     process.env.REVDEV_PERMISSION_DENY_METHODS = 'git.pull,file.write';
     expect(decideEnforcement('git.pull', 'auto').action).toBe('deny');
+  });
+});
+
+describe('parseSessionPermissionMode (Phase 2)', () => {
+  it('accepts valid modes', () => {
+    expect(parseSessionPermissionMode('manual')).toBe('manual');
+    expect(parseSessionPermissionMode('AUTO')).toBe('auto');
+    expect(parseSessionPermissionMode('agent-scoped')).toBe('agent-scoped');
+    expect(parseSessionPermissionMode('shadow')).toBe('shadow');
+  });
+  it('null/empty clears override', () => {
+    expect(parseSessionPermissionMode(null)).toBe(null);
+    expect(parseSessionPermissionMode('')).toBe(null);
+  });
+  it('rejects unknown', () => {
+    expect(parseSessionPermissionMode('bypass')).toBe(null);
+    expect(parseSessionPermissionMode(12)).toBe(null);
+  });
+  it('permission.setMode is critical', () => {
+    expect(classifyMethod('permission.setMode')).toBe('critical');
   });
 });
