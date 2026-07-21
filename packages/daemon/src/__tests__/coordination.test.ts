@@ -511,7 +511,7 @@ describe('agent identity bootstrap', () => {
       agentId: 'identity-test-first',
       agentName: 'identity-tester',
       backend: 'test',
-    })) as { sessionId: string; did: string; publicKeyPem: string };
+    })) as { sessionId: string; did: string; publicKeyPem: string; privateKeyPem?: string };
 
     expect(result.sessionId).toBe('identity-test-first');
     expect(result.did).toBe(
@@ -521,6 +521,8 @@ describe('agent identity bootstrap', () => {
     );
     expect(result.did.startsWith('did:revfleet:identity-test-first:')).toBe(true);
     expect(result.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+    // INIT-002 Phase 1: one-shot private key so headless hooks can sign.
+    expect(result.privateKeyPem).toContain('BEGIN PRIVATE KEY');
   });
 
   it('idempotent re-register reuses the same keypair', async () => {
@@ -528,16 +530,19 @@ describe('agent identity bootstrap', () => {
       agentId: 'identity-test-idempotent',
       agentName: 'identity-tester',
       backend: 'test',
-    })) as { did: string; publicKeyPem: string };
+    })) as { did: string; publicKeyPem: string; privateKeyPem?: string };
 
     const r2 = (await rpc(socketPath, 'session.register', {
       agentId: 'identity-test-idempotent',
       agentName: 'identity-tester',
       backend: 'test',
-    })) as { did: string; publicKeyPem: string };
+    })) as { did: string; publicKeyPem: string; privateKeyPem?: string };
 
     expect(r2.did).toBe(r1.did);
     expect(r2.publicKeyPem).toBe(r1.publicKeyPem);
+    // Private key is emitted only on first mint — never re-emitted.
+    expect(r1.privateKeyPem).toContain('BEGIN PRIVATE KEY');
+    expect(r2.privateKeyPem).toBeUndefined();
   });
 
   it('forceRotate param is silently ignored — re-register returns the same keypair', async () => {
