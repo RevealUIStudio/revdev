@@ -57,6 +57,7 @@ import {
   syncTaskRelease,
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
+import { emitPermissionShadowEvent, evaluateShadow } from './permission.js';
 import { revvaultSet } from './revvault-client.js';
 import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
@@ -2062,6 +2063,19 @@ export async function startDaemon(
             })}\n`,
           );
           continue;
+        }
+
+        // Permission gate (GAP-294 Phase 0 SHADOW). After identity, before
+        // shutdown/dispatch. Classifies the method and emits permission.would_*
+        // events; NEVER blocks. Phase 1+ will refuse with -32004 here.
+        {
+          const shadow = evaluateShadow(req.method);
+          const agentForEvent =
+            ctx.agentId ??
+            (req.params && typeof req.params.actorAgentId === 'string'
+              ? req.params.actorAgentId
+              : null);
+          emitPermissionShadowEvent(db, agentForEvent, req.method, shadow);
         }
 
         // Shutdown gate. close() sets _closing BEFORE the drain so a

@@ -38,7 +38,7 @@ import './agent.js';
 // Must come AFTER ./agent.js (stubs) so the real implementations overwrite them.
 import './spawn.js';
 import { DAEMON_DEFAULTS } from './config.js';
-import { LicenseConfigError, LicenseExpiredError, LICENSE_TIER_HELP } from './license.js';
+import { LICENSE_TIER_HELP, LicenseConfigError, LicenseExpiredError } from './license.js';
 import { startDaemon } from './server.js';
 
 // Default log path for --detach mode. Use the user's data dir (mode 0700,
