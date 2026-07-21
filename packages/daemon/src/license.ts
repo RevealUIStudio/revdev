@@ -109,6 +109,11 @@ const EXEMPT_METHODS = new Set([
   'inference.status',
   'inference.chat',
   'inference.generate',
+  // GAP-294 permission queue: free so FREE-tier daily-driver file/git still
+  // has a path to list/decide approvals when REVDEV_PERMISSION_MODE=manual.
+  // (Decide is still signature-gated; self-approval is rejected.)
+  'permission.pending',
+  'permission.decide',
 ]);
 
 /**
