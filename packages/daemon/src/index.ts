@@ -7,7 +7,9 @@
  *
  * Transport:
  *   - Local: Unix socket (~/.local/share/revealui/harness.sock)
- *   - Remote: HTTP gateway with pairing-code auth
+ *   - Remote (optional): the @revealui/harnesses HTTP gateway with
+ *     fail-closed challenge-response pairing (GET/POST /api/pair) — not
+ *     served by this package; Studio pairs against that gateway when remote.
  *   - Protocol: JSON-RPC 2.0 over newline-delimited JSON
  *
  * License: FSL-1.1-MIT (converts to MIT after 2 years)
