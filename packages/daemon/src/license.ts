@@ -139,6 +139,18 @@ export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
 ]);
 
 /**
+ * Human-readable tier summary for CLI `--help` and operator docs.
+ * MUST stay aligned with EXEMPT_METHODS + METHOD_MIN_TIER + the Pro default
+ * for every other non-exempt method. A unit test locks the memory=Max and
+ * free-file/git claims so help cannot re-drift (INIT-002 Phase 0).
+ */
+export const LICENSE_TIER_HELP = `License tiers (method gate; source: EXEMPT_METHODS + METHOD_MIN_TIER):
+  free         Sessions, single-repo file/git, local inference run (status/chat/generate)
+  pro          Multi-agent coordination (mail, tasks, files.*, agent.*, merge.*, worktree, events, harness.prune, …)
+  max          + full AI memory (memory.*) and local-model management (inference.pull/delete/start/stop)
+  enterprise   Same method surface as max today; commercial terms differ`;
+
+/**
  * Ordinal rank of a tier within LICENSE_TIERS (free=0 < pro=1 < max=2 <
  * enterprise=3) — the array index doubles as the rank. Used by the RPC guard
  * for `>=` tier comparison. Returns -1 for an unrecognized tier (sorts below

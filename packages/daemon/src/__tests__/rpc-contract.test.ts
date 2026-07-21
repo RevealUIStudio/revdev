@@ -9,7 +9,7 @@
  *
  * Importing `../index.js` registers every handler group in the exact order
  * production startup does, including spawn.js overwriting the agent.js
- * DesktopOnlyError stubs. After that side effect, `listRegisteredMethods()`
+ * load-order placeholders. After that side effect, `listRegisteredMethods()`
  * reflects the real, post-startup surface.
  */
 

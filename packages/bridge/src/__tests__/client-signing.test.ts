@@ -161,4 +161,32 @@ describe('DaemonClient signing', () => {
     const config = resolveSigningConfig();
     expect(config).toBeNull();
   });
+
+  it('isSigned is true only when a signing config is present', () => {
+    const cfg = buildValidConfig();
+    expect(new DaemonClient('/tmp/test.sock', null).isSigned).toBe(false);
+    expect(
+      new DaemonClient('/tmp/test.sock', {
+        did: cfg.did,
+        fingerprint: cfg.fingerprint,
+        privateKeyPem: cfg.privateKeyPem,
+      }).isSigned,
+    ).toBe(true);
+  });
+
+  it('requireSigned throws with actionable message when unsigned', () => {
+    const client = new DaemonClient('/tmp/test.sock', null);
+    expect(() => client.requireSigned('worktree.create')).toThrow(/REVDEV_AGENT_DID/);
+    expect(() => client.requireSigned('worktree.create')).toThrow(/worktree\.create/);
+  });
+
+  it('requireSigned is a no-op when signed', () => {
+    const cfg = buildValidConfig();
+    const client = new DaemonClient('/tmp/test.sock', {
+      did: cfg.did,
+      fingerprint: cfg.fingerprint,
+      privateKeyPem: cfg.privateKeyPem,
+    });
+    expect(() => client.requireSigned('worktree.create')).not.toThrow();
+  });
 });

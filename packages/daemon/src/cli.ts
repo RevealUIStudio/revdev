@@ -38,7 +38,7 @@ import './agent.js';
 // Must come AFTER ./agent.js (stubs) so the real implementations overwrite them.
 import './spawn.js';
 import { DAEMON_DEFAULTS } from './config.js';
-import { LicenseConfigError, LicenseExpiredError } from './license.js';
+import { LicenseConfigError, LicenseExpiredError, LICENSE_TIER_HELP } from './license.js';
 import { startDaemon } from './server.js';
 
 // Default log path for --detach mode. Use the user's data dir (mode 0700,
@@ -85,17 +85,14 @@ Environment:
   REVDEV_DAEMON_GIT_TIMEOUT_MS  Max wall-clock per git spawn (default: ${DAEMON_DEFAULTS.gitTimeoutMs} ms = ${DAEMON_DEFAULTS.gitTimeoutMs / 1000} s)
   REVDEV_DAEMON_SHUTDOWN_GRACE_MS  Max wait for in-flight handlers during close() (default: ${DAEMON_DEFAULTS.shutdownGracePeriodMs} ms = ${DAEMON_DEFAULTS.shutdownGracePeriodMs / 1000} s)
 
-License tiers:
-  free         Session management only
-  pro          + agent spawning, merge pipeline, memory
-  max          + inference management, advanced coordination
-  enterprise   Full access, all features
+${LICENSE_TIER_HELP}
 `);
   process.exit(0);
 }
 
 if (args.includes('--version') || args.includes('-v')) {
-  console.log('revdev-daemon 0.1.0');
+  // Keep in lockstep with packages/daemon/package.json version.
+  console.log('revdev-daemon 0.2.0');
   process.exit(0);
 }
 

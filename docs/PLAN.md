@@ -1,16 +1,16 @@
 ---
 type: plan
 repo: revdev
-last-updated: 2026-06-23
+last-updated: 2026-07-21
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
 
 # RevDev — Plan
 
-**Last Updated:** 2026-06-11 (statuses verified against code, merged PRs, and CI on this date)
-**Status:** Pre-1.0 — Studio + Console + harness daemon all buildable; no public releases yet
-**Owner:** RevealUI Studio (`founder@revealui.com`)
+**Last Updated:** 2026-07-21 (Phase 0 honesty pass — W4/W8–W13 + dogfood re-verified against `origin/test` code; earlier body below still carries 2026-06-11 detail where unchanged)
+**Status:** Pre-1.0 — Studio + Console + harness daemon buildable; tags `v0.1.1` / `v0.2.0` exist; auto-update customer loop still gated on H4
+**Owner:** RevealUI Studio
 
 > **The single RevDev plan.** [`MASTER_PLAN.md`](./MASTER_PLAN.md) is the stable entry point that references this file; the spec counterpart is [`SPEC.md`](./SPEC.md) (referenced by [`MASTER_SPEC.md`](./MASTER_SPEC.md)). This file absorbs and supersedes the former `PRODUCTION_LAUNCH_PLAN.md` (removed 2026-06-11) with every task status re-verified.
 
@@ -31,8 +31,9 @@ What is true today (each item verified, not carried forward):
 - **Daemon license lifecycle is production-shaped.** Expiry warnings (14d/7d/1d) + fail-closed start + `REVDEV_LICENSE_PUBLIC_KEY_FILE` support ([#88](https://github.com/RevealUIStudio/revdev/pull/88)); rotation script + weekly systemd timer ([#90](https://github.com/RevealUIStudio/revdev/pull/90)); signature verified before expiration check ([#94](https://github.com/RevealUIStudio/revdev/pull/94)).
 - **Per-RPC identity Phase 1 is shipped.** `agent_identity` / `agent_identity_keys` / `agent_identity_nonces` tables, DID bootstrap on `session.register`, and accept-if-present signature verification are in the daemon (`packages/daemon/src/server.ts`, `storage/schema.ts`, DID + crypto test suites). Phases 2–4 pending — see W2.
 - **RPC input validation is shipped** (former launch-plan task A1): every method has a Zod schema at `packages/daemon/src/validation/schemas.ts`.
-- **Studio dogfood Phase 1 is shipped, Phases 2–4 are not.** `apps/studio` consumes `@revealui/presentation` `^0.6.0` tokens; the 10-file shadow library at `apps/studio/src/components/ui/` still exists with its ~94 import sites — see W4.
-- **Open issues:** [#15](https://github.com/RevealUIStudio/revdev/issues/15) Studio deploy-email test step is a stub (needs durable SMTP probe), [#2](https://github.com/RevealUIStudio/revdev/issues/2) HTTP gateway (see W3 — the design has moved).
+- **Studio dogfood Phase 1 + Phase 2 are shipped** (tokens + shadow shims for StatusDot/PanelHeader/Tooltip/ErrorAlert/Badge/Button/Card/Input/Dialog/Modal via `@revealui/presentation` ^0.9.1). Phases 3–4 remain (orange residual + delete shadow + Biome guard) — see W4.
+- **RPC catalog honesty:** `RPC_METHODS` ↔ daemon registry is contract-tested; Studio `HARNESS_RPC_MAP` is tested against `RPC_METHODS`. Desktop-only inference lifecycle stays off the map (explicit fail).
+- **Open issues:** [#15](https://github.com/RevealUIStudio/revdev/issues/15) Studio deploy-email test step, [#2](https://github.com/RevealUIStudio/revdev/issues/2) HTTP gateway (see W3), [#182](https://github.com/RevealUIStudio/revdev/issues/182) bridge worktree (fixed in INIT-002 Phase 0 when this plan lands).
 
 ---
 
@@ -106,15 +107,16 @@ Phases 0–4 are shipped: best-effort daemon→Neon dual-write for sessions/mail
 
 ### W4 — Studio dogfood: adopt `@revealui/presentation`
 
-Phase 1 (token foundation) shipped 2026-05-16 via [#67](https://github.com/RevealUIStudio/revdev/pull/67)/[#68](https://github.com/RevealUIStudio/revdev/pull/68): Studio imports `@revealui/presentation/tokens.css` and inherits the fleet brand automatically. Remaining, in order:
+Phase 1 (token foundation) shipped 2026-05-16 via [#67](https://github.com/RevealUIStudio/revdev/pull/67)/[#68](https://github.com/RevealUIStudio/revdev/pull/68). Phase 2 shims landed on `test` (PR series through [#297](https://github.com/RevealUIStudio/revdev/pull/297)): shadow `components/ui/*` are thin wrappers over `@revealui/presentation` ^0.9.1 (StatusDot, PanelHeader, Tooltip, ErrorAlert, Badge, Button, Card, Input, Dialog, Modal; ConfirmDialog is Studio-local).
 
 | Phase | Scope | Status |
 |---|---|---|
-| 2 | Shim the 10 shadow primitives in `apps/studio/src/components/ui/` as thin wrappers over `@revealui/presentation` (5 PRs, lowest fan-out first: StatusDot+PanelHeader → Tooltip+ErrorAlert+Badge → Modal+Dialog → Input → Button+Card). Consumer code unchanged. | **OPEN** |
-| 3 | Sweep the ~19 bespoke `orange-*` brand sites in render code to semantic tokens; `rg 'orange-' apps/studio/src` → zero. | OPEN (after Phase 2) |
-| 4 | Delete the shadow library + add a Biome `noRestrictedImports` guard so it cannot return. | OPEN (after Phase 3) |
+| 1 | Token foundation (`tokens.css`) | ✅ **SHIPPED** |
+| 2 | Shim shadow primitives over `@revealui/presentation` | ✅ **SHIPPED** (2026-07) |
+| 3 | Sweep residual `orange-*` in render code (tip: terminal cursor only) to semantic tokens | **OPEN** (small) |
+| 4 | Delete the shadow library + Biome `noRestrictedImports` guard | **OPEN** (after Phase 3) |
 
-Carve-outs that stay: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (terminal) — domain primitives with no fleet equivalent. Operational sequencing for this workstream lives in the internal `studio-dogfood` lane; this table is the product-plan view.
+Carve-outs that stay: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (terminal). Operational sequencing: internal `studio-dogfood` lane (membership under frontend-excellence initiative for brand; daily-driver program does not dual-claim the lane).
 
 ### W5 — Console
 
@@ -142,18 +144,20 @@ The concrete delivery of **product exit criterion #1** ("messages injected autom
 
 ### W8–W13 — UX + durability audit remediation (2026-06-23)
 
-Source of truth: an internal UX + durability audit (2026-06-23) spanning Studio (React + Tauri Rust), Console (Go), the harness daemon, and protocol/bridge; the full audit is tracked privately. Most surfaced themes already map to the existing workstreams (W1–W7); the six workstreams below are the **net-new, previously-untracked** lanes it added. Execution runs one branch + PR per ordered item against `test`; these workstreams track the cross-cutting capabilities those PRs build.
+Source of truth: internal audit (2026-06-23) + 2026-07-09 remediation re-verify + 2026-07-21 daily-driver audit. **Most themes shipped** in code; do not re-open greenfield work from the old OPEN rows.
 
-| WS | Lane | Scope | Maps to audit | Status |
-|---|---|---|---|---|
-| W8 | Destructive-action confirmation | One reusable `ConfirmDialog` (with type-to-confirm variant) routed through every destructive action: vault delete, git discard-all, daemon stop/restart, snap/model delete, SSH bookmark delete, DB migrate/seed; separate "dismiss modal" from "commit state change" (SetupWizard). | Theme 3 | **OPEN** — item 5 (`feat/destructive-confirm`) |
-| W9 | Degraded/mock-mode visibility | One global "degraded mode" flag set wherever a fallback fires (`invoke()` MOCK_DATA, `deploy.ts`/`config.ts` non-Tauri short-circuits, console pricing-fetch failure) + one persistent shell banner; never emit realistic-looking secret values from mocks. | Theme 2 | **OPEN** — item 4 (`feat/degraded-mode-banner`) |
-| W10 | Tauri-backend hardening | The Rust supervision/lifecycle layer not called out under W1: agent-wait deadlock, kill-on-drop/orphans, tray-icon panic, poisoned platform Mutex, config non-atomic write, SSH channel-hang, `daemon_ctl` lifecycle (SIGKILL escalation / PID authority / stale-PID), prompt-corruption hand-rolled JSON. | Themes 5/6/10 (Rust) | **OPEN** — items 2, 6, 10 |
-| W11 | Error-contract sweep | Shared `httpRequest` helper (`res.ok` + 4xx/5xx/network split + guarded `json()`); mutation try/catch contract in hooks; PTY/SSH send+resize catch→onDisconnect; replace `void fn()` with `.catch`; map raw Go errors to actionable text. Durable enforcement: Biome lint banning bare `catch {}` + void-ed promises in `hooks/` + `lib/`. | Theme 4 + console twins | **OPEN** — item 8 (`refactor/error-contract`) |
-| W12 | Docs-accuracy CI gate | Beyond the one-time doc fix: CI tooling that fails on doc-vs-code drift. First piece shipped: `scripts/doc-lint-license-format.mjs` (fails on rejected `RVUI.v2.*`/`RVUI-*` license formats in tracked Markdown, with explicit allow-markers for rejection-documenting mentions). Extend to env-var coverage + emitted-string verification. | Theme 1 durability | **IN PROGRESS** — doc-lint landed with item 1 | <!-- doclint:allow-legacy-format -->
-| W13 | Accessibility | At-a-glance health invisible to assistive tech / ambiguous to colorblind users. Fix `StatusDot` once (`role="img"` + `aria-label` + non-color shape/icon cue); distinct text labels per status (resolve two-orange StepDeploy states); console per-session status text. | Theme 8 | **OPEN** — item 11 (`a11y/status-primitives`) |
+| WS | Lane | Scope | Status (2026-07-21) |
+|---|---|---|---|
+| W8 | Destructive-action confirmation | `ConfirmDialog` + type-to-confirm on vault/git/daemon/SSH/spawn/inference/setup/DB | ✅ **SHIPPED** (residual: re-audit any new destructive control) |
+| W9 | Degraded/mock-mode visibility | `markDegraded` → `DegradedBanner` → AppShell; mock secret sentinels | ✅ **SHIPPED** |
+| W10 | Tauri-backend hardening | Agent-wait deadlock, kill_all on exit, SSH channel split, SIGKILL escalate, tray Option, Windows E:\repos retired | ✅ **Mostly shipped** — residual: deploy-wizard Theme 7 honesty, any new Rust lifecycle bugs |
+| W11 | Error-contract sweep | http helper + mutation try/catch on high-traffic hooks | ✅ **Mostly shipped** — residual: Biome ban on bare `catch {}` / void promises if not yet wired |
+| W12 | Docs-accuracy CI gate | `scripts/doc-lint-license-format.mjs` | ✅ **SHIPPED** first piece; extend env-var/string coverage when needed | <!-- doclint:allow-legacy-format -->
+| W13 | Accessibility | `StatusDot` role/aria-label + text cues | ✅ **Mostly shipped** on StatusDot; residual: console session text, any color-only stragglers |
 
-**Owner-gated items carried out of the audit** (do not action without sign-off): a set of hardening, data-migration, and component-removal items is tracked privately and must not be actioned without owner sign-off. See the internal audit tracker for the itemized list.
+**Still open product residuals (not "re-do W8"):** deploy wizard durability (Theme 7), dogfood W4 Phases 3–4, dual agent-spawn stacks (daily-driver INIT-002 Phase 3), hooks signing (INIT-002 Phase 1), GAP-294 permission modes.
+
+**Owner-gated items** from the audit remain privately tracked; do not action without sign-off.
 
 ---
 
