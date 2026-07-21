@@ -380,7 +380,9 @@ server.tool(
   {
     repoPath: z
       .string()
-      .describe('Absolute path of a root opened via project.open that this agent owns or was granted'),
+      .describe(
+        'Absolute path of a root opened via project.open that this agent owns or was granted',
+      ),
     branch: z.string().describe('Branch name for the worktree'),
     baseBranch: z.string().optional().describe('Base branch (default: main)'),
   },

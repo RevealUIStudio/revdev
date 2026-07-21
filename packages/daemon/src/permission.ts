@@ -151,7 +151,10 @@ export interface PermissionShadowResult {
   actionClass: ActionClass;
   would: ShadowWould;
   simulatedMode: 'manual' | 'auto';
-  eventType: 'permission.would_allow' | 'permission.would_require_approval' | 'permission.would_deny';
+  eventType:
+    | 'permission.would_allow'
+    | 'permission.would_require_approval'
+    | 'permission.would_deny';
 }
 
 export function evaluateShadow(
