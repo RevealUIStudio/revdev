@@ -1,14 +1,14 @@
 ---
 type: master-plan
 repo: revdev
-last-updated: 2026-06-11
+last-updated: 2026-07-23
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
 
 # RevDev — Master Plan
 
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-07-23
 **Status:** Pre-1.0 — Studio + Console + harness daemon all buildable; no public releases yet
 **Owner:** RevealUI Studio (`founder@revealui.com`)
 **Repo:** [RevealUIStudio/revdev](https://github.com/RevealUIStudio/revdev)
