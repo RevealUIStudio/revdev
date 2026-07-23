@@ -1,7 +1,7 @@
 ---
 type: repo-doc-index
 repo: revdev
-updated: 2026-06-11
+updated: 2026-07-23
 ---
 
 # RevDev — Documentation Index

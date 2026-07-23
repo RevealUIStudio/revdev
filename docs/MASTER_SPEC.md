@@ -1,14 +1,14 @@
 ---
 type: master-spec
 repo: revdev
-last-updated: 2026-06-11
+last-updated: 2026-07-23
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
 
 # RevDev — Master Spec
 
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-07-23
 **Status:** Pre-1.0 — daemon production-grade for internal use; Studio + Console builds clean; no public releases
 **Repo:** [RevealUIStudio/revdev](https://github.com/RevealUIStudio/revdev)
 
