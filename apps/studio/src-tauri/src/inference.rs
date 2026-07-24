@@ -204,12 +204,13 @@ pub struct SnapModel {
     pub installed: bool,
 }
 
-/// Known inference snaps from Canonical.
+/// Product Inference Snaps catalog (US-origin allowlist only).
+/// Lockstep with `@revealui/ai` `US_ORIGIN_INFERENCE_SNAP_IDS`.
 const KNOWN_SNAPS: &[(&str, &str)] = &[
-    ("nemotron-3-nano", "General (reasoning + non-reasoning) — free tier default"),
-    ("gemma3", "General + vision — image understanding, multimodal"),
-    ("deepseek-r1", "Reasoning — complex analysis, chain-of-thought"),
-    ("qwen-vl", "Vision-language — document parsing, visual Q&A"),
+    ("nemotron-3-nano", "NVIDIA (US) — general + tools; product default"),
+    ("nemotron-3-nano-omni", "NVIDIA (US) — multimodal (text/image/video/audio)"),
+    ("gemma4", "Google (US) — general + vision + tools"),
+    ("gemma3", "Google (US) — general + vision (allowlisted)"),
 ];
 
 /// Check if a specific inference snap is installed and running.
