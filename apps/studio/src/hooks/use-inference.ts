@@ -12,7 +12,13 @@ import {
   inferenceSnapList,
   inferenceSnapRemove,
 } from '../lib/invoke';
-import type { LocalAiProfileView, LocalAiTier, OllamaModel, OllamaStatus, SnapModel } from '../types';
+import type {
+  LocalAiProfileView,
+  LocalAiTier,
+  OllamaModel,
+  OllamaStatus,
+  SnapModel,
+} from '../types';
 import { usePollingFetch } from './use-polling-fetch';
 
 interface InferenceSnapshot {

@@ -22,7 +22,11 @@ const TIERS: ReadonlyArray<{
   blurb: string;
 }> = [
   { id: 'idle', label: 'Idle', blurb: 'Stop AI. Free RAM for IDE and terminals.' },
-  { id: 'daily', label: 'Daily', blurb: 'Small Ollama model (gemma3:1b). Unloads after each call.' },
+  {
+    id: 'daily',
+    label: 'Daily',
+    blurb: 'Small Ollama model (gemma3:1b). Unloads after each call.',
+  },
   { id: 'snaps', label: 'Snaps', blurb: 'Inference Snap product path (gemma3, US-origin).' },
   { id: 'heavy', label: 'Heavy', blurb: 'Nemotron nano. Needs RAM; avoid with IDE on 4GB WSL.' },
 ];
@@ -128,7 +132,9 @@ export default function InferencePanel() {
                 }`}
               >
                 <span className="block text-xs font-semibold">{t.label}</span>
-                <span className="mt-0.5 block text-[10px] leading-snug text-fg-subtle">{t.blurb}</span>
+                <span className="mt-0.5 block text-[10px] leading-snug text-fg-subtle">
+                  {t.blurb}
+                </span>
               </button>
             );
           })}
@@ -137,8 +143,7 @@ export default function InferencePanel() {
         {profile ? (
           <div className="mt-3 space-y-1 text-[11px] text-fg-subtle">
             <p>
-              Active:{' '}
-              <span className="font-medium text-fg">{profile.tier}</span>
+              Active: <span className="font-medium text-fg">{profile.tier}</span>
               {profile.provider ? (
                 <>
                   {' '}
