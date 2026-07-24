@@ -220,22 +220,22 @@ const MOCK_DATA: Record<string, unknown> = {
   inference_snap_list: [
     {
       name: 'nemotron-3-nano',
-      description: 'General (reasoning + non-reasoning) — free tier default',
+      description: 'NVIDIA (US) — general + tools; product default',
+      installed: false,
+    },
+    {
+      name: 'nemotron-3-nano-omni',
+      description: 'NVIDIA (US) — multimodal (text/image/video/audio)',
+      installed: false,
+    },
+    {
+      name: 'gemma4',
+      description: 'Google (US) — general + vision + tools',
       installed: false,
     },
     {
       name: 'gemma3',
-      description: 'General + vision — image understanding, multimodal',
-      installed: false,
-    },
-    {
-      name: 'deepseek-r1',
-      description: 'Reasoning — complex analysis, chain-of-thought',
-      installed: false,
-    },
-    {
-      name: 'qwen-vl',
-      description: 'Vision-language — document parsing, visual Q&A',
+      description: 'Google (US) — general + vision (allowlisted)',
       installed: false,
     },
   ] satisfies SnapModel[],
