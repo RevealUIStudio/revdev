@@ -1024,17 +1024,33 @@ async function registerClientIdentity(
   return { did, publicKeyPem };
 }
 
+// `cli-not-installed` is an environmental condition of the daemon's unit
+// (revvault not on PATH), not a per-agent fault. Session-keyed identities
+// (GAP-311) mint a fresh keypair per session, so without dedup every session
+// registration re-emits the same warn pair for the daemon's whole lifetime.
+// Warn once, then skip further vault writes until restart.
+let revvaultCliMissing = false;
+
 function persistIdentityToRevvault(
   agentId: string,
   privateKeyPem: string,
   publicKeyPem: string,
 ): Promise<void> {
   return (async () => {
+    if (revvaultCliMissing) return;
     const setPriv = await revvaultSet(
       `revdev/agents/${agentId}/identity/ed25519-private`,
       privateKeyPem,
     );
     if (!setPriv.ok) {
+      if (setPriv.reason === 'cli-not-installed') {
+        revvaultCliMissing = true;
+        log.warn(
+          'revvault CLI not installed — agent identity keys will not be mirrored to revvault; suppressing further warnings (restart the daemon after installing revvault)',
+          { agentId },
+        );
+        return;
+      }
       log.warn('revvault private key write failed', { agentId, reason: setPriv.reason });
     }
     const setPub = await revvaultSet(
@@ -1042,6 +1058,14 @@ function persistIdentityToRevvault(
       publicKeyPem,
     );
     if (!setPub.ok) {
+      if (setPub.reason === 'cli-not-installed') {
+        revvaultCliMissing = true;
+        log.warn(
+          'revvault CLI not installed — agent identity keys will not be mirrored to revvault; suppressing further warnings (restart the daemon after installing revvault)',
+          { agentId },
+        );
+        return;
+      }
       log.warn('revvault public key write failed', { agentId, reason: setPub.reason });
     }
   })();
