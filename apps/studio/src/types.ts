@@ -253,6 +253,24 @@ export interface SnapModel {
   installed: boolean;
 }
 
+/** Host resource tiers for local AI (lockstep harnesses + @revealui/ai). */
+export type LocalAiTier = 'idle' | 'daily' | 'snaps' | 'heavy';
+
+/** Active local AI profile + live engine status (Studio / control plane). */
+export interface LocalAiProfileView {
+  tier: LocalAiTier | string;
+  provider: 'ollama' | 'inference-snaps' | null;
+  model: string | null;
+  baseUrl: string | null;
+  ollamaModelsDir: string | null;
+  keepAlive: string | null;
+  updatedAt: string;
+  note: string | null;
+  memAvailableGib: number | null;
+  ollamaRunning: boolean;
+  snapsRunning: string[];
+}
+
 /** A detected terminal emulator and its profile install status */
 export interface TerminalProfile {
   id: string;

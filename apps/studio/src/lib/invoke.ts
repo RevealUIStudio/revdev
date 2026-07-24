@@ -25,6 +25,8 @@ import type {
   HarnessSession,
   HarnessSetModeResult,
   HarnessTask,
+  LocalAiProfileView,
+  LocalAiTier,
   ModelPullResult,
   MountStatus,
   OllamaModel,
@@ -200,6 +202,32 @@ const MOCK_DATA: Record<string, unknown> = {
   agent_remove: undefined,
   agent_input: undefined,
   agent_resize: undefined,
+  inference_profile_get: {
+    tier: 'idle',
+    provider: null,
+    model: null,
+    baseUrl: null,
+    ollamaModelsDir: '/mnt/studio/models/ollama',
+    keepAlive: '0',
+    updatedAt: '2026-07-24T00:00:00Z',
+    note: 'AI stopped — IDE/dev headroom',
+    memAvailableGib: 2.1,
+    ollamaRunning: false,
+    snapsRunning: [],
+  } satisfies LocalAiProfileView,
+  inference_profile_apply: {
+    tier: 'idle',
+    provider: null,
+    model: null,
+    baseUrl: null,
+    ollamaModelsDir: '/mnt/studio/models/ollama',
+    keepAlive: '0',
+    updatedAt: '2026-07-24T00:00:00Z',
+    note: 'AI stopped — IDE/dev headroom',
+    memAvailableGib: 2.1,
+    ollamaRunning: false,
+    snapsRunning: [],
+  } satisfies LocalAiProfileView,
   inference_ollama_status: {
     installed: false,
     running: false,
@@ -1223,6 +1251,16 @@ export function inferenceSnapInstall(snapName: string): Promise<ModelPullResult>
 
 export function inferenceSnapRemove(snapName: string): Promise<void> {
   return invoke<void>('inference_snap_remove', { snapName });
+}
+
+// ── Local AI profile tiers ──────────────────────────────────────────────────
+
+export function inferenceProfileGet(): Promise<LocalAiProfileView> {
+  return invoke<LocalAiProfileView>('inference_profile_get');
+}
+
+export function inferenceProfileApply(tier: LocalAiTier | string): Promise<LocalAiProfileView> {
+  return invoke<LocalAiProfileView>('inference_profile_apply', { tier });
 }
 
 // ── Terminal profiles ────────────────────────────────────────────────────────
