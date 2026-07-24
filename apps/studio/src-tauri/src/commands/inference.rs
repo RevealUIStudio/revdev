@@ -62,3 +62,17 @@ pub fn inference_snap_install(snap_name: String) -> Result<inference::ModelPullR
 pub fn inference_snap_remove(snap_name: String) -> Result<(), StudioError> {
     inference::snap_remove(&snap_name).map_err(|e| StudioError::Process(e))
 }
+
+// ── Local AI profile tiers ──────────────────────────────────────────
+
+/// Read active local AI profile + live engine status.
+#[tauri::command]
+pub fn inference_profile_get() -> inference::LocalAiProfileView {
+    inference::profile_get()
+}
+
+/// Apply a host resource tier (idle | daily | snaps | heavy).
+#[tauri::command]
+pub fn inference_profile_apply(tier: String) -> Result<inference::LocalAiProfileView, StudioError> {
+    inference::profile_apply(&tier).map_err(|e| StudioError::Process(e))
+}

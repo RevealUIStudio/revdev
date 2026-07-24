@@ -173,6 +173,8 @@ pub fn run() {
             inference_cmds::inference_snap_list,
             inference_cmds::inference_snap_install,
             inference_cmds::inference_snap_remove,
+            inference_cmds::inference_profile_get,
+            inference_cmds::inference_profile_apply,
             terminal::terminal_detect,
             terminal::terminal_install,
             launcher::focus_window,

@@ -1,13 +1,14 @@
 /**
  * InferencePanel — local AI inference management
  *
+ * Resource tiers (idle/daily/snaps/heavy) write the host control-plane profile.
  * Two engines: Ubuntu Inference Snaps (recommended), Ollama (fallback).
- * Shows installed status, available models, install/pull/delete, server start/stop.
  */
 
 import { useState } from 'react';
 
 import { useInference } from '../../hooks/use-inference';
+import type { LocalAiTier } from '../../types';
 import ConfirmDialog from '../ui/ConfirmDialog';
 
 interface PendingDelete {
@@ -15,15 +16,28 @@ interface PendingDelete {
   name: string;
 }
 
+const TIERS: ReadonlyArray<{
+  id: LocalAiTier;
+  label: string;
+  blurb: string;
+}> = [
+  { id: 'idle', label: 'Idle', blurb: 'Stop AI. Free RAM for IDE and terminals.' },
+  { id: 'daily', label: 'Daily', blurb: 'Small Ollama model (gemma3:1b). Unloads after each call.' },
+  { id: 'snaps', label: 'Snaps', blurb: 'Inference Snap product path (gemma3, US-origin).' },
+  { id: 'heavy', label: 'Heavy', blurb: 'Nemotron nano. Needs RAM; avoid with IDE on 4GB WSL.' },
+];
+
 export default function InferencePanel() {
   const {
     ollama,
     models,
     snaps,
+    profile,
     loading,
     error,
     pulling,
     installingSnap,
+    applyingTier,
     refresh,
     startOllama,
     stopOllama,
@@ -31,6 +45,7 @@ export default function InferencePanel() {
     deleteModel,
     installSnap,
     removeSnap,
+    applyTier,
   } = useInference();
 
   const [pullInput, setPullInput] = useState('');
@@ -53,6 +68,8 @@ export default function InferencePanel() {
       </div>
     );
   }
+
+  const activeTier = (profile?.tier ?? 'idle') as string;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-6">
@@ -77,6 +94,70 @@ export default function InferencePanel() {
           {error}
         </div>
       ) : null}
+
+      {/* ── Resource tiers ── */}
+      <div className="mb-6 rounded-lg border border-edge bg-surface-1/60 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-fg">Resource tier</h2>
+            <p className="mt-0.5 text-[11px] text-fg-subtle">
+              Writes the host profile used by product clients and{' '}
+              <code className="text-fg-muted">revealui-harnesses inference</code>
+            </p>
+          </div>
+          {profile?.memAvailableGib != null ? (
+            <span className="shrink-0 rounded bg-surface-2 px-2 py-0.5 text-[10px] text-fg-subtle">
+              ~{profile.memAvailableGib} Gi free
+            </span>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {TIERS.map((t) => {
+            const selected = activeTier === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                disabled={applyingTier}
+                onClick={() => void applyTier(t.id)}
+                className={`rounded-lg border px-2.5 py-2 text-left transition-colors disabled:opacity-50 ${
+                  selected
+                    ? 'border-brand bg-brand/10 text-fg'
+                    : 'border-edge bg-surface-2/40 text-fg-muted hover:border-edge-strong hover:bg-surface-2'
+                }`}
+              >
+                <span className="block text-xs font-semibold">{t.label}</span>
+                <span className="mt-0.5 block text-[10px] leading-snug text-fg-subtle">{t.blurb}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {profile ? (
+          <div className="mt-3 space-y-1 text-[11px] text-fg-subtle">
+            <p>
+              Active:{' '}
+              <span className="font-medium text-fg">{profile.tier}</span>
+              {profile.provider ? (
+                <>
+                  {' '}
+                  · {profile.provider}
+                  {profile.model ? ` / ${profile.model}` : ''}
+                </>
+              ) : (
+                ' · no provider (idle)'
+              )}
+              {applyingTier ? ' · applying…' : null}
+            </p>
+            {profile.note ? <p className="text-fg-muted">{profile.note}</p> : null}
+            {profile.snapsRunning.length > 0 ? (
+              <p>Snaps running: {profile.snapsRunning.join(', ')}</p>
+            ) : null}
+            {profile.updatedAt ? <p>Updated {profile.updatedAt}</p> : null}
+          </div>
+        ) : null}
+      </div>
 
       {/* ── Engine status cards ── */}
       <div className="mb-6 grid grid-cols-2 gap-4">
@@ -122,7 +203,7 @@ export default function InferencePanel() {
               <span className="text-[10px] text-fg-subtle">{ollama.version}</span>
             ) : null}
           </div>
-          <p className="mt-1 text-[11px] text-fg-subtle">Run open models — Gemma, Qwen, Mistral</p>
+          <p className="mt-1 text-[11px] text-fg-subtle">Run open models — Gemma, Nemotron</p>
           <div className="mt-3 flex items-center gap-2">
             {ollama?.installed ? (
               ollama.running ? (
@@ -165,7 +246,7 @@ export default function InferencePanel() {
       <div className="mb-6 rounded-lg border border-edge bg-surface-1/60 p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-fg">Inference Snaps</h2>
-          <span className="text-[10px] text-fg-subtle">sudo snap install &lt;name&gt;</span>
+          <span className="text-[10px] text-fg-subtle">US-origin catalog only</span>
         </div>
         <div className="divide-y divide-edge">
           {snaps.map((snap) => (
@@ -211,7 +292,6 @@ export default function InferencePanel() {
           </span>
         </div>
 
-        {/* Pull form */}
         {ollama?.running ? (
           <form
             onSubmit={(e) => {
@@ -226,7 +306,7 @@ export default function InferencePanel() {
             <input
               value={pullInput}
               onChange={(e) => setPullInput(e.target.value)}
-              placeholder="Pull a model (e.g. gemma4:e2b, qwen3.5, mistral)"
+              placeholder="Pull a model (e.g. gemma3:1b)"
               disabled={pulling}
               className="flex-1 rounded border border-edge-strong bg-surface-2 px-2.5 py-1.5 text-xs text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none disabled:opacity-50"
             />
