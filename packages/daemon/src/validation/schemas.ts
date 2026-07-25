@@ -7,8 +7,7 @@
  * agent-memory + agent-coordination contracts (see
  * `revealui/packages/contracts/src/agents`,
  * `revealui/packages/db/src/schema/agents.ts`,
- * `revealui/packages/mcp/src/servers/revealui-memory.ts`,
- * `revealui/packages/harnesses/src/server/rpc-server.ts` —
+ * `revealui/packages/mcp/src/servers/revealui-memory.ts` —
  * all use the typed-record framing
  * `memoryType`/`content`/`metadata`, not KV-store `key`/`value`).
  *
