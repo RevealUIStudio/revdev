@@ -15,10 +15,9 @@
  *   `session.register` are rejected with -32002.
  */
 
-import { constants as fsConstants } from 'node:fs';
-import { open as fsOpen, lstat, mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { formatDid, parseDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
@@ -31,6 +30,7 @@ import {
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
+import { readRootOwnedFile } from './confinement.js';
 import { notifyAgentEnded, notifyDaemonStarted } from './eviction.js';
 import {
   guardRpcMethod,
@@ -890,8 +890,10 @@ class UntrustedClientKeyError extends Error {
  * A missing / unreadable / UNTRUSTED file yields an EMPTY set — enrollment then
  * fails closed. When `requireRootOwned` (production, review B-2), the file AND
  * every ancestor directory must be a root-owned, non-symlink entry with no
- * group/other write bit, and the file is opened O_NOFOLLOW + fstat-checked — so
- * a WSL-user attacker cannot point the daemon at a file they control, even via
+ * group/other write bit, and the file is opened O_NOFOLLOW + fstat-checked
+ * ("root-owned" = confinement's `isTrustedRootOwner`: uid 0, or uid 65534 only
+ * under the proven WSL systemd-user idmap squash — GAP-409 D7). So a WSL-user
+ * attacker cannot point the daemon at a file they control, even via
  * a systemd-user `Environment=REVDEV_DAEMON_TRUSTED_CLIENT_FP=...` override
  * (their path is not root-owned, so it is rejected). The disable lives ONLY in
  * the programmatic startDaemon config (tests), never in an env var an attacker
@@ -924,39 +926,6 @@ async function loadTrustedClientEntries(
     out.add(`${trimmed.slice(0, idx)}:${trimmed.slice(idx + 1)}`);
   }
   return out;
-}
-
-/**
- * Read a file that MUST be root-owned and tamper-resistant: every ancestor
- * directory must be a root-owned, non-symlink directory with no group/other
- * write bit, and the file itself is opened O_NOFOLLOW then fstat-checked
- * (regular file, uid 0, not group/other-writable). Throws otherwise.
- */
-async function readRootOwnedFile(filePath: string): Promise<string> {
-  let dir = dirname(resolve(filePath));
-  for (;;) {
-    const dstat = await lstat(dir);
-    if (dstat.isSymbolicLink()) throw new Error(`anchor ancestor is a symlink: ${dir}`);
-    if (!dstat.isDirectory()) throw new Error(`anchor ancestor is not a directory: ${dir}`);
-    if (dstat.uid !== 0)
-      throw new Error(`anchor ancestor not root-owned (uid ${dstat.uid}): ${dir}`);
-    if ((dstat.mode & 0o022) !== 0) throw new Error(`anchor ancestor group/other-writable: ${dir}`);
-    const parent = dirname(dir);
-    if (parent === dir) break; // reached the filesystem root
-    dir = parent;
-  }
-  const handle = await fsOpen(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
-  try {
-    const fstat = await handle.stat();
-    if (!fstat.isFile()) throw new Error(`trust anchor is not a regular file: ${filePath}`);
-    if (fstat.uid !== 0)
-      throw new Error(`trust anchor not root-owned (uid ${fstat.uid}): ${filePath}`);
-    if ((fstat.mode & 0o022) !== 0)
-      throw new Error(`trust anchor group/other-writable: ${filePath}`);
-    return await handle.readFile('utf8');
-  } finally {
-    await handle.close();
-  }
 }
 
 /**
