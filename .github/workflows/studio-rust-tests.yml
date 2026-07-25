@@ -120,8 +120,11 @@ jobs:
   prove-red-rust:
     name: Prove-Red (Rust changed tests must fail against base)
     runs-on: ubuntu-latest
-    # PR-only: a merge-base is meaningless on a direct push to test/main.
-    if: github.event_name == 'pull_request'
+    # PR-only: a merge-base is meaningless on a direct push to test/main. Also
+    # skip test -> main promotion PRs (GAP-393): a promotion diff carries a
+    # feature's fix and test together, so the test passes against main's base —
+    # the red-first proof already happened on the constituent feature PR.
+    if: github.event_name == 'pull_request' && !(github.head_ref == 'test' && github.base_ref == 'main')
     steps:
       # PR head + full history so prove-red.mjs can compute the merge base.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -173,4 +176,5 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
           PROVE_RED_LANGS: rust
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: node scripts/ci/prove-red.mjs

@@ -41,6 +41,20 @@
 //
 // Zero authored regex (fleet rule): path classification is suffix/substring
 // membership only.
+//
+// Two exemption paths (GAP-393):
+//   - Promotion skip: a test -> main promotion PR carries both a feature's fix
+//     and its test together, so the test passes against main's base — the
+//     red-first proof already happened on the constituent feature PR. The
+//     workflow `if:` conditions skip these jobs entirely (no checkout); the
+//     early-exit below is defense-in-depth for any invocation that reaches
+//     this script anyway.
+//   - Label exemption: a genuine behavior-preserving change (e.g. a
+//     config/test-infra refactor) has no failing-first test by construction.
+//     The `verify:no-behavior-change` label, applied by a non-author
+//     reviewer (convention-enforced until identity separation exists — the
+//     fleet currently runs a solo GitHub account), records that judgment and
+//     clears the gate.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -303,6 +317,25 @@ const LANGS = {
 const baseRef = process.env.BASE_REF || process.env.BASE_SHA;
 if (!baseRef) fail('BASE_REF is not set (pass the PR base sha).');
 
+// --- promotion skip (GAP-393) -----------------------------------------------
+// GITHUB_HEAD_REF / GITHUB_BASE_REF are branch names GitHub Actions sets for
+// every pull_request-triggered job; no extra wiring needed.
+if (process.env.GITHUB_HEAD_REF === 'test' && process.env.GITHUB_BASE_REF === 'main') {
+  skip('promotion PR (test -> main) — red-first proofs happened on constituent feature PRs');
+}
+
+// --- label exemption (GAP-393) ----------------------------------------------
+const prLabels = (process.env.PR_LABELS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+if (prLabels.includes('verify:no-behavior-change')) {
+  skip(
+    "PR carries the 'verify:no-behavior-change' label — recorded non-author exemption " +
+      'for a behavior-preserving change',
+  );
+}
+
 const ALL_LANGS = Object.keys(LANGS);
 const requested = (process.env.PROVE_RED_LANGS || ALL_LANGS.join(','))
   .split(',')
@@ -392,8 +425,11 @@ for (const a of active) {
       `\n✗ prove-red [${a.id}]: NONE of the changed ${a.id} tests fail against the base. This PR\n` +
         `changes ${a.id} product source but carries no failing-first test that depends on the\n` +
         'change. Add a test that is red without the fix, or, for a genuine\n' +
-        'behavior-preserving refactor, carry the recorded verify:no-behavior-change\n' +
-        'label (applied by a non-author, per the verification-enforcement lane).',
+        'behavior-preserving refactor, ask a non-author reviewer to apply the\n' +
+        "'verify:no-behavior-change' label and re-run this check (convention-enforced\n" +
+        'until identity separation exists). test -> main promotion PRs are\n' +
+        'auto-skipped; the red-first proof already happened on the constituent\n' +
+        'feature PR.',
     );
   } else {
     console.log(
