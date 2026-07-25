@@ -511,7 +511,7 @@ describe('agent identity bootstrap', () => {
       agentId: 'identity-test-first',
       agentName: 'identity-tester',
       backend: 'test',
-    })) as { sessionId: string; did: string; publicKeyPem: string };
+    })) as { sessionId: string; did: string; publicKeyPem: string; privateKeyPem?: string };
 
     expect(result.sessionId).toBe('identity-test-first');
     expect(result.did).toBe(
@@ -521,6 +521,8 @@ describe('agent identity bootstrap', () => {
     );
     expect(result.did.startsWith('did:revfleet:identity-test-first:')).toBe(true);
     expect(result.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+    // INIT-002 Phase 1: one-shot private key so headless hooks can sign.
+    expect(result.privateKeyPem).toContain('BEGIN PRIVATE KEY');
   });
 
   it('idempotent re-register reuses the same keypair', async () => {
@@ -528,16 +530,19 @@ describe('agent identity bootstrap', () => {
       agentId: 'identity-test-idempotent',
       agentName: 'identity-tester',
       backend: 'test',
-    })) as { did: string; publicKeyPem: string };
+    })) as { did: string; publicKeyPem: string; privateKeyPem?: string };
 
     const r2 = (await rpc(socketPath, 'session.register', {
       agentId: 'identity-test-idempotent',
       agentName: 'identity-tester',
       backend: 'test',
-    })) as { did: string; publicKeyPem: string };
+    })) as { did: string; publicKeyPem: string; privateKeyPem?: string };
 
     expect(r2.did).toBe(r1.did);
     expect(r2.publicKeyPem).toBe(r1.publicKeyPem);
+    // Private key is emitted only on first mint — never re-emitted.
+    expect(r1.privateKeyPem).toContain('BEGIN PRIVATE KEY');
+    expect(r2.privateKeyPem).toBeUndefined();
   });
 
   it('forceRotate param is silently ignored — re-register returns the same keypair', async () => {
@@ -1090,5 +1095,52 @@ describe('GAP-257: session activity-state', () => {
     expect(row?.activity_state).toBe('active');
     expect(row?.blocked_since).toBeFalsy();
     expect(row?.blocked_reason).toBeFalsy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GAP-307: tool-use events.log advances session heartbeat (updated_at)
+// ---------------------------------------------------------------------------
+
+describe('GAP-307: events.log tool-use heartbeats session.list active', () => {
+  it('tool-use with payload.sessionId bumps updated_at and restores active', async () => {
+    await seedIdentity('gap307-hb');
+    await db.query(
+      `UPDATE agent_sessions SET updated_at = NOW() - INTERVAL '500 seconds' WHERE id = $1`,
+      ['gap307-hb'],
+    );
+    let row = (await listLocal()).find((s) => s.id === 'gap307-hb');
+    expect(row?.active).toBe(false);
+
+    // track-tools.js shape: actorAgentId + agentId + eventType tool-use + sessionId
+    await rpc(socketPath, 'events.log', {
+      actorAgentId: 'gap307-hb',
+      agentId: 'gap307-hb',
+      eventType: 'tool-use',
+      payload: { tool: 'Bash', sessionId: 'gap307-hb' },
+    });
+
+    // Allow fire-and-forget UPDATE to land
+    await new Promise((r) => setTimeout(r, 50));
+    row = (await listLocal()).find((s) => s.id === 'gap307-hb');
+    expect(row?.active).toBe(true);
+    expect(row?.staleSeconds).toBeLessThan(30);
+  });
+
+  it('non-tool-use events do not revive a stale session', async () => {
+    await seedIdentity('gap307-other');
+    await db.query(
+      `UPDATE agent_sessions SET updated_at = NOW() - INTERVAL '500 seconds' WHERE id = $1`,
+      ['gap307-other'],
+    );
+    await rpc(socketPath, 'events.log', {
+      actorAgentId: 'gap307-other',
+      agentId: 'gap307-other',
+      eventType: 'custom',
+      payload: { sessionId: 'gap307-other' },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const row = (await listLocal()).find((s) => s.id === 'gap307-other');
+    expect(row?.active).toBe(false);
   });
 });

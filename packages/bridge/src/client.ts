@@ -46,6 +46,24 @@ export class DaemonClient {
     this.signingConfig = signingConfig !== undefined ? signingConfig : resolveSigningConfig();
   }
 
+  /** True when this client will attach an Ed25519 envelope on every call. */
+  get isSigned(): boolean {
+    return this.signingConfig !== null;
+  }
+
+  /**
+   * Signature-required methods need a signed client. Call before worktree /
+   * file mutations so operators get an actionable error instead of -32003.
+   */
+  requireSigned(method: string): void {
+    if (this.signingConfig !== null) return;
+    throw new Error(
+      `${method} requires a signed bridge client. Set REVDEV_AGENT_DID and ` +
+        `REVDEV_AGENT_PRIVATE_KEY_PEM (agent identity from session.register / revvault ` +
+        `revdev/agents/<id>/identity/*), then restart the bridge.`,
+    );
+  }
+
   async call(method: string, params?: Record<string, unknown>): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const id = this.nextId++;

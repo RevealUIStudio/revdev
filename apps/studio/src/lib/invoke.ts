@@ -15,12 +15,18 @@ import type {
   GitPullResult,
   GitPushResult,
   GitStatusResult,
+  HarnessAgentProcess,
+  HarnessApproval,
   HarnessClaimResult,
+  HarnessDecideResult,
   HarnessMessage,
   HarnessReservation,
   HarnessReserveResult,
   HarnessSession,
+  HarnessSetModeResult,
   HarnessTask,
+  LocalAiProfileView,
+  LocalAiTier,
   ModelPullResult,
   MountStatus,
   OllamaModel,
@@ -171,11 +177,57 @@ const MOCK_DATA: Record<string, unknown> = {
   git_read_file: '// Mock file content\nexport default function example() {}\n',
   git_write_file: undefined,
   agent_spawn: 'mock-agent-session-id',
+  harness_agent_spawn: {
+    process_id: 'mock-harness-proc',
+    command: 'bash',
+    cwd: '/tmp/repo',
+    pid: 4242,
+    status: 'running',
+    exit_code: null,
+  } satisfies HarnessAgentProcess,
+  harness_agent_list: [
+    {
+      process_id: 'mock-harness-proc',
+      command: 'bash',
+      cwd: '/tmp/repo',
+      pid: 4242,
+      status: 'running',
+      exit_code: null,
+    },
+  ] satisfies HarnessAgentProcess[],
+  harness_agent_stop: undefined,
+  harness_agent_remove: undefined,
   agent_stop: undefined,
   agent_list: [] satisfies AgentSessionInfo[],
   agent_remove: undefined,
   agent_input: undefined,
   agent_resize: undefined,
+  inference_profile_get: {
+    tier: 'idle',
+    provider: null,
+    model: null,
+    baseUrl: null,
+    ollamaModelsDir: '/mnt/studio/models/ollama',
+    keepAlive: '0',
+    updatedAt: '2026-07-24T00:00:00Z',
+    note: 'AI stopped — IDE/dev headroom',
+    memAvailableGib: 2.1,
+    ollamaRunning: false,
+    snapsRunning: [],
+  } satisfies LocalAiProfileView,
+  inference_profile_apply: {
+    tier: 'idle',
+    provider: null,
+    model: null,
+    baseUrl: null,
+    ollamaModelsDir: '/mnt/studio/models/ollama',
+    keepAlive: '0',
+    updatedAt: '2026-07-24T00:00:00Z',
+    note: 'AI stopped — IDE/dev headroom',
+    memAvailableGib: 2.1,
+    ollamaRunning: false,
+    snapsRunning: [],
+  } satisfies LocalAiProfileView,
   inference_ollama_status: {
     installed: false,
     running: false,
@@ -196,22 +248,22 @@ const MOCK_DATA: Record<string, unknown> = {
   inference_snap_list: [
     {
       name: 'nemotron-3-nano',
-      description: 'General (reasoning + non-reasoning) — free tier default',
+      description: 'NVIDIA (US) — general + tools; product default',
+      installed: false,
+    },
+    {
+      name: 'nemotron-3-nano-omni',
+      description: 'NVIDIA (US) — multimodal (text/image/video/audio)',
+      installed: false,
+    },
+    {
+      name: 'gemma4',
+      description: 'Google (US) — general + vision + tools',
       installed: false,
     },
     {
       name: 'gemma3',
-      description: 'General + vision — image understanding, multimodal',
-      installed: false,
-    },
-    {
-      name: 'deepseek-r1',
-      description: 'Reasoning — complex analysis, chain-of-thought',
-      installed: false,
-    },
-    {
-      name: 'qwen-vl',
-      description: 'Vision-language — document parsing, visual Q&A',
+      description: 'Google (US) — general + vision (allowlisted)',
       installed: false,
     },
   ] satisfies SnapModel[],
@@ -314,6 +366,24 @@ const MOCK_DATA: Record<string, unknown> = {
   ] satisfies HarnessReservation[],
   harness_reserve_file: { success: true } satisfies HarnessReserveResult,
   harness_check_file: null,
+  harness_permission_pending: [
+    {
+      id: 'apr-mock-1',
+      agent_id: 'agent-ext-1',
+      method: 'git.push',
+      params_hash: 'abc123',
+      summary: 'git.push origin main',
+      requested_at: new Date(Date.now() - 60_000).toISOString(),
+      expires_at: new Date(Date.now() + 1_800_000).toISOString(),
+      status: 'pending',
+    },
+  ] satisfies HarnessApproval[],
+  harness_permission_decide: { id: 'apr-mock-1', status: 'approved' } satisfies HarnessDecideResult,
+  harness_permission_set_mode: {
+    agent_id: 'agent-ext-1',
+    permission_mode: 'manual',
+    daemon_default: 'shadow',
+  } satisfies HarnessSetModeResult,
 };
 
 // ── Remote daemon HTTP transport (browser mode) ─────────────────────────────
@@ -344,13 +414,23 @@ export const HARNESS_RPC_MAP: Record<string, string> = {
   harness_reservations: 'files.list',
   harness_reserve_file: 'files.reserve',
   harness_check_file: 'files.check',
+  // GAP-294 permission modes
+  harness_permission_pending: 'permission.pending',
+  harness_permission_decide: 'permission.decide',
+  harness_permission_set_mode: 'permission.setMode',
   // Agent spawner
+  // Local inference (Tauri-only in desktop); browser maps to daemon agent.*
   agent_spawn: 'agent.spawn',
   agent_stop: 'agent.stop',
   agent_list: 'agent.list',
   agent_remove: 'agent.remove',
   agent_input: 'agent.input',
   agent_resize: 'agent.resize',
+  // Confined harness spawn (INIT-002 PW-SPAWN) — same daemon methods, explicit commands
+  harness_agent_spawn: 'agent.spawn',
+  harness_agent_list: 'agent.list',
+  harness_agent_stop: 'agent.stop',
+  harness_agent_remove: 'agent.remove',
   // Local inference (Ollama) — the daemon's inference.* handlers ARE the Ollama
   // HTTP integration. Result shapes differ from the Tauri path and are adapted
   // back to the Studio types by RESULT_ADAPTERS below. `inference_ollama_models`
@@ -395,6 +475,31 @@ function toRpcParams(cmd: string, args?: Record<string, unknown>): Record<string
   }
   // Special cases for harness_ping which returns boolean
   if (cmd === 'harness_ping') return {};
+  // Harness agent spawn: map Studio args → daemon agent.spawn params.
+  if (cmd === 'harness_agent_spawn') {
+    return {
+      command: params.command,
+      args: Array.isArray(params.args) ? params.args : [],
+      repoPath: params.repoPath ?? params.repo_path,
+      cwd: params.cwd ?? undefined,
+      cols: params.cols ?? 80,
+      rows: params.rows ?? 24,
+    };
+  }
+  if (cmd === 'harness_agent_stop' || cmd === 'harness_agent_remove') {
+    return { processId: params.processId ?? params.process_id };
+  }
+  if (cmd === 'agent_spawn' && params.command) {
+    // Browser mode confined spawn when callers pass command/repoPath.
+    return {
+      command: params.command,
+      args: Array.isArray(params.args) ? params.args : [],
+      repoPath: params.repoPath ?? params.repo_path,
+      cwd: params.cwd ?? undefined,
+      cols: params.cols ?? 80,
+      rows: params.rows ?? 24,
+    };
+  }
   // The Ollama model commands take a `modelName` arg on the Studio wrappers, but
   // the daemon's inference.pull/delete handlers read `model`. Rename so the
   // daemon receives the key its schema requires.
@@ -492,15 +597,116 @@ function adaptAgentList(raw: unknown): AgentSessionInfo[] {
     prompt: '',
     status: daemonStatusToSession(r.status, r.exitCode),
     pid: r.pid,
+    harness: true,
   }));
+}
+
+function adaptPermissionPending(raw: unknown): HarnessApproval[] {
+  const r = (raw ?? {}) as { approvals?: unknown[] };
+  const rows = Array.isArray(r.approvals) ? r.approvals : Array.isArray(raw) ? raw : [];
+  return rows.map((row) => {
+    const o = (row ?? {}) as Record<string, unknown>;
+    return {
+      id: String(o.id ?? ''),
+      agent_id: String(o.agentId ?? o.agent_id ?? ''),
+      method: String(o.method ?? ''),
+      params_hash: String(o.paramsHash ?? o.params_hash ?? ''),
+      summary: String(o.summary ?? ''),
+      requested_at: String(o.requestedAt ?? o.requested_at ?? ''),
+      expires_at: String(o.expiresAt ?? o.expires_at ?? ''),
+      status: String(o.status ?? 'pending'),
+    };
+  });
+}
+
+function adaptPermissionDecide(raw: unknown): HarnessDecideResult {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return { id: String(o.id ?? ''), status: String(o.status ?? '') };
+}
+
+function adaptPermissionSetMode(raw: unknown): HarnessSetModeResult {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return {
+    agent_id: String(o.agentId ?? o.agent_id ?? ''),
+    permission_mode:
+      o.permissionMode === null || o.permissionMode === undefined
+        ? null
+        : String(o.permissionMode ?? o.permission_mode ?? ''),
+    daemon_default:
+      o.daemonDefault === null || o.daemonDefault === undefined
+        ? null
+        : String(o.daemonDefault ?? o.daemon_default ?? ''),
+  };
+}
+
+function adaptHarnessSessions(raw: unknown): HarnessSession[] {
+  const r = (raw ?? {}) as { sessions?: unknown[] };
+  const rows = Array.isArray(r.sessions) ? r.sessions : Array.isArray(raw) ? raw : [];
+  return rows.map((row) => {
+    const o = (row ?? {}) as Record<string, unknown>;
+    return {
+      id: String(o.id ?? ''),
+      env: String(o.env ?? ''),
+      task: String(o.task ?? ''),
+      files: o.files == null ? null : String(o.files),
+      pid: typeof o.pid === 'number' ? o.pid : null,
+      started_at: String(o.started_at ?? o.startedAt ?? ''),
+      updated_at: String(o.updated_at ?? o.updatedAt ?? ''),
+      ended_at: o.ended_at == null && o.endedAt == null ? null : String(o.ended_at ?? o.endedAt),
+      exit_summary:
+        o.exit_summary == null && o.exitSummary == null
+          ? null
+          : String(o.exit_summary ?? o.exitSummary),
+      activity_state:
+        o.activity_state == null && o.activityState == null
+          ? null
+          : String(o.activity_state ?? o.activityState),
+      blocked_reason:
+        o.blocked_reason == null && o.blockedReason == null
+          ? null
+          : String(o.blocked_reason ?? o.blockedReason),
+      permission_mode:
+        o.permission_mode == null && o.permissionMode == null
+          ? null
+          : String(o.permission_mode ?? o.permissionMode),
+    };
+  });
+}
+
+function adaptHarnessAgentSpawn(raw: unknown): HarnessAgentProcess {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return {
+    process_id: String(o.processId ?? o.process_id ?? ''),
+    command: String(o.command ?? ''),
+    cwd: o.cwd == null ? null : String(o.cwd),
+    pid: typeof o.pid === 'number' ? o.pid : null,
+    status: String(o.status ?? 'running'),
+    exit_code:
+      typeof o.exitCode === 'number'
+        ? o.exitCode
+        : typeof o.exit_code === 'number'
+          ? o.exit_code
+          : null,
+  };
+}
+
+function adaptHarnessAgentList(raw: unknown): HarnessAgentProcess[] {
+  const rows = Array.isArray(raw) ? raw : [];
+  return rows.map((row) => adaptHarnessAgentSpawn(row));
 }
 
 /** Per-command adapters applied to the daemon RPC result in browser mode. */
 const RESULT_ADAPTERS: Record<string, (raw: unknown) => unknown> = {
   agent_list: adaptAgentList,
+  harness_agent_list: adaptHarnessAgentList,
+  harness_agent_spawn: adaptHarnessAgentSpawn,
   inference_ollama_status: adaptOllamaStatus,
   inference_ollama_models: adaptOllamaModels,
   inference_ollama_pull: adaptOllamaPull,
+  harness_sessions: adaptHarnessSessions,
+  harness_permission_pending: adaptPermissionPending,
+  harness_permission_decide: adaptPermissionDecide,
+  harness_permission_set_mode: adaptPermissionSetMode,
 };
 
 /** Get the configured daemon URL from localStorage */
@@ -535,19 +741,92 @@ export function setDaemonToken(token: string | null): void {
   }
 }
 
-/** Pair with a remote daemon using a 6-digit code */
-export async function pairWithDaemon(daemonUrl: string, code: string): Promise<string> {
-  const res = await fetch(`${daemonUrl}/api/pair`, {
+/**
+ * HMAC-SHA256(secret, message) → hex digest.
+ * Matches @revealui/harnesses HttpGateway (GAP-353): secret and nonce are
+ * hex strings treated as UTF-8 for createHmac / SubtleCrypto.
+ */
+export async function hmacSha256Hex(secret: string, message: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export interface PairWithDaemonOptions {
+  /** Absolute gateway base URL (e.g. http://127.0.0.1:8787) */
+  daemonUrl: string;
+  /**
+   * Contents of the 0600 pairing-secret file printed at gateway boot
+   * (hex string). Used only as a local HMAC key — never sent on the wire.
+   */
+  secret: string;
+  /** Optional operator label stored with the durable token */
+  label?: string;
+}
+
+/**
+ * Pair with a fail-closed harness HTTP gateway (challenge-response).
+ *
+ * Contract (GAP-353 / @revealui/harnesses):
+ *   1. GET  /api/pair → { nonce, expiresIn }
+ *   2. POST /api/pair { nonce, hmac, label? } where hmac = HMAC-SHA256(secret, nonce)
+ *   3. Response { token, expiresAt } — store as bearer for /rpc
+ *
+ * The retired 6-digit pairing-code POST is gone; do not reintroduce it.
+ */
+export async function pairWithDaemon(options: PairWithDaemonOptions): Promise<string> {
+  const { daemonUrl, secret, label } = options;
+  const base = daemonUrl.replace(/\/$/, '');
+  if (!secret.trim()) {
+    throw new Error('Pairing secret is required (read the 0600 pairing-secret file).');
+  }
+
+  const nonceRes = await fetch(`${base}/api/pair`);
+  if (!nonceRes.ok) {
+    let detail = `Pairing challenge failed: ${nonceRes.status}`;
+    try {
+      const err = (await nonceRes.json()) as { error?: string };
+      if (err.error) detail = err.error;
+    } catch {
+      /* ignore non-JSON body */
+    }
+    throw new Error(detail);
+  }
+  const { nonce } = (await nonceRes.json()) as { nonce: string };
+  if (typeof nonce !== 'string' || !nonce) {
+    throw new Error('Pairing challenge returned no nonce');
+  }
+
+  const hmac = await hmacSha256Hex(secret.trim(), nonce);
+  const pairRes = await fetch(`${base}/api/pair`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ nonce, hmac, ...(label ? { label } : {}) }),
   });
-  if (!res.ok) {
-    const err = (await res.json()) as { error: string };
-    throw new Error(err.error ?? `Pairing failed: ${res.status}`);
+  if (!pairRes.ok) {
+    let detail = `Pairing failed: ${pairRes.status}`;
+    try {
+      const err = (await pairRes.json()) as { error?: string };
+      if (err.error) detail = err.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
   }
-  const { token } = (await res.json()) as { token: string };
-  setDaemonUrl(daemonUrl);
+  const { token } = (await pairRes.json()) as { token: string };
+  if (typeof token !== 'string' || !token) {
+    throw new Error('Pairing succeeded but no token was returned');
+  }
+  setDaemonUrl(base);
   setDaemonToken(token);
   return token;
 }
@@ -867,6 +1146,7 @@ export function agentSpawn(
   prompt: string,
   options?: { cwd?: string; cols?: number; rows?: number },
 ): Promise<string> {
+  // Local inference only (Snap/Ollama). Confined agents: harnessAgentSpawn.
   return invoke<string>('agent_spawn', {
     name,
     backend,
@@ -876,6 +1156,37 @@ export function agentSpawn(
     cols: options?.cols ?? null,
     rows: options?.rows ?? null,
   });
+}
+
+/** Confined daemon agent.spawn (INIT-002 PW-SPAWN primary path). */
+export function harnessAgentSpawn(params: {
+  command: string;
+  args?: string[];
+  repoPath: string;
+  cwd?: string;
+  cols?: number;
+  rows?: number;
+}): Promise<HarnessAgentProcess> {
+  return invoke<HarnessAgentProcess>('harness_agent_spawn', {
+    command: params.command,
+    args: params.args ?? [],
+    repoPath: params.repoPath,
+    cwd: params.cwd ?? null,
+    cols: params.cols ?? null,
+    rows: params.rows ?? null,
+  });
+}
+
+export function harnessAgentList(): Promise<HarnessAgentProcess[]> {
+  return invoke<HarnessAgentProcess[]>('harness_agent_list');
+}
+
+export function harnessAgentStop(processId: string): Promise<void> {
+  return invoke<void>('harness_agent_stop', { processId });
+}
+
+export function harnessAgentRemove(processId: string): Promise<void> {
+  return invoke<void>('harness_agent_remove', { processId });
 }
 
 export function agentStop(sessionId: string): Promise<void> {
@@ -940,6 +1251,16 @@ export function inferenceSnapInstall(snapName: string): Promise<ModelPullResult>
 
 export function inferenceSnapRemove(snapName: string): Promise<void> {
   return invoke<void>('inference_snap_remove', { snapName });
+}
+
+// ── Local AI profile tiers ──────────────────────────────────────────────────
+
+export function inferenceProfileGet(): Promise<LocalAiProfileView> {
+  return invoke<LocalAiProfileView>('inference_profile_get');
+}
+
+export function inferenceProfileApply(tier: LocalAiTier | string): Promise<LocalAiProfileView> {
+  return invoke<LocalAiProfileView>('inference_profile_apply', { tier });
 }
 
 // ── Terminal profiles ────────────────────────────────────────────────────────
@@ -1054,6 +1375,32 @@ export function harnessReserveFile(
     agentId,
     ttlSeconds,
     reason,
+  });
+}
+
+export function harnessPermissionPending(agentId?: string): Promise<HarnessApproval[]> {
+  return invoke<HarnessApproval[]>('harness_permission_pending', {
+    agentId: agentId ?? null,
+  });
+}
+
+export function harnessPermissionDecide(
+  approvalId: string,
+  verdict: 'approved' | 'denied',
+): Promise<HarnessDecideResult> {
+  return invoke<HarnessDecideResult>('harness_permission_decide', {
+    approvalId,
+    verdict,
+  });
+}
+
+export function harnessPermissionSetMode(
+  agentId: string,
+  mode: string | null,
+): Promise<HarnessSetModeResult> {
+  return invoke<HarnessSetModeResult>('harness_permission_set_mode', {
+    agentId,
+    mode,
   });
 }
 

@@ -728,4 +728,21 @@ export const schemas: Record<string, z.ZodType> = {
   'git.readBlobAtIndex': z
     .object({ repoPath: safePath, filePath: safePath, actorAgentId })
     .passthrough(),
+
+  // -- Permission (GAP-294) ---------------------------------------------------
+  'permission.pending': z
+    .object({
+      agentId: z.string().max(MAX_NAME_LENGTH).optional(),
+      scope: z.enum(['self', 'all']).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'permission.decide': z
+    .object({
+      approvalId: z.string().min(1).max(MAX_NAME_LENGTH),
+      verdict: z.enum(['approved', 'denied']),
+      actorAgentId,
+    })
+    .passthrough(),
 };

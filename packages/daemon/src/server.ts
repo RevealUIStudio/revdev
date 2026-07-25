@@ -15,10 +15,9 @@
  *   `session.register` are rejected with -32002.
  */
 
-import { constants as fsConstants } from 'node:fs';
-import { open as fsOpen, lstat, mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { formatDid, parseDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
@@ -31,6 +30,7 @@ import {
   verifyEnvelope,
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
+import { readRootOwnedFile } from './confinement.js';
 import { notifyAgentEnded, notifyDaemonStarted } from './eviction.js';
 import {
   guardRpcMethod,
@@ -57,7 +57,20 @@ import {
   syncTaskRelease,
 } from './neon.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
-import { revvaultSet } from './revvault-client.js';
+import {
+  ApprovalRequiredError,
+  decideApproval,
+  decideEnforcement,
+  emitPermissionShadowEvent,
+  evaluateShadow,
+  listPendingApprovals,
+  parseSessionPermissionMode,
+  queueApprovalRequired,
+  resolveEffectiveMode,
+  resolvePermissionMode,
+  setSessionPermissionMode,
+  tryConsumeApproval,
+} from './permission.js';
 import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
 import { initToolGuard } from './tool-guard/index.js';
@@ -243,6 +256,10 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // Cross-language contract: signing.rs requires_signature() must mark this too.
   // GAP-312. Sibling of the session.end fix (GAP-288, revdev#261).
   'harness.prune',
+  // GAP-294 Phase 1: approval decisions are signature-required mutations.
+  // Phase 2: operator mode overrides are signature-required too.
+  'permission.decide',
+  'permission.setMode',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -765,11 +782,14 @@ registerHandler('session.register', async (params, db, ctx) => {
   //     the real barrier behind the relay — a host process without the key
   //     cannot sign a mutation/content read (see MUTATING_OR_CONTENT_METHODS).
   //   - DAEMON-MINTED (headless hooks): no key supplied, so the daemon
-  //     generates the keypair and mirrors it to revvault, as before.
+  //     generates the keypair and returns it once in the register response.
+  //     No vault mirror (GAP-409 D1) — the one-shot response and the
+  //     client's local cache are the only key holders.
   const clientPublicKeyPem = strOrNull(params.publicKeyPem);
-  const { did, publicKeyPem } = clientPublicKeyPem
+  const identity = clientPublicKeyPem
     ? await registerClientIdentity(db, id, clientPublicKeyPem)
     : await bootstrapAgentIdentity(db, id);
+  const { did, publicKeyPem } = identity;
 
   // Run the registered session-lifecycle advisory checks and surface their
   // warnings to the client. Best-effort by construction: runSessionChecks
@@ -779,6 +799,15 @@ registerHandler('session.register', async (params, db, ctx) => {
 
   // Include `session: {id}` for back-compat with hook clients that read
   // `result.session.id`. New clients should use `sessionId`/`agentId`.
+  //
+  // `privateKeyPem` is returned ONLY on first daemon-minted bootstrap so
+  // headless harness clients can cache a signing key for session.end and
+  // other MUTATING_OR_CONTENT_METHODS. Consumers include Claude Code hooks,
+  // Grok dual-harness hooks, Ubuntu Inference Snap / Ollama agents registered
+  // from Studio, and the MCP bridge — not Claude/Grok alone. Client-owned
+  // enroll never returns a private key (Studio UI keeps it). Re-register of
+  // an existing identity never re-emits the private key — clients load it
+  // from their local cache (there is no vault mirror; GAP-409 D1-D3).
   return {
     sessionId: id,
     agentId: id,
@@ -786,6 +815,7 @@ registerHandler('session.register', async (params, db, ctx) => {
     backend,
     did,
     publicKeyPem,
+    ...(identity.privateKeyPem !== undefined ? { privateKeyPem: identity.privateKeyPem } : {}),
     warnings,
     session: { id, env, task: workDir },
   };
@@ -794,6 +824,11 @@ registerHandler('session.register', async (params, db, ctx) => {
 interface IdentityResult {
   did: string;
   publicKeyPem: string;
+  /**
+   * Present only when this call freshly minted a daemon-held keypair.
+   * Never on client-owned enroll or re-register of an existing identity.
+   */
+  privateKeyPem?: string;
 }
 
 async function bootstrapAgentIdentity(db: PGlite, agentId: string): Promise<IdentityResult> {
@@ -823,9 +858,13 @@ async function bootstrapAgentIdentity(db: PGlite, agentId: string): Promise<Iden
     [fingerprint, agentId, kp.publicKeyPem],
   );
 
-  void persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
-
-  return { did, publicKeyPem: kp.publicKeyPem };
+  // No vault mirror (GAP-409 D1): the one-shot privateKeyPem response and the
+  // client's local cache are the ONLY key holders. Session-keyed identities
+  // are ephemeral; mirroring them into revvault only accumulated dead
+  // per-session entries (and polluted the production store from test runs).
+  // Lost-both recovery is deliberately absent (D3/D4): re-register a fresh
+  // session identity instead.
+  return { did, publicKeyPem: kp.publicKeyPem, privateKeyPem: kp.privateKeyPem };
 }
 
 /** Thrown when a client (agentId, key) pair is not in the trust anchor. */
@@ -853,8 +892,10 @@ class UntrustedClientKeyError extends Error {
  * A missing / unreadable / UNTRUSTED file yields an EMPTY set — enrollment then
  * fails closed. When `requireRootOwned` (production, review B-2), the file AND
  * every ancestor directory must be a root-owned, non-symlink entry with no
- * group/other write bit, and the file is opened O_NOFOLLOW + fstat-checked — so
- * a WSL-user attacker cannot point the daemon at a file they control, even via
+ * group/other write bit, and the file is opened O_NOFOLLOW + fstat-checked
+ * ("root-owned" = confinement's `isTrustedRootOwner`: uid 0, or uid 65534 only
+ * under the proven WSL systemd-user idmap squash — GAP-409 D7). So a WSL-user
+ * attacker cannot point the daemon at a file they control, even via
  * a systemd-user `Environment=REVDEV_DAEMON_TRUSTED_CLIENT_FP=...` override
  * (their path is not root-owned, so it is rejected). The disable lives ONLY in
  * the programmatic startDaemon config (tests), never in an env var an attacker
@@ -887,39 +928,6 @@ async function loadTrustedClientEntries(
     out.add(`${trimmed.slice(0, idx)}:${trimmed.slice(idx + 1)}`);
   }
   return out;
-}
-
-/**
- * Read a file that MUST be root-owned and tamper-resistant: every ancestor
- * directory must be a root-owned, non-symlink directory with no group/other
- * write bit, and the file itself is opened O_NOFOLLOW then fstat-checked
- * (regular file, uid 0, not group/other-writable). Throws otherwise.
- */
-async function readRootOwnedFile(filePath: string): Promise<string> {
-  let dir = dirname(resolve(filePath));
-  for (;;) {
-    const dstat = await lstat(dir);
-    if (dstat.isSymbolicLink()) throw new Error(`anchor ancestor is a symlink: ${dir}`);
-    if (!dstat.isDirectory()) throw new Error(`anchor ancestor is not a directory: ${dir}`);
-    if (dstat.uid !== 0)
-      throw new Error(`anchor ancestor not root-owned (uid ${dstat.uid}): ${dir}`);
-    if ((dstat.mode & 0o022) !== 0) throw new Error(`anchor ancestor group/other-writable: ${dir}`);
-    const parent = dirname(dir);
-    if (parent === dir) break; // reached the filesystem root
-    dir = parent;
-  }
-  const handle = await fsOpen(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
-  try {
-    const fstat = await handle.stat();
-    if (!fstat.isFile()) throw new Error(`trust anchor is not a regular file: ${filePath}`);
-    if (fstat.uid !== 0)
-      throw new Error(`trust anchor not root-owned (uid ${fstat.uid}): ${filePath}`);
-    if ((fstat.mode & 0o022) !== 0)
-      throw new Error(`trust anchor group/other-writable: ${filePath}`);
-    return await handle.readFile('utf8');
-  } finally {
-    await handle.close();
-  }
 }
 
 /**
@@ -985,29 +993,6 @@ async function registerClientIdentity(
   // else: same fingerprint already registered — idempotent no-op.
 
   return { did, publicKeyPem };
-}
-
-function persistIdentityToRevvault(
-  agentId: string,
-  privateKeyPem: string,
-  publicKeyPem: string,
-): Promise<void> {
-  return (async () => {
-    const setPriv = await revvaultSet(
-      `revdev/agents/${agentId}/identity/ed25519-private`,
-      privateKeyPem,
-    );
-    if (!setPriv.ok) {
-      log.warn('revvault private key write failed', { agentId, reason: setPriv.reason });
-    }
-    const setPub = await revvaultSet(
-      `revdev/agents/${agentId}/identity/ed25519-public`,
-      publicKeyPem,
-    );
-    if (!setPub.ok) {
-      log.warn('revvault public key write failed', { agentId, reason: setPub.reason });
-    }
-  })();
 }
 
 registerHandler('session.attach', async (params, db, ctx) => {
@@ -1565,6 +1550,32 @@ registerHandler('events.log', async (params, db, ctx) => {
     eventType,
     JSON.stringify(payload),
   ]);
+  // GAP-307: fold liveness into the existing high-frequency tool-use path.
+  // track-tools.js already logs tool-use after every tool with
+  // payload.sessionId = daemon session id cache. Bump updated_at so
+  // session.list's server-side `active` window reflects real work without a
+  // new RPC or a new hook process.
+  if (eventType === 'tool-use') {
+    const payloadObj =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : {};
+    const sessionKey =
+      (typeof payloadObj.sessionId === 'string' && payloadObj.sessionId) ||
+      (agentId !== 'anonymous' ? agentId : null);
+    if (sessionKey) {
+      void db
+        .query(
+          `UPDATE agent_sessions
+              SET updated_at = NOW()
+            WHERE id = $1 AND ended_at IS NULL`,
+          [sessionKey],
+        )
+        .catch(() => {
+          /* non-fatal — liveness is best-effort */
+        });
+    }
+  }
   // Best-effort dual-write to coordination_events (GAP-154 Phase 3).
   await syncEventLog({ agentId, type: eventType, payload });
   return { logged: true };
@@ -1663,6 +1674,50 @@ registerHandler('harness.prune', async (params, db, ctx) => {
     runAt: pruneState.lastRunAt?.toISOString() ?? null,
     staleDays,
     hardDeleteDays,
+  };
+});
+
+// -- Permission (GAP-294) ----------------------------------------------------
+
+registerHandler('permission.pending', async (params, db, ctx) => {
+  // Read surface: list pending approvals. Optional agentId filter.
+  // Operator tools typically list all; agents may filter to self.
+  const filter =
+    strOrNull(params.agentId) ?? (ctx.agentId && params.scope === 'self' ? ctx.agentId : null);
+  const approvals = await listPendingApprovals(db, filter);
+  return { approvals };
+});
+
+registerHandler('permission.decide', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Self-approval rejected in decideApproval.
+  const decider = await requireVerifiedAgent(ctx, db, params);
+  const approvalId = str(params.approvalId);
+  const verdictRaw = str(params.verdict).toLowerCase();
+  if (verdictRaw !== 'approved' && verdictRaw !== 'denied') {
+    throw new Error("permission.decide: verdict must be 'approved' or 'denied'");
+  }
+  return decideApproval(db, approvalId, verdictRaw, decider);
+});
+
+registerHandler('permission.setMode', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Operator sets another session's override.
+  const operator = await requireVerifiedAgent(ctx, db, params);
+  const target = str(params.agentId);
+  // null / "" / "default" clears the override (falls back to daemon default).
+  const rawMode = params.mode;
+  let mode: ReturnType<typeof parseSessionPermissionMode> = null;
+  if (rawMode !== null && rawMode !== undefined && rawMode !== '' && rawMode !== 'default') {
+    mode = parseSessionPermissionMode(rawMode);
+    if (mode === null) {
+      throw new Error(
+        "permission.setMode: mode must be 'manual' | 'auto' | 'agent-scoped' | 'shadow' | null",
+      );
+    }
+  }
+  const result = await setSessionPermissionMode(db, target, mode, operator);
+  return {
+    ...result,
+    daemonDefault: resolvePermissionMode(),
   };
 });
 
@@ -2045,6 +2100,87 @@ export async function startDaemon(
           continue;
         }
 
+        // Permission gate (GAP-294). After identity, before shutdown/dispatch.
+        // Shadow (default): would_* events only. manual/auto: enforce with
+        // reject-with-receipt (-32004) + pending_approvals queue.
+        {
+          const agentForEvent =
+            ctx.agentId ??
+            (req.params && typeof req.params.actorAgentId === 'string'
+              ? req.params.actorAgentId
+              : null);
+          // Spec §3: per-session override ?? daemon default (env).
+          const mode = await resolveEffectiveMode(db, agentForEvent);
+          // Shadow only when *effective* mode is shadow (session override can
+          // promote a session out of daemon-default shadow for dogfood).
+          if (mode === 'shadow') {
+            emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
+          } else {
+            // Still emit would_* for soak continuity under enforce modes.
+            emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
+            const decision = decideEnforcement(req.method, mode);
+            if (decision.action === 'deny') {
+              socket.write(
+                `${JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: req.id,
+                  error: {
+                    code: -32004,
+                    message: `Permission denied for ${req.method}`,
+                    data: {
+                      kind: 'permission-denied',
+                      method: req.method,
+                      reason: decision.reason,
+                    },
+                  },
+                })}\n`,
+              );
+              continue;
+            }
+            if (decision.action === 'require_approval') {
+              if (!agentForEvent) {
+                socket.write(
+                  `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: req.id,
+                    error: {
+                      code: -32002,
+                      message: `Not registered: call session.register before ${req.method}`,
+                    },
+                  })}\n`,
+                );
+                continue;
+              }
+              const paramsObj =
+                req.params && typeof req.params === 'object' && !Array.isArray(req.params)
+                  ? (req.params as Record<string, unknown>)
+                  : {};
+              try {
+                const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
+                if (!consumed) {
+                  await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+                }
+              } catch (permErr) {
+                if (permErr instanceof ApprovalRequiredError) {
+                  socket.write(
+                    `${JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: req.id,
+                      error: {
+                        code: permErr.code,
+                        message: permErr.message,
+                        data: permErr.data,
+                      },
+                    })}\n`,
+                  );
+                  continue;
+                }
+                throw permErr;
+              }
+            }
+          }
+        }
+
         // Shutdown gate. close() sets _closing BEFORE the drain so a
         // request arriving on an already-connected socket after shutdown
         // started cannot increment the counter past the drain observation
@@ -2076,6 +2212,7 @@ export async function startDaemon(
           // the JSON-RPC `code` field — those fall back to the generic -32000.
           const rawCode = (err as { code?: unknown }).code;
           const code = typeof rawCode === 'number' ? rawCode : -32000;
+          const data = (err as { data?: unknown }).data;
           socket.write(
             `${JSON.stringify({
               jsonrpc: '2.0',
@@ -2083,6 +2220,7 @@ export async function startDaemon(
               error: {
                 code,
                 message: err instanceof Error ? err.message : 'Internal error',
+                ...(data !== undefined ? { data } : {}),
               },
             })}\n`,
           );

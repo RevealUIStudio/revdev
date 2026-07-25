@@ -8,7 +8,7 @@ import {
   licenseErrorResponse,
   refreshLicense,
 } from '../guard.js';
-import { METHOD_MIN_TIER } from '../license.js';
+import { LICENSE_TIER_HELP, METHOD_MIN_TIER } from '../license.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
@@ -196,6 +196,18 @@ describe('guardRpcMethod', () => {
       expect(guardRpcMethod('merge.request').tier).toBe('enterprise');
       expect(guardRpcMethod('memory.store').allowed).toBe(true);
       expect(guardRpcMethod('inference.pull').allowed).toBe(true);
+    });
+  });
+
+  // CLI --help must not re-introduce the old "pro includes memory" lie.
+  describe('LICENSE_TIER_HELP (CLI honesty)', () => {
+    it('places memory under max and free file/git under free', () => {
+      expect(LICENSE_TIER_HELP).toMatch(/free\s+Sessions, single-repo file\/git/);
+      expect(LICENSE_TIER_HELP).toMatch(/max\s+\+ full AI memory \(memory\.\*\)/);
+      // Pro line must not claim memory
+      const proLine = LICENSE_TIER_HELP.split('\n').find((l) => l.trimStart().startsWith('pro'));
+      expect(proLine).toBeDefined();
+      expect(proLine).not.toMatch(/memory/i);
     });
   });
 

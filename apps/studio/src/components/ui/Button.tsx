@@ -1,21 +1,39 @@
+import { ButtonCVA as PresentationButton } from '@revealui/presentation';
 import type { ButtonHTMLAttributes } from 'react';
 
-const variantStyles = {
-  primary: 'bg-brand text-on-brand font-medium hover:bg-brand-hover',
-  secondary: 'bg-surface-2 text-fg-muted hover:bg-surface-3',
-  ghost: 'text-fg-muted hover:text-fg',
-  danger: 'bg-error/40 text-error hover:bg-error/60',
-  success: 'bg-success text-fg font-medium hover:brightness-110',
+const variantMap = {
+  primary: 'primary',
+  secondary: 'secondary',
+  ghost: 'ghost',
+  danger: 'destructive',
+  success: 'secondary',
 } as const;
 
-const sizeStyles = {
-  sm: 'px-2.5 py-1 text-xs rounded',
-  md: 'px-3 py-1.5 text-sm rounded-md',
-  lg: 'px-4 py-2 text-sm rounded-md',
+/**
+ * Presentation's CVA size scale (`sm`=h-10/40px, `default`=h-11/44px,
+ * `lg`=h-12/48px) runs noticeably taller than Studio's old hand-rolled
+ * buttons (~24-36px, compact desktop chrome). Shifted down a step so
+ * Studio keeps its density: `md` (Studio's most-used size) takes
+ * presentation's smallest built-in size (`sm`); `lg` takes presentation's
+ * `default`. Presentation has nothing smaller than `sm`, so Studio's `sm`
+ * stays on presentation `sm` and layers a compact `className` override
+ * (h-8) on top — `cn()` appends the caller's `className` last, so it wins
+ * over the size variant's own `h-10 px-3 py-2`.
+ */
+const sizeMap = {
+  sm: 'sm',
+  md: 'sm',
+  lg: 'default',
 } as const;
 
-export type ButtonVariant = keyof typeof variantStyles;
-export type ButtonSize = keyof typeof sizeStyles;
+const compactSizeOverride = {
+  sm: 'h-8 px-2 py-1 text-xs',
+  md: undefined,
+  lg: undefined,
+} as const;
+
+export type ButtonVariant = keyof typeof variantMap;
+export type ButtonSize = keyof typeof sizeMap;
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -23,45 +41,40 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
 }
 
+/**
+ * Phase 2 remainder (2026-07-18): shimmed to render
+ * `@revealui/presentation`'s CVA `Button`. Consumer API (default export,
+ * `variant`, `size`, `loading`, `className`) unchanged.
+ *
+ * `success` has no matching presentation variant, so it renders the
+ * `secondary` variant's base classes with a `className` color override —
+ * the package's `cn()` appends the caller's `className` last, so it wins
+ * over the variant's baked-in `bg-*`/`text-*` classes.
+ */
 export default function Button({
   variant = 'secondary',
   size = 'md',
   loading = false,
-  disabled,
-  children,
-  className = '',
+  type = 'button',
+  className,
   ...props
 }: ButtonProps) {
+  const overrideClassName = [
+    variant === 'success' && 'bg-success text-fg font-medium hover:brightness-110',
+    compactSizeOverride[size],
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <button
-      type="button"
-      disabled={disabled || loading}
-      className={`inline-flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+    <PresentationButton
+      type={type}
+      variant={variantMap[variant]}
+      size={sizeMap[size]}
+      isLoading={loading}
+      className={overrideClassName || undefined}
       {...props}
-    >
-      {loading && (
-        <svg
-          className="mr-1.5 size-3.5 animate-spin"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden="true"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"
-          />
-        </svg>
-      )}
-      {children}
-    </button>
+    />
   );
 }

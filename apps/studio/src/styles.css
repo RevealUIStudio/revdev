@@ -4,6 +4,13 @@
 @import "@fontsource-variable/inter-tight";
 @import "@fontsource-variable/jetbrains-mono";
 
+/* Tailwind v4 does not scan node_modules by default. Without this, the
+ * utility classes baked into @revealui/presentation components (Button's
+ * bg-primary, Badge's bg-muted/bg-destructive, Alert, etc.) never generate
+ * and the Phase 2 shimmed components render unstyled. Mirrors the marketing
+ * app's @source directive (apps/marketing/app/index.css). */
+@source "../node_modules/@revealui/presentation/dist/**/*.js";
+
 /* ── Tailwind v4 Theme — maps --rvui-* tokens to utility classes ────────── */
 @theme {
   /* Colors — Surfaces */
@@ -50,6 +57,23 @@
   --color-error-subtle: var(--rvui-error-subtle);
   --color-info: var(--rvui-info);
   --color-info-subtle: var(--rvui-info-subtle);
+
+  /* Colors — shadcn-convention bridge (needed by @revealui/presentation's
+   * Button/Badge/Alert/Card, which are authored against these names; see
+   * apps/marketing/app/index.css for the same bridge in another consumer). */
+  --color-background: var(--rvui-surface-0);
+  --color-primary: var(--rvui-brand);
+  --color-primary-foreground: var(--rvui-text-on-brand);
+  --color-secondary: var(--rvui-surface-2);
+  --color-secondary-foreground: var(--rvui-text-0);
+  --color-muted: var(--rvui-surface-2);
+  --color-muted-foreground: var(--rvui-text-2);
+  --color-accent-foreground: var(--rvui-text-on-accent);
+  --color-destructive: var(--rvui-error);
+  --color-destructive-foreground: var(--rvui-text-0);
+  --color-card: var(--rvui-surface-1);
+  --color-card-foreground: var(--rvui-text-0);
+  --color-ring: var(--rvui-brand);
 
   /* Typography */
   --font-sans: var(--rvui-font-sans);

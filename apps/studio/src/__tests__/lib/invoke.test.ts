@@ -340,7 +340,16 @@ describe('browser-mode daemon adapters', () => {
     const { agentList } = await import('../../lib/invoke');
     const sessions = await agentList();
     expect(sessions).toEqual([
-      { id: 'p1', name: 'bash', model: '', backend: null, prompt: '', status: 'running', pid: 42 },
+      {
+        id: 'p1',
+        name: 'bash',
+        model: '',
+        backend: null,
+        prompt: '',
+        status: 'running',
+        pid: 42,
+        harness: true,
+      },
       {
         id: 'p2',
         name: 'node',
@@ -349,7 +358,120 @@ describe('browser-mode daemon adapters', () => {
         prompt: '',
         status: 'errored',
         pid: null,
+        harness: true,
       },
     ]);
+  });
+});
+
+describe('pairWithDaemon (GAP-397 challenge-response)', () => {
+  const base = 'http://127.0.0.1:8787';
+  const secret = 'a'.repeat(64); // 32-byte secret as hex (UTF-8 key material)
+  const nonce = 'b'.repeat(64);
+  const token = 'c'.repeat(64);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('refuses the retired 6-digit code body shape (POST {code} never succeeds)', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/pair') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>;
+        // Gateway rejects missing nonce/hmac
+        if (!('nonce' in body) || !('hmac' in body)) {
+          return new Response(JSON.stringify({ error: 'nonce and hmac are required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+      return new Response('unexpected', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Legacy call shape: second arg was a 6-digit code string — type system no longer
+    // allows it; prove the wire contract rejects {code} if somehow posted.
+    const res = await fetch(`${base}/api/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: '123456' }),
+    });
+    expect(res.status).toBe(400);
+    const err = (await res.json()) as { error: string };
+    expect(err.error).toMatch(/nonce and hmac/i);
+  });
+
+  it('completes GET nonce → HMAC → POST and stores bearer token', async () => {
+    const { hmacSha256Hex, pairWithDaemon, getDaemonToken, getDaemonUrl } = await import(
+      '../../lib/invoke'
+    );
+    const expectedHmac = await hmacSha256Hex(secret, nonce);
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `${base}/api/pair` && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify({ nonce, expiresIn: 120 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === `${base}/api/pair` && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body ?? '{}')) as {
+          nonce?: string;
+          hmac?: string;
+          label?: string;
+        };
+        expect(body.nonce).toBe(nonce);
+        expect(body.hmac).toBe(expectedHmac);
+        expect(body.label).toBe('studio');
+        // Prove we never send a pairing code
+        expect(body).not.toHaveProperty('code');
+        return new Response(
+          JSON.stringify({ token, expiresAt: new Date(Date.now() + 86_400_000).toISOString() }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('unexpected', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const got = await pairWithDaemon({ daemonUrl: base, secret, label: 'studio' });
+    expect(got).toBe(token);
+    expect(getDaemonToken()).toBe(token);
+    expect(getDaemonUrl()).toBe(base);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('surfaces gateway errors from a failed HMAC response', async () => {
+    const { pairWithDaemon } = await import('../../lib/invoke');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/pair') && (!init?.method || init.method === 'GET')) {
+          return new Response(JSON.stringify({ nonce, expiresIn: 120 }), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify({ error: 'Invalid pairing response' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+
+    await expect(pairWithDaemon({ daemonUrl: base, secret })).rejects.toThrow(
+      /Invalid pairing response/,
+    );
+    expect(localStorage.getItem('revdev-daemon-token')).toBeNull();
   });
 });

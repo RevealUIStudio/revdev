@@ -21,9 +21,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, realpathSync, statSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { existsSync, constants as fsConstants, realpathSync, statSync } from 'node:fs';
+import { open as fsOpen, lstat, mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve, sep } from 'node:path';
 import { createLogger } from '@revealui/utils/logger';
 
 const log = createLogger({ service: 'revdev-daemon/confinement' });
@@ -87,11 +87,96 @@ export interface ConfinementBackend {
 const BWRAP_CANDIDATE = '/usr/bin/bwrap';
 
 /**
- * Resolve `bwrap` to an absolute realpath and verify it is root-owned and not
- * group- or other-writable (spec §4.2 invariant 1). Never resolved through a
+ * Under systemd-user on WSL (and some idmapped mounts), `stat.uid` for
+ * root-owned files in `/usr` is reported as 65534 (`nobody`) even though the
+ * file is truly root:root on the host. Detect that squash by checking a
+ * known system binary that is always root-owned on a sane distro.
+ *
+ * When the squash is active, accepting uid 65534 for a non-group/other-writable
+ * `/usr/bin/bwrap` is the only way confinement can arm inside a user unit.
+ * When the squash is NOT active, uid 65534 remains untrusted.
+ */
+export function systemRootUidIsSquashedToNobody(): boolean {
+  try {
+    const st = statSync('/usr/bin/true');
+    return st.isFile() && st.uid === 65534;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the stat result is an acceptable ROOT owner for a trust-critical
+ * filesystem entry (the bwrap binary, the client trust anchor and its
+ * ancestors):
+ * - Normal: uid 0 (root)
+ * - WSL systemd-user idmap: uid 65534 only if the whole system root→nobody
+ *   squash is observed on `/usr/bin/true` as well
+ *
+ * A genuinely nobody-owned file on a non-squashed system never passes
+ * (fail-closed, GAP-409 D8).
+ */
+export function isTrustedRootOwner(st: { uid: number }): boolean {
+  if (st.uid === 0) return true;
+  if (st.uid === 65534 && systemRootUidIsSquashedToNobody()) return true;
+  return false;
+}
+
+/**
+ * True when the stat result is an acceptable owner for the bwrap binary.
+ * Same semantics as `isTrustedRootOwner` — kept as a named alias because the
+ * bwrap call sites and tests predate the shared predicate (revdev#304).
+ */
+export function isTrustedBwrapOwner(st: { uid: number }): boolean {
+  return isTrustedRootOwner(st);
+}
+
+/**
+ * Read a file that MUST be root-owned and tamper-resistant: every ancestor
+ * directory must be a root-owned, non-symlink directory with no group/other
+ * write bit, and the file itself is opened O_NOFOLLOW then fstat-checked
+ * (regular file, trusted-root-owned, not group/other-writable). Throws
+ * otherwise.
+ *
+ * "Root-owned" is `isTrustedRootOwner`: uid 0 always; uid 65534 only under
+ * the proven WSL systemd-user idmap squash (GAP-409 D7). Every other
+ * property — non-symlink ancestors, write-bit checks, O_NOFOLLOW + fstat —
+ * is unchanged from the strict form.
+ */
+export async function readRootOwnedFile(filePath: string): Promise<string> {
+  let dir = dirname(resolve(filePath));
+  for (;;) {
+    const dstat = await lstat(dir);
+    if (dstat.isSymbolicLink()) throw new Error(`anchor ancestor is a symlink: ${dir}`);
+    if (!dstat.isDirectory()) throw new Error(`anchor ancestor is not a directory: ${dir}`);
+    if (!isTrustedRootOwner(dstat))
+      throw new Error(`anchor ancestor not root-owned (uid ${dstat.uid}): ${dir}`);
+    if ((dstat.mode & 0o022) !== 0) throw new Error(`anchor ancestor group/other-writable: ${dir}`);
+    const parent = dirname(dir);
+    if (parent === dir) break; // reached the filesystem root
+    dir = parent;
+  }
+  const handle = await fsOpen(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    const fstat = await handle.stat();
+    if (!fstat.isFile()) throw new Error(`trust anchor is not a regular file: ${filePath}`);
+    if (!isTrustedRootOwner(fstat))
+      throw new Error(`trust anchor not root-owned (uid ${fstat.uid}): ${filePath}`);
+    if ((fstat.mode & 0o022) !== 0)
+      throw new Error(`trust anchor group/other-writable: ${filePath}`);
+    return await handle.readFile('utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Resolve `bwrap` to an absolute realpath and verify it is root-owned (or
+ * idmap-squashed root — see `isTrustedBwrapOwner`) and not group- or
+ * other-writable (spec §4.2 invariant 1). Never resolved through a
  * caller-influenced PATH — a bare-name reference is shadowable, so the parent
  * spec's finding forbids it. Returns the abspath, or null if bwrap is absent,
- * not a regular file, not root-owned, or writable by non-root.
+ * not a regular file, not trusted-owned, or writable by non-root.
  */
 export function resolveBwrapAbsPath(candidate: string = BWRAP_CANDIDATE): string | null {
   let real: string;
@@ -107,7 +192,7 @@ export function resolveBwrapAbsPath(candidate: string = BWRAP_CANDIDATE): string
     return null;
   }
   if (!st.isFile()) return null;
-  if (st.uid !== 0) {
+  if (!isTrustedBwrapOwner(st)) {
     log.warn('bwrap is not root-owned; refusing to use it', { path: real, uid: st.uid });
     return null;
   }

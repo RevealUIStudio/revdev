@@ -31,7 +31,7 @@ secrecy = "0.10"
 dirs = "6"
 which = "7"
 arboard = "3"
-russh = "0.61"
+russh = "0.62"
 # "process" + "time" power the Windows wsl.exe relay transport (harness.rs);
 # "time" also backs the shared retry/timeout loop on every platform.
 tokio = { version = "1", features = ["sync", "net", "io-util", "time", "process"] }

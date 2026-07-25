@@ -22,6 +22,44 @@ pub struct HarnessSession {
     pub updated_at: String,
     pub ended_at: Option<String>,
     pub exit_summary: Option<String>,
+    /// GAP-257 activity state when present (`active` | `blocked` | `idle`).
+    #[serde(default)]
+    pub activity_state: Option<String>,
+    /// Why blocked (e.g. `permission`) when activity_state is blocked.
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
+    /// GAP-294 per-session permission mode override (null = daemon default).
+    #[serde(default)]
+    pub permission_mode: Option<String>,
+}
+
+/// Pending approval row from `permission.pending` (GAP-294).
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct HarnessApproval {
+    pub id: String,
+    pub agent_id: String,
+    pub method: String,
+    pub params_hash: String,
+    pub summary: String,
+    pub requested_at: String,
+    pub expires_at: String,
+    pub status: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct HarnessDecideResult {
+    pub id: String,
+    pub status: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct HarnessSetModeResult {
+    pub agent_id: String,
+    pub permission_mode: Option<String>,
+    pub daemon_default: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, TS)]
@@ -89,7 +127,74 @@ pub async fn harness_sessions() -> Result<Vec<HarnessSession>, StudioError> {
     let result = harness::rpc_call("session.list", serde_json::json!({}))
         .await
         .map_err(|e| StudioError::Other(e))?;
-    serde_json::from_value(result).map_err(|e| StudioError::Other(e.to_string()))
+    // Daemon returns { sessions: [...], scope, ... }; unwrap for the UI.
+    let sessions = result.get("sessions").cloned().unwrap_or(result);
+    // Map snake_case rows; tolerate extra columns (activity_state, permission_mode).
+    let rows = sessions.as_array().cloned().unwrap_or_default();
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        // Normalize camelCase aliases if present (fleet scope may differ).
+        let mut obj = row.as_object().cloned().unwrap_or_default();
+        if !obj.contains_key("started_at") {
+            if let Some(v) = obj.remove("startedAt") {
+                obj.insert("started_at".into(), v);
+            }
+        }
+        if !obj.contains_key("updated_at") {
+            if let Some(v) = obj.remove("updatedAt") {
+                obj.insert("updated_at".into(), v);
+            }
+        }
+        if !obj.contains_key("ended_at") {
+            if let Some(v) = obj.remove("endedAt") {
+                obj.insert("ended_at".into(), v);
+            }
+        }
+        if !obj.contains_key("exit_summary") {
+            if let Some(v) = obj.remove("exitSummary") {
+                obj.insert("exit_summary".into(), v);
+            }
+        }
+        if !obj.contains_key("activity_state") {
+            if let Some(v) = obj.remove("activityState") {
+                obj.insert("activity_state".into(), v);
+            }
+        }
+        if !obj.contains_key("blocked_reason") {
+            if let Some(v) = obj.remove("blockedReason") {
+                obj.insert("blocked_reason".into(), v);
+            }
+        }
+        if !obj.contains_key("permission_mode") {
+            if let Some(v) = obj.remove("permissionMode") {
+                obj.insert("permission_mode".into(), v);
+            }
+        }
+        // Required string fields: coerce null task/env to empty.
+        if obj.get("task").map(|v| v.is_null()).unwrap_or(true) {
+            obj.insert("task".into(), serde_json::Value::String(String::new()));
+        }
+        if obj.get("env").map(|v| v.is_null()).unwrap_or(true) {
+            obj.insert("env".into(), serde_json::Value::String(String::new()));
+        }
+        if obj.get("started_at").map(|v| v.is_null()).unwrap_or(true) {
+            obj.insert(
+                "started_at".into(),
+                serde_json::Value::String(String::new()),
+            );
+        }
+        if obj.get("updated_at").map(|v| v.is_null()).unwrap_or(true) {
+            obj.insert(
+                "updated_at".into(),
+                serde_json::Value::String(String::new()),
+            );
+        }
+        match serde_json::from_value::<HarnessSession>(serde_json::Value::Object(obj)) {
+            Ok(s) => out.push(s),
+            Err(_) => continue,
+        }
+    }
+    Ok(out)
 }
 
 // ── Messages ────────────────────────────────────────────────────────────────
@@ -356,6 +461,243 @@ pub async fn harness_check_file(
     }
 }
 
+// ── Confined agent spawn (INIT-002 PW-SPAWN / Phase 3a) ─────────────────────
+//
+// Primary multi-agent seat: signed + bwrap-confined daemon agent.* RPCs.
+// Local Snap/Ollama process spawn stays in commands/spawner.rs (local inference).
+
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct HarnessAgentProcess {
+    pub process_id: String,
+    pub command: String,
+    pub cwd: Option<String>,
+    pub pid: Option<i64>,
+    pub status: String,
+    pub exit_code: Option<i32>,
+}
+
+#[tauri::command]
+pub async fn harness_agent_spawn(
+    command: String,
+    args: Vec<String>,
+    repo_path: String,
+    cwd: Option<String>,
+    cols: Option<u32>,
+    rows: Option<u32>,
+) -> Result<HarnessAgentProcess, StudioError> {
+    if command.trim().is_empty() {
+        return Err(StudioError::Other("harness_agent_spawn: command is required".into()));
+    }
+    if repo_path.trim().is_empty() {
+        return Err(StudioError::Other(
+            "harness_agent_spawn: repo_path is required (project root)".into(),
+        ));
+    }
+    let mut params = serde_json::json!({
+        "command": command,
+        "args": args,
+        "repoPath": repo_path,
+        "cols": cols.unwrap_or(80),
+        "rows": rows.unwrap_or(24),
+    });
+    if let Some(c) = cwd {
+        if !c.is_empty() {
+            params
+                .as_object_mut()
+                .unwrap()
+                .insert("cwd".into(), serde_json::Value::String(c));
+        }
+    }
+    // repo_rpc opens the project root (signature-required) then spawns under it.
+    let result = harness::repo_rpc("agent.spawn", &repo_path, params)
+        .await
+        .map_err(StudioError::Other)?;
+    let process_id = result
+        .get("processId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| StudioError::Other("agent.spawn: missing processId".into()))?
+        .to_string();
+    let pid = result.get("pid").and_then(|v| v.as_i64());
+    Ok(HarnessAgentProcess {
+        process_id: process_id.clone(),
+        command,
+        cwd: None,
+        pid,
+        status: "running".into(),
+        exit_code: None,
+    })
+}
+
+#[tauri::command]
+pub async fn harness_agent_list() -> Result<Vec<HarnessAgentProcess>, StudioError> {
+    let result = harness::rpc_call("agent.list", serde_json::json!({}))
+        .await
+        .map_err(StudioError::Other)?;
+    // Daemon returns a bare array of process objects.
+    let rows = result.as_array().cloned().unwrap_or_default();
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let o = row.as_object().cloned().unwrap_or_default();
+        let process_id = o
+            .get("processId")
+            .or_else(|| o.get("process_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if process_id.is_empty() {
+            continue;
+        }
+        let command = o
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let cwd = o
+            .get("cwd")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let pid = o.get("pid").and_then(|v| v.as_i64());
+        let status = o
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let exit_code = o
+            .get("exitCode")
+            .or_else(|| o.get("exit_code"))
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32);
+        out.push(HarnessAgentProcess {
+            process_id,
+            command,
+            cwd,
+            pid,
+            status,
+            exit_code,
+        });
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn harness_agent_stop(process_id: String) -> Result<(), StudioError> {
+    harness::rpc_call(
+        "agent.stop",
+        serde_json::json!({ "processId": process_id }),
+    )
+    .await
+    .map_err(StudioError::Other)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn harness_agent_remove(process_id: String) -> Result<(), StudioError> {
+    harness::rpc_call(
+        "agent.remove",
+        serde_json::json!({ "processId": process_id }),
+    )
+    .await
+    .map_err(StudioError::Other)?;
+    Ok(())
+}
+
+// ── Permissions (GAP-294 Phase 2) ───────────────────────────────────────────
+
+#[tauri::command]
+pub async fn harness_permission_pending(
+    agent_id: Option<String>,
+) -> Result<Vec<HarnessApproval>, StudioError> {
+    let mut params = serde_json::Map::new();
+    if let Some(id) = agent_id {
+        if !id.is_empty() {
+            params.insert("agentId".into(), serde_json::Value::String(id));
+        }
+    }
+    let result = harness::rpc_call("permission.pending", serde_json::Value::Object(params))
+        .await
+        .map_err(|e| StudioError::Other(e))?;
+    let approvals = result.get("approvals").cloned().unwrap_or(result);
+    let rows = approvals.as_array().cloned().unwrap_or_default();
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let mut obj = row.as_object().cloned().unwrap_or_default();
+        // Daemon returns camelCase (agentId, paramsHash, …); Rust type uses snake.
+        for (from, to) in [
+            ("agentId", "agent_id"),
+            ("paramsHash", "params_hash"),
+            ("requestedAt", "requested_at"),
+            ("expiresAt", "expires_at"),
+        ] {
+            if !obj.contains_key(to) {
+                if let Some(v) = obj.remove(from) {
+                    obj.insert(to.into(), v);
+                }
+            }
+        }
+        if let Ok(a) = serde_json::from_value::<HarnessApproval>(serde_json::Value::Object(obj)) {
+            out.push(a);
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn harness_permission_decide(
+    approval_id: String,
+    verdict: String,
+) -> Result<HarnessDecideResult, StudioError> {
+    let result = harness::rpc_call(
+        "permission.decide",
+        serde_json::json!({ "approvalId": approval_id, "verdict": verdict }),
+    )
+    .await
+    .map_err(|e| StudioError::Other(e))?;
+    // Daemon: { id, status }
+    let id = result
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&approval_id)
+        .to_string();
+    let status = result
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    Ok(HarnessDecideResult { id, status })
+}
+
+#[tauri::command]
+pub async fn harness_permission_set_mode(
+    agent_id: String,
+    mode: Option<String>,
+) -> Result<HarnessSetModeResult, StudioError> {
+    let result = harness::rpc_call(
+        "permission.setMode",
+        serde_json::json!({ "agentId": agent_id, "mode": mode }),
+    )
+    .await
+    .map_err(|e| StudioError::Other(e))?;
+    let agent = result
+        .get("agentId")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&agent_id)
+        .to_string();
+    let permission_mode = result
+        .get("permissionMode")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let daemon_default = result
+        .get("daemonDefault")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Ok(HarnessSetModeResult {
+        agent_id: agent,
+        permission_mode,
+        daemon_default,
+    })
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -478,6 +820,9 @@ mod tests {
             updated_at: "2026-04-18T00:05:00Z".into(),
             ended_at: None,
             exit_summary: None,
+            activity_state: Some("blocked".into()),
+            blocked_reason: Some("permission".into()),
+            permission_mode: Some("manual".into()),
         };
         let wire = serde_json::to_value(&s).unwrap();
         let back: HarnessSession = serde_json::from_value(wire).unwrap();

@@ -11,8 +11,8 @@ describe('Card', () => {
   it('applies default variant styles', () => {
     const { container } = render(<Card>Content</Card>);
     const card = container.firstChild as HTMLElement;
-    expect(card.className).toContain('bg-surface-1');
-    expect(card.className).toContain('border-edge');
+    expect(card.className).toContain('bg-card');
+    expect(card.className).toContain('border-border');
   });
 
   it('applies elevated variant styles', () => {

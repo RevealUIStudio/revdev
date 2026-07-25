@@ -6,17 +6,26 @@ import {
   inferenceOllamaStart,
   inferenceOllamaStatus,
   inferenceOllamaStop,
+  inferenceProfileApply,
+  inferenceProfileGet,
   inferenceSnapInstall,
   inferenceSnapList,
   inferenceSnapRemove,
 } from '../lib/invoke';
-import type { OllamaModel, OllamaStatus, SnapModel } from '../types';
+import type {
+  LocalAiProfileView,
+  LocalAiTier,
+  OllamaModel,
+  OllamaStatus,
+  SnapModel,
+} from '../types';
 import { usePollingFetch } from './use-polling-fetch';
 
 interface InferenceSnapshot {
   ollama: OllamaStatus;
   models: OllamaModel[];
   snaps: SnapModel[];
+  profile: LocalAiProfileView | null;
 }
 
 export function useInference() {
@@ -24,20 +33,23 @@ export function useInference() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pulling, setPulling] = useState(false);
   const [installingSnap, setInstallingSnap] = useState<string | null>(null);
+  const [applyingTier, setApplyingTier] = useState(false);
 
   const fetchFn = useCallback(async (_signal: AbortSignal): Promise<InferenceSnapshot> => {
     if (document.hidden && lastResultRef.current !== null) {
       return lastResultRef.current;
     }
-    const [ollamaResult, snapList] = await Promise.all([
+    const [ollamaResult, snapList, profileResult] = await Promise.all([
       inferenceOllamaStatus(),
       inferenceSnapList(),
+      inferenceProfileGet().catch(() => null),
     ]);
     const modelList = ollamaResult.running ? await inferenceOllamaModels() : [];
     const snapshot: InferenceSnapshot = {
       ollama: ollamaResult,
       models: modelList,
       snaps: snapList,
+      profile: profileResult,
     };
     lastResultRef.current = snapshot;
     return snapshot;
@@ -48,6 +60,7 @@ export function useInference() {
   const ollama = data?.ollama ?? null;
   const models = data?.models ?? [];
   const snaps = data?.snaps ?? [];
+  const profile = data?.profile ?? null;
   const error = actionError ?? pollError?.message ?? null;
 
   async function startOllama(): Promise<void> {
@@ -123,14 +136,29 @@ export function useInference() {
     }
   }
 
+  async function applyTier(tier: LocalAiTier): Promise<void> {
+    setActionError(null);
+    setApplyingTier(true);
+    try {
+      await inferenceProfileApply(tier);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApplyingTier(false);
+    }
+  }
+
   return {
     ollama,
     models,
     snaps,
+    profile,
     loading,
     error,
     pulling,
     installingSnap,
+    applyingTier,
     refresh,
     startOllama,
     stopOllama,
@@ -138,5 +166,6 @@ export function useInference() {
     deleteModel,
     installSnap,
     removeSnap,
+    applyTier,
   };
 }

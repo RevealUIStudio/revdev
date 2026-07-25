@@ -89,7 +89,18 @@ Register a new agent session. Returns a sessionId to use as identity. Two owners
 | `pid` | number? | Caller process ID |
 | `publicKeyPem` | string? | Client-owned Ed25519 SPKI PEM public key (Studio zero-9P model); the fingerprint must be in the daemon's trust anchor or registration fails with -32004 |
 
-**Response**: `{ sessionId: string, agentId: string, agentName: string, backend: string, did: string, publicKeyPem: string, session: { id, env, task } }`
+**Response**: `{ sessionId: string, agentId: string, agentName: string, backend: string, did: string, publicKeyPem: string, privateKeyPem?: string, warnings?: unknown[], session: { id, env, task } }`
+
+`privateKeyPem` is returned **only** on the first daemon-minted bootstrap. It is never returned for client-owned enroll or for re-register of an existing identity. Intended consumers (all daily-driver harnesses, not Claude alone):
+
+| Client | How it stores the key |
+|--------|------------------------|
+| Claude Code / Grok hooks | `~/.local/share/revealui/hook-identities/<agentId>.json` |
+| Studio Ubuntu Inference Snap / Ollama spawn | in-memory on the agent process for signed `session.end` |
+| MCP bridge | `REVDEV_AGENT_DID` + `REVDEV_AGENT_PRIVATE_KEY_PEM` env |
+| Fallback | revvault `revdev/agents/<agentId>/identity/ed25519-private` |
+
+`backend` on register should name the harness: e.g. `claude-code`, `grok`, `inference-snap`, `ollama`, `mcp-agent`, `studio`.
 
 ---
 
@@ -124,12 +135,12 @@ Update the current session's task/files description, or self-scoped activity sta
 ---
 
 ### `session.end`
-**Tier**: Free
-**Signature**: required
+**Tier**: Free · **Signature: required**
 
-End the current session. Optionally record an exit summary. Self-scoped to the verified signer; a caller-supplied session/agent override is not honored.
+Self-scoped to the verified Ed25519 signer. The caller may not end another agent’s session via params (the old `sessionId` override was removed). Unsigned frames return an error before the handler runs.
 
-**Params**: `{ exitSummary?: string }`
+**Params**: `{ exitSummary?: string, summary?: string }` (aliases). Hook clients pass `actorAgentId` only for local identity cache lookup; it is not used as an end-target.
+
 **Response**: `{ ended: string }`
 
 ---

@@ -49,9 +49,12 @@ impl russh::server::Handler for SilentEchoHandler {
     async fn channel_open_session(
         &mut self,
         _channel: Channel<Msg>,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut Session,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
+    ) -> Result<(), Self::Error> {
+        // russh 0.62: accept/reject via ChannelOpenHandle (drop = reject).
+        reply.accept().await;
+        Ok(())
     }
 
     async fn data(

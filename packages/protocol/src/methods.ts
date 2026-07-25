@@ -113,4 +113,9 @@ export const RPC_METHODS = {
   'merge.status': 'merge.status',
   'merge.list': 'merge.list',
   'merge.update': 'merge.update',
+
+  // Permission modes (GAP-294 Phase 1 pending/decide; Phase 2 setMode)
+  'permission.pending': 'permission.pending',
+  'permission.decide': 'permission.decide',
+  'permission.setMode': 'permission.setMode',
 } as const;

@@ -94,12 +94,25 @@ export interface AgentSessionInfo {
   /**
    * The inference backend, or `null` for a daemon-spawned PTY session (the
    * daemon's agent registry has no Snap/Ollama concept — see the browser-mode
-   * adapter in `lib/invoke.ts`). The desktop path always sets a backend.
+   * adapter in `lib/invoke.ts`). Local inference always sets a backend.
    */
   backend: AgentBackend | null;
   prompt: string;
   status: 'running' | 'stopped' | 'errored';
   pid: number | null;
+  /** true when this row is a confined daemon agent.spawn process */
+  harness?: boolean;
+  cwd?: string | null;
+}
+
+/** Daemon agent.spawn result / agent.list row (INIT-002 PW-SPAWN) */
+export interface HarnessAgentProcess {
+  process_id: string;
+  command: string;
+  cwd: string | null;
+  pid: number | null;
+  status: string;
+  exit_code: number | null;
 }
 
 /** Streamed output from an agent process */
@@ -128,6 +141,35 @@ export interface HarnessSession {
   updated_at: string;
   ended_at: string | null;
   exit_summary: string | null;
+  /** GAP-257: active | blocked | idle when present */
+  activity_state?: string | null;
+  /** Why blocked (e.g. permission) */
+  blocked_reason?: string | null;
+  /** GAP-294 per-session mode override; null = daemon default */
+  permission_mode?: string | null;
+}
+
+/** Pending approval from permission.pending (GAP-294) */
+export interface HarnessApproval {
+  id: string;
+  agent_id: string;
+  method: string;
+  params_hash: string;
+  summary: string;
+  requested_at: string;
+  expires_at: string;
+  status: string;
+}
+
+export interface HarnessDecideResult {
+  id: string;
+  status: string;
+}
+
+export interface HarnessSetModeResult {
+  agent_id: string;
+  permission_mode: string | null;
+  daemon_default?: string | null;
 }
 
 /** Inter-agent message */
@@ -209,6 +251,24 @@ export interface SnapModel {
   name: string;
   description: string;
   installed: boolean;
+}
+
+/** Host resource tiers for local AI (lockstep harnesses + @revealui/ai). */
+export type LocalAiTier = 'idle' | 'daily' | 'snaps' | 'heavy';
+
+/** Active local AI profile + live engine status (Studio / control plane). */
+export interface LocalAiProfileView {
+  tier: LocalAiTier | string;
+  provider: 'ollama' | 'inference-snaps' | null;
+  model: string | null;
+  baseUrl: string | null;
+  ollamaModelsDir: string | null;
+  keepAlive: string | null;
+  updatedAt: string;
+  note: string | null;
+  memAvailableGib: number | null;
+  ollamaRunning: boolean;
+  snapsRunning: string[];
 }
 
 /** A detected terminal emulator and its profile install status */
