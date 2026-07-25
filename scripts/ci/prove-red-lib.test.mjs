@@ -180,7 +180,7 @@ describe('isForkSafePromotionSkip', () => {
 // revdev exec vitest ...` matches nothing, prints "No projects matched the
 // filters", and exits 0 — silently scored as a passing test that never ran.
 describe('isWorkspaceRootPackage', () => {
-  const REPO_ROOT = '/home/runner/work/revdev/revdev';
+  const REPO_ROOT = '/repo';
 
   it('is true when the package dir is the repo root', () => {
     expect(isWorkspaceRootPackage(REPO_ROOT, REPO_ROOT)).toBe(true);
@@ -192,7 +192,7 @@ describe('isWorkspaceRootPackage', () => {
 });
 
 describe('typescriptRunArgs', () => {
-  const REPO_ROOT = '/home/runner/work/revdev/revdev';
+  const REPO_ROOT = '/repo';
 
   it('routes a workspace-member package through `pnpm --filter <name>`', () => {
     expect(
@@ -243,9 +243,7 @@ describe('typescriptRunArgs', () => {
 
 describe('indicatesNoWorkDone', () => {
   it('detects the pnpm no-match-filter message', () => {
-    expect(
-      indicatesNoWorkDone('No projects matched the filters in "/home/runner/work/revdev/revdev"\n'),
-    ).toBe(true);
+    expect(indicatesNoWorkDone('No projects matched the filters in "/repo"\n')).toBe(true);
   });
 
   it('detects the marker as a substring within larger output', () => {
