@@ -37,6 +37,8 @@ import './agent.js';
 // Register PTY-backed agent.spawn/stop/input/resize/output handlers.
 // Must come AFTER ./agent.js (stubs) so the real implementations overwrite them.
 import './spawn.js';
+// Register gateway.revokeToken (GAP-421 guardrail-2 remediation S5).
+import './gateway-rpc.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { LICENSE_TIER_HELP, LicenseConfigError, LicenseExpiredError } from './license.js';
 import { startDaemon } from './server.js';

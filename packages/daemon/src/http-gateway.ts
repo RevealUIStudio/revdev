@@ -22,7 +22,12 @@ import {
   putBootstrapSecretHash,
 } from './gateway-store.js';
 import { dispatchRpc, type RpcRequest, type RpcResponse, type SocketContext } from './server.js';
-import { type AgentExitEvent, type AgentOutputEvent, agentEvents } from './spawn-events.js';
+import {
+  type AgentExitEvent,
+  type AgentOutputEvent,
+  agentEvents,
+  redeemStreamTicket,
+} from './spawn-events.js';
 
 /**
  * HTTP gateway that exposes the RevDev daemon over TCP (GAP-421
@@ -32,17 +37,22 @@ import { type AgentExitEvent, type AgentOutputEvent, agentEvents } from './spawn
  * `pairWithDaemon`) needs no protocol change).
  *
  * Routes:
- *   POST /rpc                -  JSON-RPC 2.0 proxy, through the SAME
- *                                dispatchRpc the Unix socket uses (license
- *                                guard, param validation, signature gate,
- *                                identity gate, permission gate — one
- *                                authorization path, never a parallel one)
- *   GET  /api/pair           -  Issue a single-use pairing nonce (pre-auth)
- *   POST /api/pair           -  Submit an HMAC challenge response, receive a bearer token (pre-auth)
- *   GET  /api/status         -  Daemon status summary (requires a valid token)
- *   GET  /api/stream/:id     -  SSE stream of agent.* PTY output/exit (requires a valid token)
- *   GET  /                   -  Serves Studio static frontend (index.html)
- *   GET  /assets/*           -  Serves static assets
+ *   POST /rpc                        -  JSON-RPC 2.0 proxy, through the SAME
+ *                                        dispatchRpc the Unix socket uses (license
+ *                                        guard, param validation, signature gate,
+ *                                        identity gate, permission gate — one
+ *                                        authorization path, never a parallel one)
+ *   GET  /api/pair                   -  Issue a single-use pairing nonce (pre-auth)
+ *   POST /api/pair                   -  Submit an HMAC challenge response, receive a bearer token (pre-auth)
+ *   GET  /api/status                 -  Daemon status summary (requires a valid token)
+ *   GET  /api/stream/:processId      -  SSE stream of one process's PTY output/exit
+ *                                        (requires a valid bearer token AND a
+ *                                        `?ticket=` minted by the signature-required
+ *                                        RPC `agent.streamTicket` — see "Streaming
+ *                                        authorization" below; no unfiltered/firehose
+ *                                        mode exists)
+ *   GET  /                           -  Serves Studio static frontend (index.html)
+ *   GET  /assets/*                   -  Serves static assets
  *
  * Auth (fail-closed):
  *   Every /rpc and /api/* request EXCEPT the pairing endpoints (see PRE_AUTH_ROUTES)
@@ -56,6 +66,16 @@ import { type AgentExitEvent, type AgentOutputEvent, agentEvents } from './spawn
  *   server verifies against the same file secret with a timing-safe comparison, then mints
  *   a durable bearer token. The stored DB hash (gateway_bootstrap) detects file tampering
  *   or substitution; the file itself is the HMAC key.
+ *
+ * Streaming authorization (GAP-421 guardrail-2 remediation, B1):
+ *   The bearer token above is a TRANSPORT credential — it proves this HTTP client
+ *   paired with the daemon, nothing about which agent it is or what PTY content it
+ *   may read. `agent.output` (the poll-based equivalent) requires a verified Ed25519
+ *   signer AND `owner_agent === callerAgentId`; `/api/stream` enforces the identical
+ *   check via a short-lived, single-use, processId-bound ticket minted by the
+ *   signature-required RPC `agent.streamTicket` (spawn.ts). A bearer token alone
+ *   cannot open a stream, and there is no way to subscribe to more than one
+ *   `processId` per ticket.
  *
  * Off by default: the daemon only constructs this gateway when `httpPort` is
  * configured to a non-zero value (see `startDaemon` in server.ts). No config,
@@ -128,6 +148,14 @@ const MAX_INIT_AUTH_ATTEMPTS = 5;
 const SECRET_BYTES = 32;
 const NONCE_BYTES = 32;
 const TOKEN_BYTES = 32;
+/** Host header values treated as loopback for the Host-validation check (S3). */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+/** Cap on concurrent SSE connections (S6) — each holds a 30s keepalive timer. */
+const MAX_SSE_CONNECTIONS = 64;
+/** 1 MiB cap on /rpc bodies, measured in UTF-8 bytes (S1, mirrors server.ts maxLineBytes). */
+const MAX_RPC_BODY_BYTES = 1_048_576;
+/** 1 KiB cap on /api/pair bodies, measured in UTF-8 bytes (S1). */
+const MAX_PAIR_BODY_BYTES = 1024;
 
 /** MIME types for static file serving */
 const MIME_TYPES: Record<string, string> = {
@@ -216,6 +244,8 @@ export class HttpGateway {
   private readonly now: () => number;
   private readonly tokenTtlMs: number;
   private readonly nonceTtlMs: number;
+  /** S6: bounds concurrent SSE connections. */
+  private activeStreamCount = 0;
 
   constructor(config: HttpGatewayConfig) {
     this.config = config;
@@ -387,10 +417,27 @@ export class HttpGateway {
       const path = url.pathname;
       const method = req.method ?? 'GET';
 
-      // CORS headers for mobile browser access
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      // Host validation (S3, DNS-rebinding defense-in-depth). Checked before
+      // anything else, including the pre-auth pairing routes — rebinding
+      // specifically targets those, since they need no bearer token.
+      if (!this.isAllowedHost(req.headers.host)) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'Invalid Host header' }));
+        return;
+      }
+
+      // CORS is withheld from the pairing routes (S3): a page the operator
+      // merely has open can otherwise reach GET/POST /api/pair cross-origin
+      // pre-auth and burn the nonce pool / trip the lockout. It cannot forge
+      // the HMAC without the file secret, so this is a DoS hardening, not an
+      // auth-bypass fix. Every other route still needs a bearer token, which
+      // a cross-origin page does not have.
+      const isPairingPath = path === '/api/pair';
+      if (!isPairingPath) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      }
 
       if (method === 'OPTIONS') {
         res.writeHead(204);
@@ -421,8 +468,11 @@ export class HttpGateway {
           return;
         }
         if (path.startsWith('/api/stream') && method === 'GET') {
-          const processFilter = path.split('/')[3] ?? null; // optional processId filter
-          this.handleStream(req, res, processFilter);
+          // Mandatory processId (B1: no wildcard/firehose mode) + the
+          // signature-required ticket minted by agent.streamTicket.
+          const processId = path.split('/')[3] ?? null;
+          const ticket = url.searchParams.get('ticket');
+          this.handleStream(req, res, processId, ticket);
           return;
         }
 
@@ -436,6 +486,28 @@ export class HttpGateway {
       this.logAuth(`request handling error: ${err instanceof Error ? err.message : 'unknown'}`);
       if (!res.headersSent) jsonResponse(res, 500, { error: 'Internal error' });
     }
+  }
+
+  /**
+   * S3: reject requests whose Host header doesn't match the bound interface,
+   * to blunt DNS rebinding against the pre-auth pairing routes. When bound to
+   * loopback (the default), only loopback Host values are accepted. A
+   * non-loopback bind (the operator opted into remote exposure) only
+   * requires a present, parseable Host — a full allowlist would need
+   * operator-supplied config this class does not have.
+   */
+  private isAllowedHost(hostHeader: string | undefined): boolean {
+    if (!hostHeader) return false;
+    let hostname: string;
+    try {
+      hostname = new URL(`http://${hostHeader}`).hostname;
+    } catch {
+      return false;
+    }
+    if (LOOPBACK_HOSTS.has(this.config.host)) {
+      return LOOPBACK_HOSTS.has(hostname);
+    }
+    return hostname.length > 0;
   }
 
   /** Verify `Authorization: Bearer <token>` against the durable token store. */
@@ -502,17 +574,30 @@ export class HttpGateway {
       return;
     }
 
-    let body = '';
+    // S1: accumulate raw Buffers and cap on UTF-8 BYTES, not string length
+    // (which double-counts under UTF-16 for astral characters and can also
+    // undercount multibyte BMP characters against the intended byte budget).
+    // Decoding once at the end also avoids splitting a multibyte character
+    // across a chunk boundary. S2: `rejected` stops a second, already-
+    // buffered chunk from re-entering writeHead after req.destroy().
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let rejected = false;
     req.on('data', (chunk: Buffer) => {
-      body += chunk.toString();
-      if (body.length > 1024) {
+      if (rejected) return;
+      bytes += chunk.length;
+      if (bytes > MAX_PAIR_BODY_BYTES) {
+        rejected = true;
         res.writeHead(413);
         res.end();
         req.destroy();
+        return;
       }
+      chunks.push(chunk);
     });
     req.on('end', () => {
-      void this.completePair(res, body, source);
+      if (rejected) return;
+      void this.completePair(res, Buffer.concat(chunks).toString('utf8'), source);
     });
   }
 
@@ -596,18 +681,25 @@ export class HttpGateway {
    * the request body, never a persisted per-connection binding.
    */
   private handleRpc(req: IncomingMessage, res: ServerResponse): void {
-    let body = '';
+    // S1/S2: same byte-accumulation + single-reject pattern as handlePair.
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let rejected = false;
     req.on('data', (chunk: Buffer) => {
-      body += chunk.toString();
-      // 1MB limit for RPC payloads
-      if (body.length > 1_048_576) {
+      if (rejected) return;
+      bytes += chunk.length;
+      if (bytes > MAX_RPC_BODY_BYTES) {
+        rejected = true;
         res.writeHead(413);
         res.end();
         req.destroy();
+        return;
       }
+      chunks.push(chunk);
     });
     req.on('end', () => {
-      void this.completeRpc(res, body);
+      if (rejected) return;
+      void this.completeRpc(res, Buffer.concat(chunks).toString('utf8'));
     });
   }
 
@@ -638,12 +730,53 @@ export class HttpGateway {
     jsonResponse(res, 200, response);
   }
 
-  /** GET /api/stream[/:processId]  -  SSE for agent.* PTY output and exit events. */
+  /**
+   * GET /api/stream/:processId?ticket=...  -  SSE for one process's PTY
+   * output and exit events (GAP-421 guardrail-2 remediation, B1).
+   *
+   * The bearer token already checked upstream (checkAuth) is a TRANSPORT
+   * credential: it proves this HTTP client paired with the daemon, nothing
+   * about which agent it is or what it may read. That is not sufficient
+   * here — `agent.output` requires a verified Ed25519 signer AND
+   * `owner_agent === callerAgentId`, and this route must enforce the same.
+   * The `ticket` query param is minted only by the signature-required RPC
+   * `agent.streamTicket` (spawn.ts), which re-runs that exact ownership
+   * check. `redeemStreamTicket` is single-use and processId-bound, so:
+   *   - no ticket, or a ticket for a different processId → 401, no stream.
+   *   - no processId in the path at all → 400 (there is no "stream
+   *     everything" mode; the pre-port harnesses SSE endpoint had no
+   *     Studio consumer, so there is no back-compat contract to preserve
+   *     for an unfiltered subscribe).
+   */
   private handleStream(
     req: IncomingMessage,
     res: ServerResponse,
-    processFilter: string | null,
+    processId: string | null,
+    ticket: string | null,
   ): void {
+    if (!processId) {
+      jsonResponse(res, 400, { error: 'processId is required' });
+      return;
+    }
+    if (!ticket) {
+      jsonResponse(res, 401, { error: 'A stream ticket is required (call agent.streamTicket)' });
+      return;
+    }
+    const redeemed = redeemStreamTicket(ticket, processId);
+    if (!redeemed) {
+      jsonResponse(res, 401, { error: 'Invalid, expired, or already-used stream ticket' });
+      return;
+    }
+
+    // S6: bound concurrent SSE connections. Checked AFTER ticket redemption
+    // (which is itself rate-limited by requiring a fresh signed RPC call
+    // per attempt) so an unauthenticated client cannot exhaust the cap.
+    if (this.activeStreamCount >= MAX_SSE_CONNECTIONS) {
+      jsonResponse(res, 503, { error: 'Too many concurrent streams; try again shortly' });
+      return;
+    }
+    this.activeStreamCount++;
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -653,13 +786,24 @@ export class HttpGateway {
     // Send initial keepalive
     res.write(': connected\n\n');
 
+    // S6: a stalled consumer's kernel socket buffer fills, res.write()
+    // returns false, and Node queues writes in unbounded userspace memory
+    // behind it. Drop further frames for this connection until 'drain'
+    // fires rather than buffering without bound — documented lossy
+    // behavior for a slow reader, not a correctness requirement (SSE has
+    // no delivery guarantee).
+    let backpressured = false;
+    res.on('drain', () => {
+      backpressured = false;
+    });
+
     const onOutput = (evt: AgentOutputEvent): void => {
-      if (processFilter && evt.processId !== processFilter) return;
-      res.write(`event: output\ndata: ${JSON.stringify(evt)}\n\n`);
+      if (evt.processId !== processId || backpressured) return;
+      if (!res.write(`event: output\ndata: ${JSON.stringify(evt)}\n\n`)) backpressured = true;
     };
 
     const onExit = (evt: AgentExitEvent): void => {
-      if (processFilter && evt.processId !== processFilter) return;
+      if (evt.processId !== processId) return;
       res.write(`event: exit\ndata: ${JSON.stringify(evt)}\n\n`);
     };
 
@@ -673,6 +817,7 @@ export class HttpGateway {
 
     // Cleanup on client disconnect
     req.on('close', () => {
+      this.activeStreamCount--;
       clearInterval(keepalive);
       agentEvents.off('output', onOutput);
       agentEvents.off('exit', onExit);
@@ -737,3 +882,6 @@ function jsonResponse(res: ServerResponse, status: number, body: unknown): void 
   });
   res.end(json);
 }
+
+// gateway.revokeToken (S5) is registered in gateway-rpc.ts, not here — see
+// that file's docblock for why it cannot live in this module.

@@ -61,6 +61,7 @@ import './agent.js';
 // PTY-backed agent.spawn/stop/input/resize/output — overwrites the stubs
 // in agent.js with real implementations. Must follow agent.js in import order.
 import './spawn.js';
+import './gateway-rpc.js';
 
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 export { SCHEMA_SQL } from './storage/schema.js';

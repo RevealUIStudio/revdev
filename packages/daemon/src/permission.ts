@@ -74,6 +74,7 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['merge.status', 'routine'],
   ['merge.list', 'routine'],
   ['agent.output', 'routine'],
+  ['agent.streamTicket', 'routine'],
   ['agent.resize', 'routine'],
   ['agent.stop', 'routine'],
   ['agent.list', 'routine'],
@@ -111,6 +112,9 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['permission.pending', 'routine'],
   ['permission.decide', 'critical'],
   ['permission.setMode', 'critical'],
+  // Revokes a bearer credential — reversible (a new one can be paired), so
+  // consequential rather than critical (GAP-421 guardrail-2 remediation S5).
+  ['gateway.revokeToken', 'consequential'],
 ]);
 
 /** Fail closed: unmapped method is critical (spec §5 / I2). */

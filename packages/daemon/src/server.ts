@@ -237,6 +237,13 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'agent.input',
   'agent.resize',
   'agent.output',
+  // agent.streamTicket mints the principal for GET /api/stream (GAP-421
+  // guardrail-2 remediation B1): signature-required so the ticket is bound
+  // to the VERIFIED signer, and the handler re-runs agent.output's
+  // owner_agent === callerAgentId check before minting. The gateway's
+  // bearer token alone is a transport credential, never sufficient to read
+  // PTY content.
+  'agent.streamTicket',
   // agent.list returns another-agent-invisible process metadata (command, cwd),
   // and agent.remove kills + prunes a process. Both are signature-required and
   // self-scoped to the verified signer's owner_agent — an unsigned or spoofed
@@ -269,6 +276,10 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   // Phase 2: operator mode overrides are signature-required too.
   'permission.decide',
   'permission.setMode',
+  // gateway.revokeToken revokes an HTTP gateway bearer token (GAP-421
+  // guardrail-2 remediation S5). Signature-required so an unsigned caller
+  // cannot revoke another client's session.
+  'gateway.revokeToken',
 ]);
 
 // ---------------------------------------------------------------------------
