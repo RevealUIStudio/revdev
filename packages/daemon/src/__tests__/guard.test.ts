@@ -369,7 +369,10 @@ describe('handler tier-classification coverage', () => {
     'agent.remove',
     'agent.input',
     'agent.output',
+    'agent.streamTicket',
     'agent.resize',
+    // HTTP gateway token management (GAP-421 guardrail-2 remediation S5)
+    'gateway.revokeToken',
     // merge pipeline
     'merge.request',
     'merge.status',

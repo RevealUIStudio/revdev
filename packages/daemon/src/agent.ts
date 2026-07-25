@@ -56,3 +56,7 @@ registerHandler('agent.resize', async () => {
 registerHandler('agent.output', async () => {
   throw new SpawnSurfaceUnavailableError('agent.output');
 });
+
+registerHandler('agent.streamTicket', async () => {
+  throw new SpawnSurfaceUnavailableError('agent.streamTicket');
+});

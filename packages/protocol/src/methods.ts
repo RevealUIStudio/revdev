@@ -64,6 +64,7 @@ export const RPC_METHODS = {
   'agent.input': 'agent.input',
   'agent.resize': 'agent.resize',
   'agent.output': 'agent.output',
+  'agent.streamTicket': 'agent.streamTicket',
 
   // Inference management
   'inference.status': 'inference.status',
@@ -118,4 +119,7 @@ export const RPC_METHODS = {
   'permission.pending': 'permission.pending',
   'permission.decide': 'permission.decide',
   'permission.setMode': 'permission.setMode',
+
+  // HTTP gateway token management (GAP-421 guardrail-2 remediation S5)
+  'gateway.revokeToken': 'gateway.revokeToken',
 } as const;

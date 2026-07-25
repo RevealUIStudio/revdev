@@ -84,6 +84,11 @@ pub fn requires_signature(method: &str) -> bool {
             | "agent.input"
             | "agent.resize"
             | "agent.output"
+            // agent.streamTicket mints the principal for GET /api/stream (GAP-421
+            // guardrail-2 remediation B1): signature-required so the ticket is
+            // bound to the verified signer, mirroring agent.output's ownership
+            // check. MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
+            | "agent.streamTicket"
             // agent.list returns another-agent-invisible process metadata and
             // agent.remove kills + prunes a process; both are self-scoped to the
             // verified signer. MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
@@ -104,6 +109,9 @@ pub fn requires_signature(method: &str) -> bool {
             | "permission.decide"
             // Phase 2 — operator mode override.
             | "permission.setMode"
+            // Revokes an HTTP gateway bearer token (GAP-421 guardrail-2
+            // remediation S5). MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
+            | "gateway.revokeToken"
     )
 }
 
@@ -626,6 +634,7 @@ mod tests {
         assert!(requires_signature("agent.input"));
         assert!(requires_signature("agent.resize"));
         assert!(requires_signature("agent.output"));
+        assert!(requires_signature("agent.streamTicket"));
         assert!(requires_signature("agent.list"));
         assert!(requires_signature("agent.remove"));
         assert!(requires_signature("session.end"));
@@ -633,6 +642,7 @@ mod tests {
         assert!(requires_signature("harness.prune"));
         // GAP-294 Phase 1.
         assert!(requires_signature("permission.decide"));
+        assert!(requires_signature("gateway.revokeToken"));
         assert!(requires_signature("permission.setMode"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
