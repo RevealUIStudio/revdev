@@ -71,7 +71,6 @@ import {
   setSessionPermissionMode,
   tryConsumeApproval,
 } from './permission.js';
-import { revvaultSet } from './revvault-client.js';
 import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
 import { initToolGuard } from './tool-guard/index.js';
@@ -783,7 +782,9 @@ registerHandler('session.register', async (params, db, ctx) => {
   //     the real barrier behind the relay — a host process without the key
   //     cannot sign a mutation/content read (see MUTATING_OR_CONTENT_METHODS).
   //   - DAEMON-MINTED (headless hooks): no key supplied, so the daemon
-  //     generates the keypair and mirrors it to revvault, as before.
+  //     generates the keypair and returns it once in the register response.
+  //     No vault mirror (GAP-409 D1) — the one-shot response and the
+  //     client's local cache are the only key holders.
   const clientPublicKeyPem = strOrNull(params.publicKeyPem);
   const identity = clientPublicKeyPem
     ? await registerClientIdentity(db, id, clientPublicKeyPem)
@@ -805,8 +806,8 @@ registerHandler('session.register', async (params, db, ctx) => {
   // Grok dual-harness hooks, Ubuntu Inference Snap / Ollama agents registered
   // from Studio, and the MCP bridge — not Claude/Grok alone. Client-owned
   // enroll never returns a private key (Studio UI keeps it). Re-register of
-  // an existing identity never re-emits the private key — load from cache or
-  // revvault (`revdev/agents/<id>/identity/ed25519-private`).
+  // an existing identity never re-emits the private key — clients load it
+  // from their local cache (there is no vault mirror; GAP-409 D1-D3).
   return {
     sessionId: id,
     agentId: id,
@@ -857,11 +858,12 @@ async function bootstrapAgentIdentity(db: PGlite, agentId: string): Promise<Iden
     [fingerprint, agentId, kp.publicKeyPem],
   );
 
-  // Await vault mirror so hooks can fall back to revvault get if the one-shot
-  // privateKeyPem response is lost (INIT-002 Phase 1). Still best-effort: vault
-  // failures log and do not fail registration.
-  await persistIdentityToRevvault(agentId, kp.privateKeyPem, kp.publicKeyPem);
-
+  // No vault mirror (GAP-409 D1): the one-shot privateKeyPem response and the
+  // client's local cache are the ONLY key holders. Session-keyed identities
+  // are ephemeral; mirroring them into revvault only accumulated dead
+  // per-session entries (and polluted the production store from test runs).
+  // Lost-both recovery is deliberately absent (D3/D4): re-register a fresh
+  // session identity instead.
   return { did, publicKeyPem: kp.publicKeyPem, privateKeyPem: kp.privateKeyPem };
 }
 
@@ -991,53 +993,6 @@ async function registerClientIdentity(
   // else: same fingerprint already registered — idempotent no-op.
 
   return { did, publicKeyPem };
-}
-
-// `cli-not-installed` is an environmental condition of the daemon's unit
-// (revvault not on PATH), not a per-agent fault. Session-keyed identities
-// (GAP-311) mint a fresh keypair per session, so without dedup every session
-// registration re-emits the same warn pair for the daemon's whole lifetime.
-// Warn once, then skip further vault writes until restart.
-let revvaultCliMissing = false;
-
-function persistIdentityToRevvault(
-  agentId: string,
-  privateKeyPem: string,
-  publicKeyPem: string,
-): Promise<void> {
-  return (async () => {
-    if (revvaultCliMissing) return;
-    const setPriv = await revvaultSet(
-      `revdev/agents/${agentId}/identity/ed25519-private`,
-      privateKeyPem,
-    );
-    if (!setPriv.ok) {
-      if (setPriv.reason === 'cli-not-installed') {
-        revvaultCliMissing = true;
-        log.warn(
-          'revvault CLI not installed — agent identity keys will not be mirrored to revvault; suppressing further warnings (restart the daemon after installing revvault)',
-          { agentId },
-        );
-        return;
-      }
-      log.warn('revvault private key write failed', { agentId, reason: setPriv.reason });
-    }
-    const setPub = await revvaultSet(
-      `revdev/agents/${agentId}/identity/ed25519-public`,
-      publicKeyPem,
-    );
-    if (!setPub.ok) {
-      if (setPub.reason === 'cli-not-installed') {
-        revvaultCliMissing = true;
-        log.warn(
-          'revvault CLI not installed — agent identity keys will not be mirrored to revvault; suppressing further warnings (restart the daemon after installing revvault)',
-          { agentId },
-        );
-        return;
-      }
-      log.warn('revvault public key write failed', { agentId, reason: setPub.reason });
-    }
-  })();
 }
 
 registerHandler('session.attach', async (params, db, ctx) => {
