@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Theme } from '../../hooks/use-settings';
 import { useSettingsContext } from '../../hooks/use-settings';
+import { getDaemonUrl, pairWithDaemon, setDaemonToken, setDaemonUrl } from '../../lib/invoke';
 import Card from '../ui/Card';
 import PanelHeader from '../ui/PanelHeader';
 
@@ -166,6 +167,8 @@ export default function SettingsPanel() {
         </Card>
       )}
 
+      {activeTab === 'connection' && <RemoteDaemonPairing />}
+
       {activeTab === 'about' && (
         <Card header={<h2 className="text-sm font-semibold text-fg">About</h2>}>
           <div className="flex flex-col gap-4">
@@ -198,5 +201,112 @@ export default function SettingsPanel() {
         </Card>
       )}
     </div>
+  );
+}
+
+/**
+ * Remote-daemon pairing (GAP-421 daemon-ownership ADR, wire path §5). Pairing
+ * is an explicit operator action only — the daemon URL and pairing secret are
+ * never submitted automatically; nothing is sent until "Pair" is clicked.
+ */
+function RemoteDaemonPairing() {
+  const [daemonUrl, setDaemonUrlInput] = useState('');
+  const [secret, setSecret] = useState('');
+  const [pairedUrl, setPairedUrl] = useState<string | null>(() => getDaemonUrl());
+  const [status, setStatus] = useState<{
+    kind: 'idle' | 'pairing' | 'error' | 'success';
+    message?: string;
+  }>({
+    kind: 'idle',
+  });
+
+  async function handlePair() {
+    if (!daemonUrl.trim() || !secret.trim()) {
+      setStatus({ kind: 'error', message: 'Daemon URL and pairing secret are both required.' });
+      return;
+    }
+    setStatus({ kind: 'pairing' });
+    try {
+      await pairWithDaemon({ daemonUrl: daemonUrl.trim(), secret: secret.trim(), label: 'studio' });
+      setPairedUrl(daemonUrl.trim());
+      setSecret('');
+      setStatus({
+        kind: 'success',
+        message: 'Paired. This daemon is now the active remote connection.',
+      });
+    } catch (err) {
+      setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Pairing failed.' });
+    }
+  }
+
+  function handleForget() {
+    setDaemonUrl(null);
+    setDaemonToken(null);
+    setPairedUrl(null);
+    setStatus({ kind: 'idle' });
+  }
+
+  return (
+    <Card header={<h2 className="text-sm font-semibold text-fg">Remote daemon</h2>}>
+      <div className="flex flex-col gap-4">
+        {pairedUrl && (
+          <div className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2">
+            <span className="text-sm text-fg-muted">
+              Paired with <span className="text-fg">{pairedUrl}</span>
+            </span>
+            <button
+              type="button"
+              onClick={handleForget}
+              className="text-sm text-fg-subtle hover:text-fg-muted transition-colors"
+            >
+              Forget
+            </button>
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="daemon-pair-url" className="text-sm text-fg-muted">
+            Daemon URL
+          </label>
+          <input
+            id="daemon-pair-url"
+            type="text"
+            placeholder="http://127.0.0.1:7890"
+            value={daemonUrl}
+            onChange={(e) => setDaemonUrlInput(e.target.value)}
+            className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-fg-muted focus:border-edge focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="daemon-pair-secret" className="text-sm text-fg-muted">
+            Pairing secret
+          </label>
+          <input
+            id="daemon-pair-secret"
+            type="password"
+            placeholder="contents of the daemon's gateway-pairing-secret file"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-fg-muted focus:border-edge focus:outline-none"
+          />
+          <span className="text-xs text-fg-subtle">
+            Read from the 0600 secret file the daemon printed at boot. Never sent on the wire — used
+            only to sign the pairing challenge locally.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handlePair()}
+          disabled={status.kind === 'pairing'}
+          className="self-start rounded-md bg-brand px-4 py-2 text-sm text-on-brand transition-colors disabled:opacity-60"
+        >
+          {status.kind === 'pairing' ? 'Pairing…' : 'Pair'}
+        </button>
+        {status.message && (
+          <span className={`text-xs ${status.kind === 'error' ? 'text-error' : 'text-fg-subtle'}`}>
+            {status.message}
+          </span>
+        )}
+      </div>
+    </Card>
   );
 }

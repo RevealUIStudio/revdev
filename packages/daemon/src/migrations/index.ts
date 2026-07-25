@@ -23,6 +23,7 @@ import { MIGRATION_0004 } from './0004-agent-processes.js';
 import { MIGRATION_0005 } from './0005-session-activity-state.js';
 import { MIGRATION_0006 } from './0006-agent-process-confinement.js';
 import { MIGRATION_0007 } from './0007-permission-approvals.js';
+import { MIGRATION_0008 } from './0008-gateway-tokens.js';
 
 export const MIGRATIONS: readonly Migration[] = [
   MIGRATION_0001,
@@ -32,4 +33,5 @@ export const MIGRATIONS: readonly Migration[] = [
   MIGRATION_0005,
   MIGRATION_0006,
   MIGRATION_0007,
+  MIGRATION_0008,
 ];

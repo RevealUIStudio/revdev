@@ -17,7 +17,7 @@
 
 import { mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { formatDid, parseDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
@@ -38,6 +38,7 @@ import {
   licenseErrorResponse,
   runtimeLicenseRecheck,
 } from './guard.js';
+import { HttpGateway } from './http-gateway.js';
 import {
   initNeonSync,
   isNeonSyncActive,
@@ -82,12 +83,20 @@ const log = createLogger({ service: 'revdev-daemon' });
 // Types
 // ---------------------------------------------------------------------------
 
-interface RpcRequest {
+export interface RpcRequest {
   jsonrpc: '2.0';
   id: number | string | null;
   method: string;
   params?: Record<string, unknown>;
   'x-revdev-signature'?: string;
+}
+
+/** A fully-formed JSON-RPC 2.0 response, as returned by {@link dispatchRpc}. */
+export interface RpcResponse {
+  jsonrpc: '2.0';
+  id: number | string | null;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
 }
 
 /** Per-connection state. Populated on session.register or session.attach. */
@@ -709,6 +718,200 @@ async function verifyOrWarn(
   ctx.boundVia = 'signature';
   ctx.verifiedSignature = { kid: parsed.payload.kid, nonce: parsed.payload.nonce };
   return 'verified';
+}
+
+/**
+ * Dispatch one already-parsed JSON-RPC request through the daemon's full
+ * authorization pipeline — license guard, param validation, handler lookup,
+ * Ed25519 signature gate, identity gate, permission gate, shutdown gate —
+ * and run the matched handler.
+ *
+ * This is the single authorization path (GAP-421 daemon-ownership ADR, wire
+ * path §1): both the Unix-socket loop (below, in `startDaemon`) and the HTTP
+ * gateway (`http-gateway.ts`) call this exact function. Remote (HTTP) traffic
+ * inherits the same license guard, typed param validation, Ed25519 signature
+ * requirement on `MUTATING_OR_CONTENT_METHODS`, and permission queue as local
+ * (socket) traffic — there is no parallel, weaker auth path for the network
+ * surface. `ctx` is per-connection state; the socket loop reuses one `ctx`
+ * across a connection's lifetime, while the HTTP gateway constructs a fresh
+ * `ctx` per request (HTTP is stateless — identity for a given call comes from
+ * an embedded `x-revdev-signature` envelope or a `params.actorAgentId`, never
+ * from a persisted per-connection binding).
+ */
+export async function dispatchRpc(
+  req: RpcRequest,
+  db: PGlite,
+  ctx: SocketContext,
+): Promise<RpcResponse> {
+  // License guard
+  const guard = guardRpcMethod(req.method);
+  if (!guard.allowed) {
+    return JSON.parse(licenseErrorResponse(req.id, guard)) as RpcResponse;
+  }
+
+  // Validate params
+  const validation = validateParams(req.method, req.params);
+  if (!validation.valid) {
+    return JSON.parse(
+      invalidParamsResponse(req.id, validation.error ?? 'Invalid params'),
+    ) as RpcResponse;
+  }
+
+  // Dispatch
+  const handler = handlers.get(req.method);
+  if (!handler) {
+    return {
+      jsonrpc: '2.0',
+      id: req.id,
+      error: { code: -32601, message: `Method not found: ${req.method}` },
+    };
+  }
+
+  // Signature gate. Attempts to bind ctx.agentId from a verified Ed25519
+  // envelope. For coordination methods this is accept-if-present (invalid
+  // or missing signatures fall through to the identity gate below). For
+  // MUTATING_OR_CONTENT_METHODS the signature is REQUIRED — anything other
+  // than a fully-verified envelope is rejected with -32003 before the
+  // handler runs, mirroring the license-guard block above.
+  const verification = await verifyOrWarn(req, db, ctx);
+  // P2 telemetry (ADR 2026-05-16 §Q5). Record the per-RPC signature status
+  // for every non-exempt method BEFORE any accept/reject below, so the
+  // 'none'/'invalid' coverage rate is measured across ALL non-exempt
+  // traffic (the P3 flip gate). Best-effort — never blocks or fails the RPC.
+  emitSignatureTelemetry(req, db, ctx, verification);
+  if (MUTATING_OR_CONTENT_METHODS.has(req.method) && verification !== 'verified') {
+    return {
+      jsonrpc: '2.0',
+      id: req.id,
+      error: {
+        code: -32003,
+        message: 'Signature required',
+        data: {
+          method: req.method,
+          reason:
+            verification === 'none' ? 'missing Ed25519 signature' : 'invalid Ed25519 signature',
+        },
+      },
+    };
+  }
+
+  // Identity gate: most coordination calls need a registered agent.
+  // Fallback: accept `actorAgentId` in params; requireVerifiedAgent
+  // enforces the verified principal (signature, or daemon-minted bind).
+  if (
+    !IDENTITY_EXEMPT.has(req.method) &&
+    !ctx.agentId &&
+    !(req.params && typeof req.params.actorAgentId === 'string')
+  ) {
+    return {
+      jsonrpc: '2.0',
+      id: req.id,
+      error: {
+        code: -32002,
+        message: `Not registered: call session.register or session.attach before ${req.method}`,
+      },
+    };
+  }
+
+  // Permission gate (GAP-294). After identity, before shutdown/dispatch.
+  // Shadow (default): would_* events only. manual/auto: enforce with
+  // reject-with-receipt (-32004) + pending_approvals queue.
+  {
+    const agentForEvent =
+      ctx.agentId ??
+      (req.params && typeof req.params.actorAgentId === 'string' ? req.params.actorAgentId : null);
+    // Spec §3: per-session override ?? daemon default (env).
+    const mode = await resolveEffectiveMode(db, agentForEvent);
+    // Shadow only when *effective* mode is shadow (session override can
+    // promote a session out of daemon-default shadow for dogfood).
+    if (mode === 'shadow') {
+      emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
+    } else {
+      // Still emit would_* for soak continuity under enforce modes.
+      emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
+      const decision = decideEnforcement(req.method, mode);
+      if (decision.action === 'deny') {
+        return {
+          jsonrpc: '2.0',
+          id: req.id,
+          error: {
+            code: -32004,
+            message: `Permission denied for ${req.method}`,
+            data: { kind: 'permission-denied', method: req.method, reason: decision.reason },
+          },
+        };
+      }
+      if (decision.action === 'require_approval') {
+        if (!agentForEvent) {
+          return {
+            jsonrpc: '2.0',
+            id: req.id,
+            error: {
+              code: -32002,
+              message: `Not registered: call session.register before ${req.method}`,
+            },
+          };
+        }
+        const paramsObj =
+          req.params && typeof req.params === 'object' && !Array.isArray(req.params)
+            ? (req.params as Record<string, unknown>)
+            : {};
+        try {
+          const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
+          if (!consumed) {
+            await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+          }
+        } catch (permErr) {
+          if (permErr instanceof ApprovalRequiredError) {
+            return {
+              jsonrpc: '2.0',
+              id: req.id,
+              error: { code: permErr.code, message: permErr.message, data: permErr.data },
+            };
+          }
+          throw permErr;
+        }
+      }
+    }
+  }
+
+  // Shutdown gate. A request arriving after shutdown started must not run
+  // against a closing/closed PGlite.
+  if (_closing) {
+    return {
+      jsonrpc: '2.0',
+      id: req.id,
+      error: { code: -32099, message: 'Server is shutting down' },
+    };
+  }
+
+  const startMs = Date.now();
+  _activeHandlerCount++;
+  try {
+    const result = await handler(req.params ?? {}, db, ctx);
+    trackRpcCall(req.method, 'ok', Date.now() - startMs);
+    return { jsonrpc: '2.0', id: req.id, result };
+  } catch (err) {
+    trackRpcCall(req.method, 'error', Date.now() - startMs);
+    // A handler may carry an explicit numeric JSON-RPC code (e.g.
+    // UntrustedClientKeyError → -32004). Guard on `typeof === 'number'`
+    // so Node's string error codes (ENOENT, EACCES, …) don't leak into
+    // the JSON-RPC `code` field — those fall back to the generic -32000.
+    const rawCode = (err as { code?: unknown }).code;
+    const code = typeof rawCode === 'number' ? rawCode : -32000;
+    const data = (err as { data?: unknown }).data;
+    return {
+      jsonrpc: '2.0',
+      id: req.id,
+      error: {
+        code,
+        message: err instanceof Error ? err.message : 'Internal error',
+        ...(data !== undefined ? { data } : {}),
+      },
+    };
+  } finally {
+    _activeHandlerCount--;
+  }
 }
 
 /** Accept either `paths: string[]` or `filePath: string` — normalize to array. */
@@ -1778,7 +1981,7 @@ registerHandler('memory.query', async (params, db, ctx) => {
 
 export async function startDaemon(
   config: Partial<DaemonConfig> = {},
-): Promise<{ close: () => Promise<void>; _db: PGlite }> {
+): Promise<{ close: () => Promise<void>; _db: PGlite; _httpGateway: HttpGateway | null }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
   // Publish the effective config so handlers in other modules (filegit.ts)
   // can read limits like maxInlineReadBytes without a cfg parameter.
@@ -2019,214 +2222,12 @@ export async function startDaemon(
           continue;
         }
 
-        // License guard
-        const guard = guardRpcMethod(req.method);
-        if (!guard.allowed) {
-          socket.write(`${licenseErrorResponse(req.id, guard)}\n`);
-          continue;
-        }
-
-        // Validate params
-        const validation = validateParams(req.method, req.params);
-        if (!validation.valid) {
-          socket.write(`${invalidParamsResponse(req.id, validation.error ?? 'Invalid params')}\n`);
-          continue;
-        }
-
-        // Dispatch
-        const handler = handlers.get(req.method);
-        if (!handler) {
-          socket.write(
-            `${JSON.stringify({
-              jsonrpc: '2.0',
-              id: req.id,
-              error: { code: -32601, message: `Method not found: ${req.method}` },
-            })}\n`,
-          );
-          continue;
-        }
-
-        // Signature gate. Attempts to bind ctx.agentId from a verified Ed25519
-        // envelope. For coordination methods this is accept-if-present (invalid
-        // or missing signatures fall through to the identity gate below). For
-        // MUTATING_OR_CONTENT_METHODS the signature is REQUIRED — anything other
-        // than a fully-verified envelope is rejected with -32003 before the
-        // handler runs, mirroring the license-guard block above.
-        const verification = await verifyOrWarn(req, db, ctx);
-        // P2 telemetry (ADR 2026-05-16 §Q5). Record the per-RPC signature status
-        // for every non-exempt method BEFORE any accept/reject below, so the
-        // 'none'/'invalid' coverage rate is measured across ALL non-exempt
-        // traffic (the P3 flip gate). Best-effort — never blocks or fails the RPC.
-        emitSignatureTelemetry(req, db, ctx, verification);
-        if (MUTATING_OR_CONTENT_METHODS.has(req.method) && verification !== 'verified') {
-          socket.write(
-            `${JSON.stringify({
-              jsonrpc: '2.0',
-              id: req.id,
-              error: {
-                code: -32003,
-                message: 'Signature required',
-                data: {
-                  method: req.method,
-                  reason:
-                    verification === 'none'
-                      ? 'missing Ed25519 signature'
-                      : 'invalid Ed25519 signature',
-                },
-              },
-            })}\n`,
-          );
-          continue;
-        }
-
-        // Identity gate: most coordination calls need a registered agent.
-        // Fallback: accept `actorAgentId` in params; requireVerifiedAgent
-        // enforces the verified principal (signature, or daemon-minted bind).
-        if (
-          !IDENTITY_EXEMPT.has(req.method) &&
-          !ctx.agentId &&
-          !(req.params && typeof req.params.actorAgentId === 'string')
-        ) {
-          socket.write(
-            `${JSON.stringify({
-              jsonrpc: '2.0',
-              id: req.id,
-              error: {
-                code: -32002,
-                message: `Not registered: call session.register or session.attach before ${req.method}`,
-              },
-            })}\n`,
-          );
-          continue;
-        }
-
-        // Permission gate (GAP-294). After identity, before shutdown/dispatch.
-        // Shadow (default): would_* events only. manual/auto: enforce with
-        // reject-with-receipt (-32004) + pending_approvals queue.
-        {
-          const agentForEvent =
-            ctx.agentId ??
-            (req.params && typeof req.params.actorAgentId === 'string'
-              ? req.params.actorAgentId
-              : null);
-          // Spec §3: per-session override ?? daemon default (env).
-          const mode = await resolveEffectiveMode(db, agentForEvent);
-          // Shadow only when *effective* mode is shadow (session override can
-          // promote a session out of daemon-default shadow for dogfood).
-          if (mode === 'shadow') {
-            emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
-          } else {
-            // Still emit would_* for soak continuity under enforce modes.
-            emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
-            const decision = decideEnforcement(req.method, mode);
-            if (decision.action === 'deny') {
-              socket.write(
-                `${JSON.stringify({
-                  jsonrpc: '2.0',
-                  id: req.id,
-                  error: {
-                    code: -32004,
-                    message: `Permission denied for ${req.method}`,
-                    data: {
-                      kind: 'permission-denied',
-                      method: req.method,
-                      reason: decision.reason,
-                    },
-                  },
-                })}\n`,
-              );
-              continue;
-            }
-            if (decision.action === 'require_approval') {
-              if (!agentForEvent) {
-                socket.write(
-                  `${JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: req.id,
-                    error: {
-                      code: -32002,
-                      message: `Not registered: call session.register before ${req.method}`,
-                    },
-                  })}\n`,
-                );
-                continue;
-              }
-              const paramsObj =
-                req.params && typeof req.params === 'object' && !Array.isArray(req.params)
-                  ? (req.params as Record<string, unknown>)
-                  : {};
-              try {
-                const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
-                if (!consumed) {
-                  await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
-                }
-              } catch (permErr) {
-                if (permErr instanceof ApprovalRequiredError) {
-                  socket.write(
-                    `${JSON.stringify({
-                      jsonrpc: '2.0',
-                      id: req.id,
-                      error: {
-                        code: permErr.code,
-                        message: permErr.message,
-                        data: permErr.data,
-                      },
-                    })}\n`,
-                  );
-                  continue;
-                }
-                throw permErr;
-              }
-            }
-          }
-        }
-
-        // Shutdown gate. close() sets _closing BEFORE the drain so a
-        // request arriving on an already-connected socket after shutdown
-        // started cannot increment the counter past the drain observation
-        // window and run against a closing/closed PGlite. We respond with
-        // JSON-RPC -32099 ("Server is shutting down") and bail before the
-        // counter increment.
-        if (_closing) {
-          socket.write(
-            `${JSON.stringify({
-              jsonrpc: '2.0',
-              id: req.id,
-              error: { code: -32099, message: 'Server is shutting down' },
-            })}\n`,
-          );
-          continue;
-        }
-
-        const startMs = Date.now();
-        _activeHandlerCount++;
-        try {
-          const result = await handler(req.params ?? {}, db, ctx);
-          trackRpcCall(req.method, 'ok', Date.now() - startMs);
-          socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: req.id, result })}\n`);
-        } catch (err) {
-          trackRpcCall(req.method, 'error', Date.now() - startMs);
-          // A handler may carry an explicit numeric JSON-RPC code (e.g.
-          // UntrustedClientKeyError → -32004). Guard on `typeof === 'number'`
-          // so Node's string error codes (ENOENT, EACCES, …) don't leak into
-          // the JSON-RPC `code` field — those fall back to the generic -32000.
-          const rawCode = (err as { code?: unknown }).code;
-          const code = typeof rawCode === 'number' ? rawCode : -32000;
-          const data = (err as { data?: unknown }).data;
-          socket.write(
-            `${JSON.stringify({
-              jsonrpc: '2.0',
-              id: req.id,
-              error: {
-                code,
-                message: err instanceof Error ? err.message : 'Internal error',
-                ...(data !== undefined ? { data } : {}),
-              },
-            })}\n`,
-          );
-        } finally {
-          _activeHandlerCount--;
-        }
+        // Every gate (license, param validation, signature, identity,
+        // permission, shutdown) plus handler execution lives in dispatchRpc
+        // so the socket and HTTP gateway transports share one authorization
+        // path (GAP-421 daemon-ownership ADR, wire path §1).
+        const response = await dispatchRpc(req, db, ctx);
+        socket.write(`${JSON.stringify(response)}\n`);
       }
     });
 
@@ -2291,8 +2292,36 @@ export async function startDaemon(
       log.info('listening', { socketPath: cfg.socketPath, mode: '0600' });
       log.info('ready for connections');
 
+      // Optional HTTP gateway (GAP-421 daemon-ownership ADR wire path §3).
+      // Default OFF: httpPort defaults to 0, and this daemon only ever
+      // constructs a listener when the operator sets it explicitly. Every
+      // /rpc and /api/* request runs through the exact same dispatchRpc as
+      // the Unix socket (see http-gateway.ts).
+      let httpGateway: HttpGateway | null = null;
+      if (cfg.httpPort) {
+        httpGateway = new HttpGateway({
+          port: cfg.httpPort,
+          host: cfg.httpHost,
+          staticDir: cfg.httpStaticDir,
+          db,
+          secretPath: join(cfg.dataDir, 'gateway-pairing-secret'),
+        });
+        try {
+          await httpGateway.initAuth();
+          await httpGateway.start();
+          log.info('http gateway listening', {
+            host: cfg.httpHost,
+            port: httpGateway.getPort(),
+          });
+        } catch (err) {
+          reject(err);
+          return;
+        }
+      }
+
       resolve({
         _db: db,
+        _httpGateway: httpGateway,
         close: async () => {
           // Sequence:
           //   1. Set _closing FIRST so any RPC arriving on an existing
@@ -2318,6 +2347,7 @@ export async function startDaemon(
           if (pruneTimer) clearInterval(pruneTimer);
           clearInterval(nonceSweepTimer);
           clearInterval(licenseRecheckTimer);
+          if (httpGateway) await httpGateway.stop();
           server.close();
           for (const s of openSockets) {
             s.destroy();
