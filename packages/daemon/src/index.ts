@@ -7,9 +7,12 @@
  *
  * Transport:
  *   - Local: Unix socket (~/.local/share/revealui/harness.sock)
- *   - Remote (optional): the @revealui/harnesses HTTP gateway with
- *     fail-closed challenge-response pairing (GET/POST /api/pair) — not
- *     served by this package; Studio pairs against that gateway when remote.
+ *   - Remote (optional, off by default): an in-process HTTP gateway with
+ *     fail-closed challenge-response pairing (GET/POST /api/pair). Ported
+ *     from `@revealui/harnesses` `server/http-gateway.ts` into this package
+ *     (GAP-421 daemon-ownership ADR) — every /rpc and /api/* request runs
+ *     through the same `dispatchRpc` authorization path as the socket.
+ *     Configure `httpPort` (0 = disabled, the default) to enable it.
  *   - Protocol: JSON-RPC 2.0 over newline-delimited JSON
  *
  * License: FSL-1.1-MIT (converts to MIT after 2 years)
@@ -25,8 +28,21 @@ export {
   type RpcGuardResult,
   refreshLicense,
 } from './guard.js';
+export {
+  HttpGateway,
+  type HttpGatewayConfig,
+  isPreAuthRoute,
+  PRE_AUTH_ROUTES,
+} from './http-gateway.js';
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
-export { listRegisteredMethods, registerHandler, startDaemon } from './server.js';
+export {
+  dispatchRpc,
+  listRegisteredMethods,
+  type RpcRequest,
+  type RpcResponse,
+  registerHandler,
+  startDaemon,
+} from './server.js';
 export {
   evaluateToolAction,
   type GuardVerdict,

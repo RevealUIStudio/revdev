@@ -43,6 +43,7 @@ import {
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { requireRootAndDir } from './filegit.js';
 import { getDaemonConfig, registerHandler, type SocketContext } from './server.js';
+import { agentEvents } from './spawn-events.js';
 import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
@@ -103,6 +104,10 @@ function bufferOutput(db: PGlite, processId: string, chunk: string): void {
   ).catch((err: unknown) => {
     log.warn('output buffer write failed', { processId, seq, error: String(err) });
   });
+  // Push feed for the HTTP gateway's SSE endpoint (GAP-421 wire path §4).
+  // The DB row above remains the source of truth for poll-based agent.output;
+  // this is purely additive.
+  agentEvents.emitOutput({ processId, stream: 'stdout', data: chunk });
 }
 
 /**
@@ -119,6 +124,7 @@ function markExited(db: PGlite, processId: string, exitCode: number | null): voi
   ).catch((err: unknown) => {
     log.warn('process exit DB update failed', { processId, error: String(err) });
   });
+  agentEvents.emitExit({ processId, code: exitCode });
 }
 
 // ---------------------------------------------------------------------------
