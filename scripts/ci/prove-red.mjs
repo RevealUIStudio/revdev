@@ -42,23 +42,37 @@
 // Zero authored regex (fleet rule): path classification is suffix/substring
 // membership only.
 //
-// Two exemption paths (GAP-393):
+// Two exemption paths (GAP-393; fork-hardened + test-locked in the GAP-393
+// review remediation, see prove-red-lib.mjs and prove-red-lib.test.mjs):
 //   - Promotion skip: a test -> main promotion PR carries both a feature's fix
 //     and its test together, so the test passes against main's base — the
 //     red-first proof already happened on the constituent feature PR. The
-//     workflow `if:` conditions skip these jobs entirely (no checkout); the
+//     workflow `if:` conditions skip these jobs entirely (no checkout), and
+//     additionally require the PR's head repo to equal the base repo so a
+//     fork cannot pass the skip merely by naming a branch "test". The
 //     early-exit below is defense-in-depth for any invocation that reaches
-//     this script anyway.
+//     this script anyway: it re-checks the same same-repo signal via
+//     PR_HEAD_REPO/PR_BASE_REPO before skipping, and fails CLOSED (does not
+//     skip) if that signal isn't present.
 //   - Label exemption: a genuine behavior-preserving change (e.g. a
 //     config/test-infra refactor) has no failing-first test by construction.
 //     The `verify:no-behavior-change` label, applied by a non-author
 //     reviewer (convention-enforced until identity separation exists — the
 //     fleet currently runs a solo GitHub account), records that judgment and
-//     clears the gate.
+//     clears the gate. Labels arrive as a JSON array (not a comma-joined
+//     string), which stays lossless regardless of what characters a label
+//     name allows.
+//
+// Both exemption skips are evaluated before the BASE_REF guard below (they
+// must apply to any invocation reaching this script, including one where
+// BASE_REF was never wired), and both emit a `::notice::` (plus a
+// $GITHUB_STEP_SUMMARY line when available) so the exemption is visible
+// outside raw job logs.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
+import { hasExemptLabel, isForkSafePromotionSkip, parseLabels } from './prove-red-lib.mjs';
 
 const REPO_ROOT = process.cwd();
 
@@ -184,8 +198,24 @@ function fail(msg) {
   process.exit(1);
 }
 
-function skip(msg) {
+// `notice: true` additionally surfaces the skip as a GitHub Actions
+// `::notice::` annotation and (when running under Actions) a
+// $GITHUB_STEP_SUMMARY line, so an exemption is visible without opening raw
+// job logs — otherwise this check renders as a plain green pass identical to
+// a PR that actually proved red.
+function skip(msg, { notice = false } = {}) {
   console.log(`\n○ prove-red: ${msg}. Gate does not apply.`);
+  if (notice) {
+    console.log(`::notice title=Prove-Red exempted::${msg}`);
+    const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+    if (summaryPath) {
+      try {
+        appendFileSync(summaryPath, `\n**Prove-Red exempted:** ${msg}\n`);
+      } catch {
+        // best-effort; a summary write failure must not fail the gate
+      }
+    }
+  }
   process.exit(0);
 }
 
@@ -314,27 +344,41 @@ const LANGS = {
 
 // --- main ------------------------------------------------------------------
 
-const baseRef = process.env.BASE_REF || process.env.BASE_SHA;
-if (!baseRef) fail('BASE_REF is not set (pass the PR base sha).');
-
-// --- promotion skip (GAP-393) -----------------------------------------------
+// --- promotion skip (GAP-393, fork-hardened) --------------------------------
 // GITHUB_HEAD_REF / GITHUB_BASE_REF are branch names GitHub Actions sets for
-// every pull_request-triggered job; no extra wiring needed.
-if (process.env.GITHUB_HEAD_REF === 'test' && process.env.GITHUB_BASE_REF === 'main') {
-  skip('promotion PR (test -> main) — red-first proofs happened on constituent feature PRs');
+// every pull_request-triggered job. PR_HEAD_REPO / PR_BASE_REPO are wired
+// explicitly by the workflow (github.event.pull_request.head.repo.full_name /
+// github.repository) — the same same-repo signal the workflow-level `if:`
+// already requires — so this early-exit cannot be tricked by a fork naming a
+// branch "test". Evaluated before the BASE_REF guard below: it must apply to
+// any invocation that reaches this script, including one where BASE_REF was
+// never wired.
+if (
+  isForkSafePromotionSkip({
+    headRef: process.env.GITHUB_HEAD_REF,
+    baseRef: process.env.GITHUB_BASE_REF,
+    headRepo: process.env.PR_HEAD_REPO,
+    baseRepo: process.env.PR_BASE_REPO,
+  })
+) {
+  skip('promotion PR (test -> main) — red-first proofs happened on constituent feature PRs', {
+    notice: true,
+  });
 }
 
 // --- label exemption (GAP-393) ----------------------------------------------
-const prLabels = (process.env.PR_LABELS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-if (prLabels.includes('verify:no-behavior-change')) {
+// Also evaluated before the BASE_REF guard, for the same reason as above.
+const prLabels = parseLabels(process.env.PR_LABELS);
+if (hasExemptLabel(prLabels, 'verify:no-behavior-change')) {
   skip(
     "PR carries the 'verify:no-behavior-change' label — recorded non-author exemption " +
       'for a behavior-preserving change',
+    { notice: true },
   );
 }
+
+const baseRef = process.env.BASE_REF || process.env.BASE_SHA;
+if (!baseRef) fail('BASE_REF is not set (pass the PR base sha).');
 
 const ALL_LANGS = Object.keys(LANGS);
 const requested = (process.env.PROVE_RED_LANGS || ALL_LANGS.join(','))
