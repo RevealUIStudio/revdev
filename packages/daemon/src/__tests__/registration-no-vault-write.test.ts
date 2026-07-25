@@ -1,16 +1,17 @@
 /**
- * Identity vault-mirror warn dedup — the daemon-noise heartbeat fix.
+ * Registration performs ZERO revvault writes — GAP-409 D1 regression guard.
  *
- * Session-keyed identities (GAP-311) mint a fresh keypair on every session
- * registration, and each registration mirrors it to revvault. On a machine
- * where the revvault CLI is not on the daemon's PATH (the systemd-user unit),
- * every registration used to emit the same
- * "revvault private/public key write failed, reason: cli-not-installed" warn
- * pair — one pair per heartbeat/session cycle, forever.
+ * The daemon-minted identity path used to mirror every fresh keypair into
+ * revvault (`revdev/agents/<id>/identity/*`). Session-keyed identities
+ * (GAP-311) made that mirror inverted — ephemeral per-session keys
+ * accumulating in a durable vault — and any test or dogfood run on a shell
+ * with the revvault CLI on PATH polluted the PRODUCTION secret store (the
+ * ~33 stray `revdev/agents/*` entries found at the GAP-409 D6 sweep).
  *
- * `cli-not-installed` is environmental, not per-agent: warn once per daemon
- * lifetime, then skip further vault-write attempts until restart. Real
- * `cli-failure` results keep their per-agent warns.
+ * The write path is deleted, not made quieter (this file previously guarded
+ * the revdev#318 warn-once dedup of that path's missing-CLI noise). This
+ * guard asserts the daemon never calls revvaultSet — and never logs a vault
+ * warn — across repeated session registrations.
  *
  * @vitest-environment node
  */
@@ -40,8 +41,9 @@ vi.mock('@revealui/utils/logger', async (importActual) => {
   return { ...actual, createLogger: () => stub() };
 });
 
-// Force the environmental failure deterministically (and keep the suite from
-// ever spawning a real `revvault set` on a developer machine).
+// Spy on the vault write entry point. Post GAP-409 D1 it must NEVER be
+// called from the daemon; the mock both proves that and keeps any regression
+// from spawning a real `revvault set` against the production store.
 const { revvaultSetMock } = vi.hoisted(() => ({
   revvaultSetMock: vi.fn(async () => ({
     ok: false as const,
@@ -119,30 +121,31 @@ afterAll(async () => {
   clearTestLicenseEnv();
 });
 
-describe('revvault cli-not-installed warn dedup', () => {
-  it('warns once across repeated session registrations, then skips vault writes', async () => {
+describe('registration performs zero revvault writes (GAP-409 D1)', () => {
+  it('never calls revvaultSet and never logs a vault warn across registrations', async () => {
+    const one = (await rpc(socketPath, 'session.register', {
+      agentName: 'novault-one',
+      workDir: '/tmp/novault-one',
+      backend: 'test',
+    })) as { privateKeyPem?: string };
     await rpc(socketPath, 'session.register', {
-      agentName: 'noisy-one',
-      workDir: '/tmp/noisy-one',
+      agentName: 'novault-two',
+      workDir: '/tmp/novault-two',
       backend: 'test',
     });
     await rpc(socketPath, 'session.register', {
-      agentName: 'noisy-two',
-      workDir: '/tmp/noisy-two',
-      backend: 'test',
-    });
-    await rpc(socketPath, 'session.register', {
-      agentName: 'noisy-three',
-      workDir: '/tmp/noisy-three',
+      agentName: 'novault-three',
+      workDir: '/tmp/novault-three',
       backend: 'test',
     });
 
+    // The one-shot key still comes back on first mint — removal of the
+    // mirror must not touch the client contract (D2).
+    expect(one.privateKeyPem).toContain('PRIVATE KEY');
+
+    // The mirror is gone: no vault write attempt, no vault warn, ever.
+    expect(revvaultSetMock).not.toHaveBeenCalled();
     const vaultWarns = warnCalls.filter((c) => c.msg.includes('revvault'));
-    expect(vaultWarns).toHaveLength(1);
-    expect(vaultWarns[0]?.msg).toContain('suppressing further warnings');
-
-    // First registration attempts the private-key write, hits the missing
-    // CLI, and no further spawn is attempted for it or any later session.
-    expect(revvaultSetMock).toHaveBeenCalledTimes(1);
+    expect(vaultWarns).toHaveLength(0);
   });
 });
