@@ -57,3 +57,42 @@ export function isForkSafePromotionSkip({ headRef, baseRef, headRepo, baseRepo }
   if (!headRepo || !baseRepo) return false;
   return headRepo === baseRepo;
 }
+
+// True when a changed test file's nearest owning `package.json` is the repo
+// ROOT one, not a workspace member's. `pnpm-workspace.yaml` scopes to
+// `apps/*` and `packages/*`, so the root package (name "revdev") is not a
+// pnpm workspace project.
+export function isWorkspaceRootPackage(pkgDir, repoRoot) {
+  return pkgDir === repoRoot;
+}
+
+// Resolves the command to run a changed TypeScript/vitest test file, given
+// its owning package (GAP-393 review remediation,
+// https://github.com/RevealUIStudio/revdev/pull/327#issuecomment-5080489570).
+// A workspace-member package routes through `pnpm --filter <name>`. The
+// workspace ROOT package does not: `pnpm --filter revdev exec vitest ...`
+// matches no project, prints "No projects matched the filters", and EXITS 0
+// — which the gate would otherwise silently score as a passing test that
+// never ran. Route root-owned test files (e.g. scripts/**) through a
+// root-level `pnpm exec` instead, which resolves via the root
+// `vitest.config.mjs`.
+export function typescriptRunArgs({ pkgDir, pkgName, repoRoot, relFile }) {
+  if (isWorkspaceRootPackage(pkgDir, repoRoot)) {
+    return { cmd: 'pnpm', args: ['exec', 'vitest', 'run', '--no-coverage', relFile] };
+  }
+  return {
+    cmd: 'pnpm',
+    args: ['--filter', pkgName, 'exec', 'vitest', 'run', '--no-coverage', relFile],
+  };
+}
+
+// A command whose OUTPUT says it did no work must not be scored as green
+// evidence. Mirrors runCmd's existing "a missing toolchain is an ENVIRONMENT
+// error, not a red" rule one function up: the same worthless-evidence class,
+// just the "ran nothing" shape instead of the "couldn't run at all" shape.
+// Substring match only (zero authored regex, fleet rule).
+const NO_WORK_DONE_MARKERS = ['No projects matched the filters'];
+export function indicatesNoWorkDone(output) {
+  if (!output) return false;
+  return NO_WORK_DONE_MARKERS.some((marker) => output.includes(marker));
+}

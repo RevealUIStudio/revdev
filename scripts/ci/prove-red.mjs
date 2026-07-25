@@ -17,7 +17,10 @@
 //
 // Coverage unit per language — stated honestly, because the granularity differs:
 //   - TypeScript/vitest — the test FILE. Each changed `*.test.ts` runs via
-//     `pnpm --filter <pkg> exec vitest run <file>` against reverted source.
+//     `pnpm --filter <pkg> exec vitest run <file>` against reverted source, or
+//     via a filter-less root-level `pnpm exec vitest run <file>` when the
+//     file's owning package is the workspace ROOT (not a pnpm workspace
+//     member — GAP-393 review remediation, see prove-red-lib.mjs).
 //   - Go/`go test` — the PACKAGE. `go test` compiles and runs a whole package;
 //     a single test FILE cannot be run in isolation (its funcs share the
 //     package's other files). So a changed `*_test.go` is proven at package
@@ -72,7 +75,14 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { hasExemptLabel, isForkSafePromotionSkip, parseLabels } from './prove-red-lib.mjs';
+import {
+  hasExemptLabel,
+  indicatesNoWorkDone,
+  isForkSafePromotionSkip,
+  isWorkspaceRootPackage,
+  parseLabels,
+  typescriptRunArgs,
+} from './prove-red-lib.mjs';
 
 const REPO_ROOT = process.cwd();
 
@@ -219,13 +229,27 @@ function skip(msg, { notice = false } = {}) {
   process.exit(0);
 }
 
-// Run a test command; return its exit code (0 = green, non-zero = red). A
-// missing toolchain is an ENVIRONMENT error, not a red — it must fail the gate
-// loudly rather than be miscounted as failing-first evidence.
+// Run a test command; return its exit code (0 = green, non-zero = red). Two
+// shapes are ENVIRONMENT errors, not a red, and must fail the gate loudly
+// rather than be miscounted as evidence either way:
+//   - A missing toolchain (ENOENT).
+//   - A command that ran but did no work (e.g. `pnpm --filter` matching no
+//     project prints "No projects matched the filters" and exits 0 — that
+//     would otherwise be scored as a passing test that never ran; GAP-393
+//     review remediation, https://github.com/RevealUIStudio/revdev/pull/327
+//     #issuecomment-5080489570).
+// Output is captured (not streamed via `stdio: 'inherit'`) so it can be
+// inspected for the no-work-done marker; it is still printed in full, just
+// after the command completes rather than live.
 function runCmd(file, args, opts) {
+  let output = '';
   try {
-    execFileSync(file, args, { stdio: 'inherit', ...opts });
-    return 0;
+    output = execFileSync(file, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 64 * 1024 * 1024,
+      ...opts,
+    });
   } catch (e) {
     if (e && e.code === 'ENOENT') {
       fail(
@@ -233,8 +257,22 @@ function runCmd(file, args, opts) {
           'Install it or scope the run with PROVE_RED_LANGS.',
       );
     }
+    const stdout = e && typeof e.stdout === 'string' ? e.stdout : '';
+    const stderr = e && typeof e.stderr === 'string' ? e.stderr : '';
+    if (stdout) process.stdout.write(stdout);
+    if (stderr) process.stderr.write(stderr);
     return typeof e.status === 'number' ? e.status : 1;
   }
+  process.stdout.write(output);
+  if (indicatesNoWorkDone(output)) {
+    fail(
+      `\`${file} ${args.join(' ')}\` matched no runnable project and did no work. This would ` +
+        'otherwise be silently scored as PASSED-against-base evidence. Fix the target so it ' +
+        "actually runs (see planTypescript's root-package routing) rather than let a no-op " +
+        'count as a test result.',
+    );
+  }
+  return 0;
 }
 
 // --- per-language run plans -------------------------------------------------
@@ -253,14 +291,18 @@ function planTypescript(tests) {
     byPackage.get(pkg.name).files.push(relative(pkg.dir, abs));
   }
   const units = [];
-  for (const [name, { files }] of byPackage) {
+  for (const [name, { dir, files }] of byPackage) {
+    const isRoot = isWorkspaceRootPackage(dir, REPO_ROOT);
     for (const file of files) {
+      const { cmd, args } = typescriptRunArgs({
+        pkgDir: dir,
+        pkgName: name,
+        repoRoot: REPO_ROOT,
+        relFile: file,
+      });
       units.push({
-        label: `${name} :: ${file}`,
-        exec: () =>
-          runCmd('pnpm', ['--filter', name, 'exec', 'vitest', 'run', '--no-coverage', file], {
-            cwd: REPO_ROOT,
-          }),
+        label: isRoot ? `${name} (root, not a workspace member) :: ${file}` : `${name} :: ${file}`,
+        exec: () => runCmd(cmd, args, { cwd: REPO_ROOT }),
       });
     }
   }

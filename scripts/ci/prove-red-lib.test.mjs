@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { hasExemptLabel, isForkSafePromotionSkip, parseLabels } from './prove-red-lib.mjs';
+import {
+  hasExemptLabel,
+  indicatesNoWorkDone,
+  isForkSafePromotionSkip,
+  isWorkspaceRootPackage,
+  parseLabels,
+  typescriptRunArgs,
+} from './prove-red-lib.mjs';
 
 // Regression lock for the GAP-393 review remediation
-// (https://github.com/RevealUIStudio/revdev/pull/325#issuecomment-5080422951):
+// (https://github.com/RevealUIStudio/revdev/pull/325#issuecomment-5080422951,
+// https://github.com/RevealUIStudio/revdev/pull/327#issuecomment-5080489570):
 // exact-match label semantics, a JSON-array PR_LABELS transport that never
-// throws on malformed/absent input, and a promotion-skip predicate that fires
-// only for a same-repo test -> main PR and fails closed otherwise.
+// throws on malformed/absent input, a promotion-skip predicate that fires
+// only for a same-repo test -> main PR and fails closed otherwise, and the
+// TypeScript planner's root-vs-workspace-member routing plus the
+// no-work-done detector that catches a silently-scored no-op filter match.
 
 describe('parseLabels', () => {
   it('parses a JSON array of label names', () => {
@@ -161,5 +171,106 @@ describe('isForkSafePromotionSkip', () => {
         baseRepo: SAME_REPO,
       }),
     ).toBe(false);
+  });
+});
+
+// GAP-393 review remediation follow-up (#327): planTypescript resolved a
+// root-owned test file's package to "revdev", which is not a pnpm workspace
+// member (pnpm-workspace.yaml scopes to apps/*, packages/*). `pnpm --filter
+// revdev exec vitest ...` matches nothing, prints "No projects matched the
+// filters", and exits 0 — silently scored as a passing test that never ran.
+describe('isWorkspaceRootPackage', () => {
+  const REPO_ROOT = '/home/runner/work/revdev/revdev';
+
+  it('is true when the package dir is the repo root', () => {
+    expect(isWorkspaceRootPackage(REPO_ROOT, REPO_ROOT)).toBe(true);
+  });
+
+  it('is false for a workspace-member package dir', () => {
+    expect(isWorkspaceRootPackage(`${REPO_ROOT}/packages/daemon`, REPO_ROOT)).toBe(false);
+  });
+});
+
+describe('typescriptRunArgs', () => {
+  const REPO_ROOT = '/home/runner/work/revdev/revdev';
+
+  it('routes a workspace-member package through `pnpm --filter <name>`', () => {
+    expect(
+      typescriptRunArgs({
+        pkgDir: `${REPO_ROOT}/packages/daemon`,
+        pkgName: '@revdev/daemon',
+        repoRoot: REPO_ROOT,
+        relFile: 'src/foo.test.ts',
+      }),
+    ).toEqual({
+      cmd: 'pnpm',
+      args: [
+        '--filter',
+        '@revdev/daemon',
+        'exec',
+        'vitest',
+        'run',
+        '--no-coverage',
+        'src/foo.test.ts',
+      ],
+    });
+  });
+
+  it('routes the workspace ROOT package through a filter-less root-level `pnpm exec`', () => {
+    expect(
+      typescriptRunArgs({
+        pkgDir: REPO_ROOT,
+        pkgName: 'revdev',
+        repoRoot: REPO_ROOT,
+        relFile: 'scripts/ci/prove-red-lib.test.mjs',
+      }),
+    ).toEqual({
+      cmd: 'pnpm',
+      args: ['exec', 'vitest', 'run', '--no-coverage', 'scripts/ci/prove-red-lib.test.mjs'],
+    });
+  });
+
+  it('the root-level args never contain --filter, regardless of package name', () => {
+    const { args } = typescriptRunArgs({
+      pkgDir: REPO_ROOT,
+      pkgName: 'revdev',
+      repoRoot: REPO_ROOT,
+      relFile: 'scripts/x.test.mjs',
+    });
+    expect(args.includes('--filter')).toBe(false);
+  });
+});
+
+describe('indicatesNoWorkDone', () => {
+  it('detects the pnpm no-match-filter message', () => {
+    expect(
+      indicatesNoWorkDone('No projects matched the filters in "/home/runner/work/revdev/revdev"\n'),
+    ).toBe(true);
+  });
+
+  it('detects the marker as a substring within larger output', () => {
+    expect(
+      indicatesNoWorkDone(
+        'some preamble\nNo projects matched the filters in "..."\nsome trailer\n',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not fire on real vitest passing output', () => {
+    expect(indicatesNoWorkDone('Test Files  1 passed (1)\n     Tests  21 passed (21)\n')).toBe(
+      false,
+    );
+  });
+
+  it('does not fire on real vitest failing output', () => {
+    expect(
+      indicatesNoWorkDone('Test Files  1 failed (1)\n     Tests  1 failed | 20 passed\n'),
+    ).toBe(false);
+  });
+
+  it('does not throw and returns false for empty or absent output', () => {
+    expect(() => indicatesNoWorkDone('')).not.toThrow();
+    expect(indicatesNoWorkDone('')).toBe(false);
+    expect(indicatesNoWorkDone(undefined)).toBe(false);
   });
 });
