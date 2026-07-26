@@ -11,17 +11,19 @@
  * Emergency rotation: --emergency --reason "<why>" rotates immediately
  * regardless of remaining time (laptop theft, vault anomaly, key exposure …).
  *
- * Designed to run unattended on a weekly systemd-user timer
- * (systemd/revdev-license-rotation.{service,timer}).
+ * MANUAL TOOL (GAP-437 ruling, owner 2026-07-26): the weekly systemd timer
+ * was retired — the founder license is perpetual-manual (calendar runs
+ * no-op on a perpetual key: shouldRotate returns false for a null exp).
+ * Run this on demand; --emergency deliberately mints an EXPIRING
+ * replacement (default 90 days) so a leak response bounds the new key.
  *
- *   # founder license, calendar rotation (no-op unless within 14d of expiry)
+ *   # calendar rotation of an expiring customer key (no-op outside 14d window)
  *   npx tsx scripts/rotate-license.ts \
- *     --vault-path revdev/licenses/founder-jwt --tier enterprise \
- *     --customer RevealUIStudio --days 90
+ *     --vault-path forge/customers/acme/license-key --tier pro \
+ *     --customer acme --days 90
  *
- *   # emergency rotation
- *   npx tsx scripts/rotate-license.ts --vault-path revdev/licenses/founder-jwt \
- *     --tier enterprise --customer RevealUIStudio --days 90 \
+ *   # emergency rotation of the founder key (replaces perpetual with 90-day)
+ *   npx tsx scripts/rotate-license.ts \
  *     --emergency --reason "laptop-theft 2026-05-24"
  *
  * Audit log: every rotation appends a row to $LICENSE_ROTATION_LOG (default
@@ -110,9 +112,13 @@ export function shouldRotate(
 function parseArgs(): RotateConfig {
   const args = process.argv.slice(2);
   const cfg: RotateConfig = {
-    vaultPath: 'revdev/licenses/founder-jwt',
+    // Real founder path (the old default revdev/licenses/founder-jwt never
+    // existed — the argless timer exited 1 on every run before retirement).
+    // Safe target: calendar runs no-op on the perpetual key; only an
+    // explicit --emergency replaces it (with a bounded 90-day key).
+    vaultPath: 'revealui/dev/founder-license-key',
     tier: 'enterprise',
-    customer: 'RevealUIStudio',
+    customer: 'founder',
     days: 90,
     thresholdDays: 14,
     emergency: false,
