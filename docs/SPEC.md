@@ -40,7 +40,7 @@ revdev/
 │   └── theme/                      # @revdev/theme — shared visual tokens
 ├── scripts/
 │   ├── issue-license.ts            # Issue Ed25519-JWT licenses + generate the signing keypair
-│   └── rotate-license.ts           # Calendar + emergency license rotation (paired weekly systemd timer)
+│   └── rotate-license.ts           # Calendar + emergency license rotation (manual, on demand)
 ├── docs/                           # this directory
 └── config/                         # shared config (Biome, TS, etc.)
 ```
@@ -175,7 +175,7 @@ Per `packages/daemon/src/license.ts` + `license-crypto.ts` + `scripts/issue-lice
 - **Acceptance:** perpetual JWT (no `exp`), or non-perpetual with a valid `exp`.
 - **Tiers (whitelist):** `free` / `pro` / `max` / `enterprise`. Feature gating via the daemon's license guard.
 - **Lifecycle:** the daemon warns at 14d/7d/1d before expiry and **fails closed** (refuses to start) on a present-but-expired license. `REVDEV_LICENSE_PUBLIC_KEY` or `REVDEV_LICENSE_PUBLIC_KEY_FILE` supplies the verifier key; customers set their license as `REVEALUI_LICENSE_KEY`.
-- **Keys:** the signing keypair lives in the vault at `revdev/license-signing-{private,public}-key` (canonical since 2026-06-10 — the older single-path name is retired). Generation + rotation runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) and `scripts/rotate-license.ts` (weekly timer; calendar + emergency modes).
+- **Keys:** the signing keypair lives in the vault at `revdev/license-signing-{private,public}-key` (canonical since 2026-06-10; the older single-path name is retired). Generation + rotation runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) and `scripts/rotate-license.ts`, the manual on-demand tool with calendar and emergency modes. The weekly timer was retired 2026-07-26 under the perpetual-manual policy.
 
 ### License principals — founder vs customer
 
@@ -194,7 +194,7 @@ Tier is the pricing axis; principal type is orthogonal — staff-ness is **not**
 |---|---|---|
 | `revdev-daemon` | `packages/daemon/dist/cli.js` | Daemon process; `--detach` flag; systemd installer via `setup:systemd` |
 | `issue-license` | `scripts/issue-license.ts` | `--generate-keypair` (first-time setup, vault-stores both halves) and `--tier <T> [--customer N] [--days N | --perpetual]` (issue an Ed25519 JWT) |
-| `rotate-license` | `scripts/rotate-license.ts` | Calendar/emergency rotation; paired weekly systemd timer |
+| `rotate-license` | `scripts/rotate-license.ts` | Calendar/emergency rotation; manual, on demand (timer retired 2026-07-26) |
 | Console | `apps/console` (Go binary, `rvui`) | SSH TUI ops cockpit |
 
 ---
