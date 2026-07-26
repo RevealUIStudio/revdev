@@ -50,6 +50,9 @@ interface RotateConfig {
   tier: 'pro' | 'max' | 'enterprise';
   customer?: string;
   days: number;
+  /** Mint the replacement without an expiry — the return path to a perpetual
+   * key after an emergency rotation. */
+  perpetual: boolean;
   thresholdDays: number;
   emergency: boolean;
   reason?: string;
@@ -120,6 +123,7 @@ function parseArgs(): RotateConfig {
     tier: 'enterprise',
     customer: 'founder',
     days: 90,
+    perpetual: false,
     thresholdDays: 14,
     emergency: false,
     auditLogPath:
@@ -144,6 +148,9 @@ function parseArgs(): RotateConfig {
       case '--threshold-days':
         cfg.thresholdDays = Number.parseInt(args[++i] ?? '', 10) || cfg.thresholdDays;
         break;
+      case '--perpetual':
+        cfg.perpetual = true;
+        break;
       case '--emergency':
         cfg.emergency = true;
         break;
@@ -160,10 +167,12 @@ Usage:
 
 Options:
   --vault-path <path>     revvault path of the license to rotate
-                          (default: revdev/licenses/founder-jwt)
+                          (default: revealui/dev/founder-license-key)
   --tier <pro|max|enterprise>   tier for the replacement (default: enterprise)
-  --customer <name>       customer id for the replacement (default: RevealUIStudio)
+  --customer <name>       customer id for the replacement (default: founder)
   --days <n>              expiry of the replacement, in days (default: 90)
+  --perpetual             mint the replacement without an expiry — the return
+                          path to a perpetual key after an emergency rotation
   --threshold-days <n>    rotate when within N days of expiry (default: 14)
   --emergency             rotate now regardless of remaining time
   --reason "<why>"        required with --emergency; recorded in the audit log
@@ -266,7 +275,12 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const newJwt = issueLicense({ tier: cfg.tier, customer: cfg.customer, days: cfg.days });
+  const newJwt = issueLicense({
+    tier: cfg.tier,
+    customer: cfg.customer,
+    days: cfg.days,
+    perpetual: cfg.perpetual,
+  });
   revvaultSet(cfg.vaultPath, newJwt);
   const next = decodeLicense(newJwt);
 

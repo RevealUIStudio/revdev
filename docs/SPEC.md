@@ -175,7 +175,7 @@ Per `packages/daemon/src/license.ts` + `license-crypto.ts` + `scripts/issue-lice
 - **Acceptance:** perpetual JWT (no `exp`), or non-perpetual with a valid `exp`.
 - **Tiers (whitelist):** `free` / `pro` / `max` / `enterprise`. Feature gating via the daemon's license guard.
 - **Lifecycle:** the daemon warns at 14d/7d/1d before expiry and **fails closed** (refuses to start) on a present-but-expired license. `REVDEV_LICENSE_PUBLIC_KEY` or `REVDEV_LICENSE_PUBLIC_KEY_FILE` supplies the verifier key; customers set their license as `REVEALUI_LICENSE_KEY`.
-- **Keys:** the signing keypair lives in the vault at `revdev/license-signing-{private,public}-key` (canonical since 2026-06-10 — the older single-path name is retired). Generation + rotation runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) and `scripts/rotate-license.ts` (manual on-demand tool; calendar + emergency modes. The weekly timer was retired 2026-07-26 under the perpetual-manual policy).
+- **Keys:** the signing keypair lives in the vault at `revdev/license-signing-{private,public}-key` (canonical since 2026-06-10; the older single-path name is retired). Generation + rotation runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) and `scripts/rotate-license.ts`, the manual on-demand tool with calendar and emergency modes. The weekly timer was retired 2026-07-26 under the perpetual-manual policy.
 
 ### License principals — founder vs customer
 

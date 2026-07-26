@@ -76,9 +76,7 @@ echo "If on WSL and you want survival across logouts: sudo loginctl enable-linge
 # manual calendar/emergency tool. The weekly timer had never fired
 # successfully (dead default vault path) and would no-op against a perpetual
 # key. Clean up any units a previous install left behind.
-if systemctl --user list-unit-files revdev-license-rotation.timer >/dev/null 2>&1; then
-  systemctl --user disable --now revdev-license-rotation.timer 2>/dev/null || true
-fi
+systemctl --user disable --now revdev-license-rotation.timer 2>/dev/null || true
 rm -f "$UNIT_DIR/revdev-license-rotation.service" "$UNIT_DIR/revdev-license-rotation.timer"
 systemctl --user daemon-reload
 echo
