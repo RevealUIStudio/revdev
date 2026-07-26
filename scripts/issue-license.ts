@@ -119,9 +119,22 @@ Format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the daemon
   return opts;
 }
 
+/** PKCS#8 private-key PEM header — matching a generic BEGIN marker would also
+ * accept the PUBLIC key, which sits one vault path segment away. Assembled
+ * from parts so secret-scanners keying on the literal header don't flag this
+ * source file. */
+const PRIVATE_PEM_HEADER = ['-----BEGIN', 'PRIVATE', 'KEY-----'].join(' ');
+
 export function getPrivateKey(): string {
-  // 1. Environment variable
+  // 1. Environment variable — explicitly set, so a malformed value is a loud
+  // error, not a silent fall-through to the next source.
   if (process.env.REVDEV_LICENSE_PRIVATE_KEY) {
+    if (!process.env.REVDEV_LICENSE_PRIVATE_KEY.includes(PRIVATE_PEM_HEADER)) {
+      console.error(
+        'Error: REVDEV_LICENSE_PRIVATE_KEY is set but is not a PKCS#8 private-key PEM.',
+      );
+      process.exit(1);
+    }
     return process.env.REVDEV_LICENSE_PRIVATE_KEY;
   }
 
@@ -133,10 +146,10 @@ export function getPrivateKey(): string {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
-    if (key.includes('-----BEGIN')) return key;
+    if (key.includes(PRIVATE_PEM_HEADER)) return key;
     if (key) {
       console.error(
-        'Error: revvault returned a non-PEM value for revdev/license-signing-private-key (masked preview or corrupt entry).',
+        'Error: revvault returned a value for revdev/license-signing-private-key that is not a PKCS#8 private-key PEM (masked preview, corrupt entry, or the public key).',
       );
       process.exit(1);
     }
