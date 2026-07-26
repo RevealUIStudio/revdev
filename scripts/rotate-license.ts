@@ -176,7 +176,9 @@ Env:
 
 function readCurrentLicense(vaultPath: string): string {
   try {
-    return execFileSync('revvault', ['get', vaultPath], {
+    // `get --full`: plain `get` returns a masked preview, not the value
+    // (same defect class as issue-license getPrivateKey, fixed 2026-07-26).
+    return execFileSync('revvault', ['get', '--full', vaultPath], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
