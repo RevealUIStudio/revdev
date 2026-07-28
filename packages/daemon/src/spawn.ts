@@ -43,6 +43,7 @@ import {
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { requireRootAndDir } from './filegit.js';
 import { getDaemonConfig, registerHandler, type SocketContext } from './server.js';
+import { agentEvents, issueStreamTicket } from './spawn-events.js';
 import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
@@ -103,6 +104,10 @@ function bufferOutput(db: PGlite, processId: string, chunk: string): void {
   ).catch((err: unknown) => {
     log.warn('output buffer write failed', { processId, seq, error: String(err) });
   });
+  // Push feed for the HTTP gateway's SSE endpoint (GAP-421 wire path §4).
+  // The DB row above remains the source of truth for poll-based agent.output;
+  // this is purely additive.
+  agentEvents.emitOutput({ processId, stream: 'stdout', data: chunk });
 }
 
 /**
@@ -119,6 +124,7 @@ function markExited(db: PGlite, processId: string, exitCode: number | null): voi
   ).catch((err: unknown) => {
     log.warn('process exit DB update failed', { processId, error: String(err) });
   });
+  agentEvents.emitExit({ processId, code: exitCode });
 }
 
 // ---------------------------------------------------------------------------
@@ -590,4 +596,34 @@ registerHandler('agent.output', async (params, db, ctx) => {
     cursor: nextCursor,
     status: proc.status,
   };
+});
+
+/**
+ * agent.streamTicket — mint a short-lived, single-use ticket authorizing
+ * `GET /api/stream/:processId` (GAP-421 guardrail-2 remediation, B1).
+ *
+ * The HTTP gateway's bearer token is a transport credential, not a
+ * principal: it does not carry an Ed25519 signature or prove PTY
+ * ownership. This handler re-runs the EXACT same ownership check
+ * `agent.output` uses (`owner_agent === callerAgentId`) before minting a
+ * ticket, so `/api/stream` inherits the same signature + identity +
+ * ownership gates as every other read of this content, just resolved once
+ * at subscribe time instead of per-poll.
+ */
+registerHandler('agent.streamTicket', async (params, db, ctx) => {
+  const callerAgentId = requireAgent(ctx, params);
+  const processId = stringParam(params, 'processId');
+  if (!processId) throw new Error('agent.streamTicket: missing processId');
+
+  const procRow = await db.query<{ owner_agent: string }>(
+    `SELECT owner_agent FROM agent_processes WHERE id = $1`,
+    [processId],
+  );
+  const proc = procRow.rows[0];
+  if (!proc) throw new Error(`agent.streamTicket: unknown processId ${processId}`);
+  if (proc.owner_agent !== callerAgentId) {
+    throw new Error(`agent.streamTicket: process ${processId} is not owned by caller`);
+  }
+
+  return issueStreamTicket(callerAgentId, processId);
 });

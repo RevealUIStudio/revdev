@@ -7,8 +7,7 @@
  * agent-memory + agent-coordination contracts (see
  * `revealui/packages/contracts/src/agents`,
  * `revealui/packages/db/src/schema/agents.ts`,
- * `revealui/packages/mcp/src/servers/revealui-memory.ts`,
- * `revealui/packages/harnesses/src/server/rpc-server.ts` —
+ * `revealui/packages/mcp/src/servers/revealui-memory.ts` —
  * all use the typed-record framing
  * `memoryType`/`content`/`metadata`, not KV-store `key`/`value`).
  *
@@ -592,6 +591,14 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  // Mints the /api/stream principal ticket (GAP-421 guardrail-2 remediation B1).
+  'agent.streamTicket': z
+    .object({
+      processId: z.string().min(1),
+      actorAgentId,
+    })
+    .passthrough(),
+
   // -- File surface (P0: daemon-owned ext4 I/O) -------------------------------
   // `safePath` already rejects `..` traversal + system roots; the handler
   // additionally realpath-checks every target is a descendant of a registered
@@ -742,6 +749,14 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       approvalId: z.string().min(1).max(MAX_NAME_LENGTH),
       verdict: z.enum(['approved', 'denied']),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  // -- HTTP gateway token management (GAP-421 guardrail-2 remediation S5) -----
+  'gateway.revokeToken': z
+    .object({
+      token: z.string().min(1),
       actorAgentId,
     })
     .passthrough(),

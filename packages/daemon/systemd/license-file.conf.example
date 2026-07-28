@@ -26,14 +26,14 @@
 #     service and torn down on stop; the ExecStopPost shred is belt-and-braces.
 #   - If `revvault get ... --full` writes an empty file (a known quirk inside
 #     some non-interactive shells), use the JSON form instead:
-#       revvault --json get revdev/licenses/founder-jwt | jq -r .value > "$F"
+#       revvault --json get revealui/dev/founder-license-key | jq -r .value > "$F"
 #   - Ensure REVEALUI_LICENSE_KEY is NOT exported in the daemon's environment,
 #     or it will win over this file.
 
 [Service]
 # Materialize the license into the service-private tmpfs at start. umask 077
 # so the file is owner-only.
-ExecStartPre=/bin/sh -c 'umask 077; /usr/local/bin/revvault get revdev/licenses/founder-jwt --full > /tmp/revdev-license.jwt'
+ExecStartPre=/bin/sh -c 'umask 077; /usr/local/bin/revvault get revealui/dev/founder-license-key --full > /tmp/revdev-license.jwt'
 Environment=REVEALUI_LICENSE_KEY_FILE=/tmp/revdev-license.jwt
 
 # Shred the plaintext key on stop (best-effort; PrivateTmp also discards it).

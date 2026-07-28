@@ -57,6 +57,9 @@ const SIGNED = [
   'agent.input',
   'agent.resize',
   'agent.output',
+  // agent.streamTicket mints the /api/stream principal (GAP-421 guardrail-2
+  // remediation B1): signature-required, re-runs the owner_agent check.
+  'agent.streamTicket',
   // agent.list returns another-agent-invisible process metadata and agent.remove
   // kills + prunes; both are self-scoped to the verified signer.
   'agent.list',
@@ -71,6 +74,9 @@ const SIGNED = [
   'permission.decide',
   // Phase 2: operator mode override.
   'permission.setMode',
+  // gateway.revokeToken revokes an HTTP gateway bearer token (GAP-421
+  // guardrail-2 remediation S5).
+  'gateway.revokeToken',
 ];
 
 // Only payload-free, repo-agnostic coordination methods stay signature-OPTIONAL.

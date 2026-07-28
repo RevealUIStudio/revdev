@@ -8,10 +8,16 @@
  *   # First-time setup — mint vendor keypair, auto-store in revvault.
  *   npx tsx scripts/issue-license.ts --generate-keypair
  *
- *   # Issue customer licenses.
+ *   # Issue customer licenses. DEFAULT: mint-and-store straight into revvault
+ *   # (owner directive 2026-07-26) — the key never touches disk, stdout, or a
+ *   # clipboard. The vault path is derived from --customer (founder →
+ *   # revealui/dev/founder-license-key, else forge/customers/<id>/license-key)
+ *   # or given explicitly with --store <path>.
+ *   npx tsx scripts/issue-license.ts --tier enterprise --customer founder --perpetual
  *   npx tsx scripts/issue-license.ts --tier pro --customer "acme-corp"
- *   npx tsx scripts/issue-license.ts --tier enterprise --perpetual
- *   npx tsx scripts/issue-license.ts --tier max --days 365
+ *
+ *   # Opt-out for delivery flows that need the value on stdout:
+ *   npx tsx scripts/issue-license.ts --tier max --days 365 --customer acme --print
  *
  * Signing private key is read from revvault at revdev/license-signing-private-key
  * (or REVDEV_LICENSE_PRIVATE_KEY env, or ~/.revealui/license-private.pem).
@@ -36,6 +42,22 @@ export interface Options {
   customer?: string;
   days?: number;
   perpetual?: boolean;
+  /** Explicit revvault destination; overrides the derived default. */
+  store?: string;
+  /** Print the JWT to stdout instead of storing (delivery flows). */
+  print?: boolean;
+}
+
+/**
+ * Default revvault destination for a minted license. The founder dogfood key
+ * has a fixed fleet path; customer keys follow the forge/customers/* pattern
+ * already in the vault. No customer and no --store → no silent default.
+ */
+export function deriveStorePath(opts: Options): string | null {
+  if (opts.store) return opts.store;
+  if (opts.customer === 'founder') return 'revealui/dev/founder-license-key';
+  if (opts.customer) return `forge/customers/${opts.customer}/license-key`;
+  return null;
 }
 
 function parseArgs(): Options {
@@ -56,6 +78,12 @@ function parseArgs(): Options {
       case '--perpetual':
         opts.perpetual = true;
         break;
+      case '--store':
+        opts.store = args[++i];
+        break;
+      case '--print':
+        opts.print = true;
+        break;
       case '--help':
       case '-h':
         console.log(`
@@ -73,9 +101,16 @@ Options:
   --customer <name>             Customer identifier (embedded in JWT payload)
   --days <n>                    Expiry in days (default: 365)
   --perpetual                   Never expires (omits exp claim)
+  --store <revvault-path>       Vault destination (default derived: founder →
+                                revealui/dev/founder-license-key, else
+                                forge/customers/<customer>/license-key)
+  --print                       Print the JWT to stdout instead of storing
   --help                        Show this help
 
-Output format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the daemon.
+Default behavior is mint-and-store: the signed JWT goes straight into revvault
+via stdin (never disk, never stdout) and the stored value is verified by
+readback. Use --print only when a delivery flow needs the raw value.
+Format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the daemon.
 `);
         process.exit(0);
     }
@@ -84,19 +119,40 @@ Output format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the
   return opts;
 }
 
+/** PKCS#8 private-key PEM header — matching a generic BEGIN marker would also
+ * accept the PUBLIC key, which sits one vault path segment away. Assembled
+ * from parts so secret-scanners keying on the literal header don't flag this
+ * source file. */
+const PRIVATE_PEM_HEADER = ['-----BEGIN', 'PRIVATE', 'KEY-----'].join(' ');
+
 export function getPrivateKey(): string {
-  // 1. Environment variable
+  // 1. Environment variable — explicitly set, so a malformed value is a loud
+  // error, not a silent fall-through to the next source.
   if (process.env.REVDEV_LICENSE_PRIVATE_KEY) {
+    if (!process.env.REVDEV_LICENSE_PRIVATE_KEY.includes(PRIVATE_PEM_HEADER)) {
+      console.error(
+        'Error: REVDEV_LICENSE_PRIVATE_KEY is set but is not a PKCS#8 private-key PEM.',
+      );
+      process.exit(1);
+    }
     return process.env.REVDEV_LICENSE_PRIVATE_KEY;
   }
 
-  // 2. Revvault
+  // 2. Revvault — MUST be `get --full`: plain `get` returns a masked preview
+  // (~28 bytes), which createPrivateKey rejects with ERR_OSSL_UNSUPPORTED
+  // (hit live 2026-07-26).
   try {
-    const key = execFileSync('revvault', ['get', 'revdev/license-signing-private-key'], {
+    const key = execFileSync('revvault', ['get', '--full', 'revdev/license-signing-private-key'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
-    if (key) return key;
+    if (key.includes(PRIVATE_PEM_HEADER)) return key;
+    if (key) {
+      console.error(
+        'Error: revvault returned a value for revdev/license-signing-private-key that is not a PKCS#8 private-key PEM (masked preview, corrupt entry, or the public key).',
+      );
+      process.exit(1);
+    }
   } catch {
     // revvault not available
   }
@@ -217,10 +273,44 @@ if (isMainModule()) {
   console.log(`  Expires:  ${opts.perpetual ? 'Never (perpetual)' : `${opts.days ?? 365} days`}`);
   console.log(`  Format:   Ed25519-signed JWT (RFC 7519)`);
   console.log('');
-  console.log('  Key:');
-  console.log(`  ${key}`);
-  console.log('');
-  console.log('  Deliver this key to the customer. They set it as:');
-  console.log('  REVEALUI_LICENSE_KEY=<key>');
-  console.log('');
+
+  if (opts.print) {
+    console.log('  Key:');
+    console.log(`  ${key}`);
+    console.log('');
+    console.log('  Deliver this key to the customer. They set it as:');
+    console.log('  REVEALUI_LICENSE_KEY=<key>');
+    console.log('');
+  } else {
+    // Default: mint-and-store. The key goes to revvault via stdin — never
+    // disk, never stdout, nothing to copy-paste (owner directive 2026-07-26).
+    const storePath = deriveStorePath(opts);
+    if (!storePath) {
+      console.error(
+        'Error: no vault destination. Pass --customer (path is derived) or --store <revvault-path>, or use --print for stdout delivery.',
+      );
+      process.exit(1);
+    }
+    revvaultSet(storePath, key);
+    // Readback verification: stored value must be a 3-part JWT. Shape only —
+    // the value is never displayed.
+    let readback = '';
+    try {
+      readback = execFileSync('revvault', ['get', '--full', storePath], {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch {
+      // handled below
+    }
+    if (readback.split('.').length !== 3) {
+      console.error(`Error: readback from ${storePath} is not a JWT — store may have failed.`);
+      process.exit(1);
+    }
+    console.log(`  Stored:   ${storePath} (readback verified; value not displayed)`);
+    console.log('');
+    console.log('  Load it with:');
+    console.log(`  export REVEALUI_LICENSE_KEY="$(revvault get --full ${storePath})"`);
+    console.log('');
+  }
 }

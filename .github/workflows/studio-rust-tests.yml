@@ -120,8 +120,22 @@ jobs:
   prove-red-rust:
     name: Prove-Red (Rust changed tests must fail against base)
     runs-on: ubuntu-latest
-    # PR-only: a merge-base is meaningless on a direct push to test/main.
-    if: github.event_name == 'pull_request'
+    # PR-only: a merge-base is meaningless on a direct push to test/main. Also
+    # skip test -> main promotion PRs (GAP-393): a promotion diff carries a
+    # feature's fix and test together, so the test passes against main's base —
+    # the red-first proof already happened on the constituent feature PR.
+    # `head.repo.full_name == github.repository` is a deliberate fork-hardening
+    # coupling (GAP-393 review remediation): `github.head_ref` is a bare branch
+    # name unqualified by repo, so a fork could otherwise open `theirfork:test
+    # -> main` and pass this `if:` merely by naming a branch "test". Even on a
+    # miss here, that fork PR still fails the required `promotion-gate` check
+    # (.github/workflows/promotion-gate.yml, a different workflow) on the
+    # head_repo != base_repo branch, so it cannot merge — this predicate is
+    # defense-in-depth for this gate's own skip decision, not the only wall.
+    if: >-
+      github.event_name == 'pull_request' &&
+      !(github.head_ref == 'test' && github.base_ref == 'main' &&
+        github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       # PR head + full history so prove-red.mjs can compute the merge base.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -173,4 +187,11 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
           PROVE_RED_LANGS: rust
+          # JSON array, not a comma-joined string (GAP-393 review remediation):
+          # lossless regardless of what characters a label name allows.
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          # Script-side mirror of this job's same-repo `if:` guard, so the
+          # script's own early-exit is exactly as strong as the layer it backs.
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_BASE_REPO: ${{ github.repository }}
         run: node scripts/ci/prove-red.mjs
