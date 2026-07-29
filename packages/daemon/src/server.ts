@@ -1805,6 +1805,146 @@ registerHandler('events.query', async (params, db) => {
   return { events: result.rows };
 });
 
+// -- Peer context (GAP-459 Phase 1) -----------------------------------------
+//
+// Composite advisory snapshot so harnesses can paint peer presence, claims,
+// and active paths in ONE call. Does not invent a third store: composes
+// agent_sessions + file_reservations + tasks + events (peer.* types).
+// Autonomy rule (ADR 2026-07-28): this is awareness only — never a lock.
+// Unavailable clients must degrade VISIBLY (adapters print WARN), never
+// silently pretend peers are absent when the daemon is down.
+
+registerHandler('context.snapshot', async (params, db, ctx) => {
+  const eventLimit = Math.min(num(params.eventLimit, 50), 200);
+  const includeSelf = params.includeSelf === true;
+  // Prefer bound identity so we can label self vs peers. Unsigned callers
+  // with no actor still get a fleet-wide snapshot (selfAgentId null).
+  const selfAgentId =
+    (ctx.agentId && String(ctx.agentId)) || strOrNull(params.actorAgentId) || null;
+
+  // agent_sessions columns: id (also the agent identity), env, task, files,
+  // activity_state (migration 0005), timestamps. No separate agent_name col —
+  // name is encoded in env as `${backend}:${agentName}` at register time.
+  const sessionsResult = await db.query<Record<string, unknown>>(
+    `SELECT id, env, task, files, activity_state, pid, started_at, updated_at,
+            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - updated_at))))::int AS "staleSeconds",
+            (activity_state = 'active'
+             AND updated_at > NOW() - make_interval(secs => $1)) AS active
+       FROM agent_sessions
+      WHERE ended_at IS NULL
+      ORDER BY started_at DESC`,
+    [ACTIVE_WINDOW_SECONDS],
+  );
+
+  // Intentional cross-agent path enumeration for SAME-MACHINE studio
+  // coordination (owner directive GAP-459). Paths only, no content. Trust
+  // boundary remains the 0600 socket + Pro license. Do NOT expand this to
+  // fleet/Neon without a separate security design.
+  // Note: filter expiry in SQL; if a driver returns string timestamps that
+  // compare poorly against NOW(), fall back to returning recent rows and
+  // filter in JS below.
+  const reservationsResult = await db.query<Record<string, unknown>>(
+    `SELECT agent_id, file_path, reserved_at, expires_at, reason
+       FROM file_reservations
+      WHERE expires_at > NOW()
+      ORDER BY reserved_at DESC
+      LIMIT 200`,
+  );
+
+  // tasks: description is the free-text title line; status is open|claimed|...
+  // No updated_at column on the daemon schema.
+  const tasksResult = await db.query<Record<string, unknown>>(
+    `SELECT id, description, status, owner, claimed_at, created_at
+       FROM tasks
+      WHERE status IN ('open', 'claimed', 'in_progress')
+      ORDER BY created_at DESC
+      LIMIT 100`,
+  );
+
+  // Shared findings/claims published via events.log with peer.* types
+  // (contract: peer.finding, peer.claim, peer.intent). Global events table
+  // is already cross-agent readable (events.query).
+  const findingsResult = await db.query<Record<string, unknown>>(
+    `SELECT agent_id, event_type, payload, created_at
+       FROM events
+      WHERE event_type LIKE 'peer.%'
+      ORDER BY created_at DESC
+      LIMIT $1`,
+    [eventLimit],
+  );
+
+  const sessions = sessionsResult.rows.map((r) => {
+    const id = String(r.id);
+    const env = typeof r.env === 'string' ? r.env : '';
+    const colon = env.indexOf(':');
+    const agentName = colon >= 0 ? env.slice(colon + 1) : env || id;
+    return {
+      id,
+      agentId: id,
+      agentName,
+      env,
+      task: r.task,
+      files: r.files,
+      activityState: r.activity_state,
+      pid: r.pid,
+      startedAt: r.started_at,
+      updatedAt: r.updated_at,
+      staleSeconds: r.staleSeconds,
+      active: r.active,
+      isSelf: selfAgentId != null && id === selfAgentId,
+    };
+  });
+
+  const peers = includeSelf ? sessions : sessions.filter((s) => !s.isSelf);
+
+  const reservations = reservationsResult.rows
+    .map((r) => ({
+      agentId: (r.agent_id ?? r.agentId) as string,
+      path: String(r.file_path ?? r.filePath ?? r.path ?? ''),
+      reservedAt: r.reserved_at ?? r.reservedAt,
+      expiresAt: r.expires_at ?? r.expiresAt,
+      reason: r.reason,
+    }))
+    .filter((r) => r.path.length > 0)
+    .filter((r) => includeSelf || !selfAgentId || String(r.agentId) !== selfAgentId);
+
+  const tasks = tasksResult.rows.map((r) => ({
+    id: r.id,
+    title: r.description,
+    status: r.status,
+    owner: r.owner,
+    claimedAt: r.claimed_at,
+    createdAt: r.created_at,
+  }));
+
+  const findings = findingsResult.rows.map((r) => ({
+    agentId: r.agent_id,
+    eventType: r.event_type,
+    payload: r.payload,
+    createdAt: r.created_at,
+  }));
+
+  return {
+    available: true,
+    scope: 'local',
+    selfAgentId,
+    generatedAt: new Date().toISOString(),
+    activeWindowSeconds: ACTIVE_WINDOW_SECONDS,
+    peers,
+    sessions,
+    reservations,
+    tasks,
+    findings,
+    // Adapter contract: when the daemon is DOWN, callers invent
+    // { available: false, reason: 'daemon-unavailable' } client-side.
+    degradation: {
+      mode: 'advisory',
+      rule: 'never-block',
+      note: 'A claim is a signal, not a mutex (ADR 2026-07-28).',
+    },
+  };
+});
+
 // -- Health -----------------------------------------------------------------
 
 registerHandler('harness.health', async (_params, db) => {
