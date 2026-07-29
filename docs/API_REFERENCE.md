@@ -35,7 +35,7 @@ Returns a pong response to verify daemon connectivity.
 ---
 
 ### `harness.health`
-**Tier**: Pro
+**Tier**: Free (GAP-337 — monitoring without a Pro license; `harness.prune` remains Pro)
 
 Returns daemon health status, active session/task counts, prune state, and client-identity anchor consistency. Takes no params (any passed are ignored).
 
