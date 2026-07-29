@@ -102,10 +102,10 @@ describe('context.snapshot RPC', () => {
        VALUES ($1, $2, $3::timestamp, $4)`,
       ['/tmp/gap459-peer-file.ts', 'ctx-holder', '2099-01-01T00:00:00Z', 'gap459'],
     );
-    await db.query(
-      `INSERT INTO tasks (id, description, status) VALUES ($1, $2, 'open')`,
-      ['task-gap459', 'GAP-459 open claim — visible in snapshot'],
-    );
+    await db.query(`INSERT INTO tasks (id, description, status) VALUES ($1, $2, 'open')`, [
+      'task-gap459',
+      'GAP-459 open claim — visible in snapshot',
+    ]);
     await db.query(
       `INSERT INTO events (agent_id, event_type, payload)
        VALUES ($1, $2, $3::jsonb)`,
