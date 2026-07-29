@@ -403,6 +403,8 @@ describe('handler tier-classification coverage', () => {
     // event log
     'events.log',
     'events.query',
+    // GAP-459 peer context composite
+    'context.snapshot',
     // harness.prune stays Pro; harness.health is FREE (GAP-337 / EXEMPT_METHODS)
     'harness.prune',
     // worktrees

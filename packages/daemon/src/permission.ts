@@ -55,6 +55,7 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['tasks.list', 'routine'],
   ['events.log', 'routine'],
   ['events.query', 'routine'],
+  ['context.snapshot', 'routine'],
   ['memory.store', 'routine'],
   ['memory.query', 'routine'],
   ['harness.health', 'routine'],

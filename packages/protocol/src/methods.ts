@@ -52,6 +52,9 @@ export const RPC_METHODS = {
   'events.log': 'events.log',
   'events.query': 'events.query',
 
+  // Peer context composite (GAP-459 Phase 1)
+  'context.snapshot': 'context.snapshot',
+
   // Agent memory
   'memory.store': 'memory.store',
   'memory.query': 'memory.query',
