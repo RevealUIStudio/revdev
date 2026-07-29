@@ -203,17 +203,15 @@ async fn full_rpc_round_trip_against_real_daemon() {
         "ended session {agent_id} still listed as active: {after}"
     );
 
-    // The daemon runs unlicensed (free tier) here, and harness.health is
-    // LICENSE-gated (the license-exempt set is only ping + session.* —
-    // narrower than the identity-exempt set). Assert the gate end to end
-    // through the Rust client: a clean RPC-level "License required", not
-    // a transport error.
-    let gated = harness::rpc_call("harness.health", serde_json::json!({}))
+    // GAP-337: harness.health is free-tier exempt (monitoring without Pro).
+    // Assert healthy payload end to end through the Rust client — not a license error.
+    let health = harness::rpc_call("harness.health", serde_json::json!({}))
         .await
-        .expect_err("harness.health must be license-gated on a free-tier daemon");
-    assert!(
-        gated.contains("License required"),
-        "expected the license gate, got: {gated}"
+        .expect("harness.health succeeds on a free-tier daemon (GAP-337)");
+    assert_eq!(
+        health.get("status").and_then(|v| v.as_str()),
+        Some("healthy"),
+        "expected healthy status, got: {health}"
     );
 }
 
