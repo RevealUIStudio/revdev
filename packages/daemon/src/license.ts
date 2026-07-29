@@ -115,6 +115,9 @@ const EXEMPT_METHODS = new Set([
   'permission.pending',
   'permission.decide',
   'permission.setMode',
+  // GAP-337: health/monitoring must answer without a Pro license (same class
+  // as ping). Multi-agent harness.prune stays Pro.
+  'harness.health',
 ]);
 
 /**
@@ -151,7 +154,7 @@ export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
  * free-file/git claims so help cannot re-drift (INIT-002 Phase 0).
  */
 export const LICENSE_TIER_HELP = `License tiers (method gate; source: EXEMPT_METHODS + METHOD_MIN_TIER):
-  free         Sessions, single-repo file/git, local inference run (status/chat/generate)
+  free         Sessions, single-repo file/git, local inference run, harness.health
   pro          Multi-agent coordination (mail, tasks, files.*, agent.*, merge.*, worktree, events, harness.prune, …)
   max          + full AI memory (memory.*) and local-model management (inference.pull/delete/start/stop)
   enterprise   Same method surface as max today; commercial terms differ`;
