@@ -51,6 +51,8 @@ describe('guardRpcMethod', () => {
       'inference.status',
       'inference.chat',
       'inference.generate',
+      // GAP-337: monitoring without a Pro license
+      'harness.health',
     ];
 
     for (const method of exemptMethods) {
@@ -158,7 +160,7 @@ describe('guardRpcMethod', () => {
       'files.release',
       'events.log',
       'events.query',
-      'harness.health',
+      // harness.health is FREE (GAP-337); prune stays Pro coordination
       'harness.prune',
       'worktree.create',
     ];
@@ -167,6 +169,10 @@ describe('guardRpcMethod', () => {
         expect(guardRpcMethod(method).allowed).toBe(true);
       });
     }
+
+    it('allows harness.health on free and pro (GAP-337)', () => {
+      expect(guardRpcMethod('harness.health').allowed).toBe(true);
+    });
   });
 
   describe('max/enterprise licenses', () => {
@@ -397,8 +403,7 @@ describe('handler tier-classification coverage', () => {
     // event log
     'events.log',
     'events.query',
-    // harness housekeeping
-    'harness.health',
+    // harness.prune stays Pro; harness.health is FREE (GAP-337 / EXEMPT_METHODS)
     'harness.prune',
     // worktrees
     'worktree.create',
