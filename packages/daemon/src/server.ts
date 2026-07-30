@@ -137,6 +137,9 @@ const IDENTITY_EXEMPT = new Set([
   'session.register',
   'session.attach',
   'session.list',
+  // GAP-459: peer metadata composite (same class as session.list — no file
+  // content). Optional actorAgentId still labels isSelf when provided.
+  'context.snapshot',
   'harness.health',
   // `harness.prune` was here. It reaches notifyAgentEnded for EVERY matched
   // session, so an identity-exempt, unsigned caller could evict every agent's
