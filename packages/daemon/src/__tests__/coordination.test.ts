@@ -387,6 +387,41 @@ describe('GAP-153: stale-session prune', () => {
     expect(after.sessions.find((s) => s.id === 'stale-test')).toBeUndefined();
   });
 
+  it('ages out a heartbeat-idle session via heartbeatStaleSeconds (GAP-459)', async () => {
+    await rpc(socketPath, 'session.register', {
+      agentId: 'heartbeat-idle',
+      agentName: 'heartbeat-idle',
+      backend: 'test',
+    });
+    // Started recently but no tool activity for >1h (updated_at aged).
+    await db.query(
+      "UPDATE agent_sessions SET updated_at = NOW() - INTERVAL '2 hours' WHERE id = $1",
+      ['heartbeat-idle'],
+    );
+
+    const pruner = await seedIdentity('pruner-heartbeat');
+    const result = (await signedRpc(
+      socketPath,
+      'harness.prune',
+      // staleDays huge so only the heartbeat arm selects this row
+      { staleDays: 365, hardDeleteDays: 365, heartbeatStaleSeconds: 3600 },
+      { did: pruner.did, fingerprint: pruner.fingerprint, privateKeyPem: pruner.privateKeyPem },
+    )) as { aged: number; heartbeatStaleSeconds: number };
+    expect(result.heartbeatStaleSeconds).toBe(3600);
+    expect(result.aged).toBeGreaterThanOrEqual(1);
+
+    const after = (await rpc(socketPath, 'session.list')) as {
+      sessions: Array<{ id: string }>;
+    };
+    expect(after.sessions.find((s) => s.id === 'heartbeat-idle')).toBeUndefined();
+
+    const row = await db.query<{ exit_summary: string }>(
+      'SELECT exit_summary FROM agent_sessions WHERE id = $1',
+      ['heartbeat-idle'],
+    );
+    expect(row.rows[0]?.exit_summary).toBe('pruned-heartbeat');
+  });
+
   it('hard-deletes a session ended longer than hardDeleteDays', async () => {
     await rpc(socketPath, 'session.register', {
       agentId: 'hard-delete-test',

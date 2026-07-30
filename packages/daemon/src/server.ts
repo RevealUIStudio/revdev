@@ -319,11 +319,20 @@ const pruneState: PruneState = {
  * invoke on demand via the `harness.prune` RPC for ops use, in addition to
  * the periodic timer set up in `startDaemon`.
  */
+/**
+ * Minimum heartbeat-idle seconds accepted on the RPC path (GAP-459 reaper).
+ * Floor prevents a misconfigured client from wiping every live session the way
+ * staleDays:0 once did (GAP-312). Periodic auto-prune keeps this at 0
+ * (start-age path only).
+ */
+export const MIN_HEARTBEAT_STALE_SECONDS = 3600;
+
 async function runPrune(
   db: PGlite,
   staleDays: number,
   hardDeleteDays: number,
-): Promise<{ aged: number; deleted: number }> {
+  heartbeatStaleSeconds = 0,
+): Promise<{ aged: number; deleted: number; heartbeatStaleSeconds: number }> {
   // Floor at ONE DAY, not zero. The previous Math.max(0, ...) let a caller pass
   // staleDays: 0 (or any negative, which clamped to 0), turning the WHERE
   // clause into `started_at < NOW()`, every live session, and fanning
@@ -335,16 +344,37 @@ async function runPrune(
   // GAP-312.
   const stale = Number.isFinite(staleDays) ? Math.max(1, staleDays) : 7;
   const hard = Number.isFinite(hardDeleteDays) ? Math.max(1, hardDeleteDays) : 30;
+  // heartbeatStaleSeconds: 0 disables the updated_at arm (periodic default).
+  // Positive values are floored at MIN_HEARTBEAT_STALE_SECONDS on the RPC path.
+  const heartbeat =
+    Number.isFinite(heartbeatStaleSeconds) && heartbeatStaleSeconds > 0
+      ? Math.max(MIN_HEARTBEAT_STALE_SECONDS, Math.floor(heartbeatStaleSeconds))
+      : 0;
 
-  // Parameterized interval avoids SQL injection on the days value.
+  // Parameterized intervals avoid SQL injection on the thresholds.
+  // Arm A: classic start-age (sessions that never ended and began long ago).
+  // Arm B: heartbeat-idle (GAP-459) — no updated_at activity for $2 seconds.
+  // Either arm alone is enough; exit_summary distinguishes for forensics.
   const aged = await db.query<{ id: string }>(
     `UPDATE agent_sessions
         SET ended_at = NOW(),
-            exit_summary = COALESCE(exit_summary, 'pruned-stale')
+            exit_summary = COALESCE(
+              exit_summary,
+              CASE
+                WHEN started_at < NOW() - INTERVAL '1 day' * $1 THEN 'pruned-stale'
+                ELSE 'pruned-heartbeat'
+              END
+            )
       WHERE ended_at IS NULL
-        AND started_at < NOW() - INTERVAL '1 day' * $1
+        AND (
+          started_at < NOW() - INTERVAL '1 day' * $1
+          OR (
+            $2::int > 0
+            AND updated_at < NOW() - make_interval(secs => $2)
+          )
+        )
       RETURNING id`,
-    [stale],
+    [stale, heartbeat],
   );
   // Evict filesystem roots for every stale-terminated agent (B6 item 10).
   for (const { id } of aged.rows) notifyAgentEnded(id, db);
@@ -376,9 +406,14 @@ async function runPrune(
       deleted: pruneState.lastDeletedCount,
       staleDays: stale,
       hardDeleteDays: hard,
+      heartbeatStaleSeconds: heartbeat,
     });
   }
-  return { aged: pruneState.lastAgedCount, deleted: pruneState.lastDeletedCount };
+  return {
+    aged: pruneState.lastAgedCount,
+    deleted: pruneState.lastDeletedCount,
+    heartbeatStaleSeconds: heartbeat,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2021,13 +2056,19 @@ registerHandler('harness.prune', async (params, db, ctx) => {
   // regression cannot hand runPrune a fleet-wide selector.
   const staleDays = Math.max(1, num(params.staleDays, DAEMON_DEFAULTS.staleSessionDays));
   const hardDeleteDays = Math.max(1, num(params.hardDeleteDays, DAEMON_DEFAULTS.hardDeleteDays));
-  const result = await runPrune(db, staleDays, hardDeleteDays);
+  // Optional GAP-459 heartbeat arm. Omitted/0 = start-age only (backward compatible).
+  // Positive values re-floored at MIN_HEARTBEAT_STALE_SECONDS inside runPrune.
+  const heartbeatRaw = num(params.heartbeatStaleSeconds, 0);
+  const heartbeatStaleSeconds =
+    heartbeatRaw > 0 ? Math.max(MIN_HEARTBEAT_STALE_SECONDS, heartbeatRaw) : 0;
+  const result = await runPrune(db, staleDays, hardDeleteDays, heartbeatStaleSeconds);
   return {
     aged: result.aged,
     deleted: result.deleted,
     runAt: pruneState.lastRunAt?.toISOString() ?? null,
     staleDays,
     hardDeleteDays,
+    heartbeatStaleSeconds: result.heartbeatStaleSeconds,
   };
 });
 

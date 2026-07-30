@@ -389,6 +389,10 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       staleDays: z.number().min(1).optional(),
       hardDeleteDays: z.number().min(1).optional(),
+      // GAP-459: also end sessions with no updated_at activity for this many
+      // seconds. Floor 3600s (1h) when provided — 0/omit disables the arm.
+      // Not .int()-only: fractional seconds are harmless; floor is the property.
+      heartbeatStaleSeconds: z.number().min(3600).optional(),
       actorAgentId,
     })
     .passthrough(),

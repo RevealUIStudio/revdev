@@ -366,6 +366,16 @@ describe('harness.prune validation', () => {
     expect(validateParams('harness.prune', { staleDays: 0 }).valid).toBe(false);
   });
 
+  it('accepts heartbeatStaleSeconds at the 1h floor (GAP-459)', () => {
+    expect(validateParams('harness.prune', { heartbeatStaleSeconds: 3600 }).valid).toBe(true);
+    expect(validateParams('harness.prune', { heartbeatStaleSeconds: 7200 }).valid).toBe(true);
+  });
+
+  it('REJECTS heartbeatStaleSeconds below 1h (GAP-459 / GAP-312 class)', () => {
+    expect(validateParams('harness.prune', { heartbeatStaleSeconds: 300 }).valid).toBe(false);
+    expect(validateParams('harness.prune', { heartbeatStaleSeconds: 0 }).valid).toBe(false);
+  });
+
   it('REJECTS negative days (GAP-312 floor; no clamp-to-zero)', () => {
     // Previously accepted on the theory that the handler's Math.max(0, ...) was
     // "the safety net". A zero floor is not a net: it is the fleet-wide
