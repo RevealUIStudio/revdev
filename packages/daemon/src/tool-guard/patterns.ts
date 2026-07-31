@@ -202,6 +202,216 @@ function matchOrdered(text: string, matchers: Matcher[], ci: boolean): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Quote-aware shell tokens (GAP-384)
+// ---------------------------------------------------------------------------
+// Command-position rules must not fire on prose inside quoted arguments
+// (--body/--message/-m/-F, sed replacements, commit messages). Quoted spans
+// become a single opaque token. Nested shell -c / eval payloads are re-scanned
+// (fail-closed). Zero regex.
+
+interface ShellToken {
+  text: string;
+  quoted: boolean;
+}
+
+const CHAIN_SEPARATORS = new Set(['&&', '||', ';', '|', '&']);
+
+const WRAPPER_COMMANDS = new Set(['env', 'sudo', 'command', 'nice', 'nohup', 'time', 'stdbuf']);
+
+const SHELL_FOR_DASH_C = new Set(['bash', 'sh', 'zsh', 'ksh', 'dash', 'fish']);
+
+/** Basename of a path-like token (`/usr/bin/node` → `node`). */
+function cmdBase(token: string): string {
+  if (token.length === 0) return token;
+  let end = token.length;
+  // Drop a trailing slash if present.
+  if (token[end - 1] === '/' || token[end - 1] === '\\') end -= 1;
+  let slash = -1;
+  for (let i = 0; i < end; i += 1) {
+    if (token[i] === '/' || token[i] === '\\') slash = i;
+  }
+  return slash === -1 ? token.slice(0, end) : token.slice(slash + 1, end);
+}
+
+/** True when token is NAME=value (leading env assignment), not a flag. */
+function isEnvAssignment(token: string): boolean {
+  if (token.length === 0 || token[0] === '-') return false;
+  let i = 0;
+  const first = token.charCodeAt(0);
+  if (
+    !(
+      (first >= 65 && first <= 90) ||
+      (first >= 97 && first <= 122) ||
+      first === 95
+    )
+  ) {
+    return false;
+  }
+  i = 1;
+  while (i < token.length) {
+    const c = token.charCodeAt(i);
+    if (c === 61) return i > 0; // '='
+    const ok =
+      (c >= 48 && c <= 57) ||
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      c === 95;
+    if (!ok) return false;
+    i += 1;
+  }
+  return false;
+}
+
+/**
+ * Quote-aware tokenizer. Whitespace-separated; single- and double-quoted
+ * spans are one token each (quotes stripped from `text`). Unclosed quotes
+ * consume the remainder (fail-closed: content stays visible to scanners).
+ */
+function tokenizeShell(command: string): ShellToken[] {
+  const tokens: ShellToken[] = [];
+  let i = 0;
+  while (i < command.length) {
+    while (i < command.length && isWhitespace(command[i])) i += 1;
+    if (i >= command.length) break;
+
+    const ch = command[i];
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      i += 1;
+      let text = '';
+      while (i < command.length) {
+        if (command[i] === quote) {
+          i += 1;
+          break;
+        }
+        // Double-quote backslash escape: keep the escaped char literally.
+        if (quote === '"' && command[i] === '\\' && i + 1 < command.length) {
+          text += command[i + 1];
+          i += 2;
+          continue;
+        }
+        text += command[i];
+        i += 1;
+      }
+      tokens.push({ text, quoted: true });
+      continue;
+    }
+
+    const start = i;
+    while (i < command.length && !isWhitespace(command[i])) {
+      // Don't absorb quotes into bare tokens — start a quoted token instead.
+      if (command[i] === "'" || command[i] === '"') break;
+      i += 1;
+    }
+    if (i > start) {
+      tokens.push({ text: command.slice(start, i), quoted: false });
+    }
+  }
+  return tokens;
+}
+
+/** Split tokens into argv segments on chain separators (&& || ; | &). */
+function argvSegments(tokens: ShellToken[]): string[][] {
+  const segments: string[][] = [];
+  let current: string[] = [];
+  for (const tok of tokens) {
+    if (!tok.quoted && CHAIN_SEPARATORS.has(tok.text)) {
+      if (current.length > 0) segments.push(current);
+      current = [];
+      continue;
+    }
+    current.push(tok.text);
+  }
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
+
+/**
+ * Drop leading env assignments and common wrappers so `env FOO=1 node -e`
+ * still sees `node` as the command.
+ */
+function stripWrappers(argv: string[]): string[] {
+  let i = 0;
+  while (i < argv.length) {
+    const t = argAt(argv, i);
+    if (isEnvAssignment(t)) {
+      i += 1;
+      continue;
+    }
+    const base = cmdBase(t);
+    if (WRAPPER_COMMANDS.has(base)) {
+      i += 1;
+      // Skip wrapper flags (`sudo -u x`, `env -i`, …) until a non-flag token.
+      while (i < argv.length) {
+        const flag = argAt(argv, i);
+        if (flag.length === 0 || flag[0] !== '-') break;
+        // sudo -u USER / env --unset=NAME take a value; treat attached and
+        // next-token forms loosely by only skipping pure-flag tokens here.
+        // Fail-closed: over-skipping can hide a real binary — so only skip
+        // tokens that look like flags without consuming the following value
+        // when the flag is a known value-taking short option. Simpler: skip
+        // one flag token; value-taking forms leave the value as a no-op
+        // assignment-shaped or username token which stripWrappers may not
+        // drop — acceptable (may miss `sudo -u foo node -e`, rare for agents).
+        i += 1;
+      }
+      continue;
+    }
+    break;
+  }
+  return argv.slice(i);
+}
+
+/**
+ * Surfaces to evaluate command-position rules against: each pipeline segment
+ * after wrapper strip, plus nested payloads of `bash -c` / `eval` (fail-closed).
+ */
+function collectCommandSurfaces(command: string, depth = 0): string[][] {
+  if (depth > 4) return [];
+  const surfaces: string[][] = [];
+  const tokens = tokenizeShell(command);
+  for (const seg of argvSegments(tokens)) {
+    const argv = stripWrappers(seg);
+    if (argv.length === 0) continue;
+    surfaces.push(argv);
+
+    const base = cmdBase(argAt(argv, 0));
+    // eval <payload>
+    if (base === 'eval' && argv.length >= 2) {
+      surfaces.push(...collectCommandSurfaces(argv.slice(1).join(' '), depth + 1));
+      continue;
+    }
+    // shell -c <payload> / shell -c<payload>
+    if (SHELL_FOR_DASH_C.has(base)) {
+      for (let i = 1; i < argv.length; i += 1) {
+        const a = argAt(argv, i);
+        if (a === '-c' && i + 1 < argv.length) {
+          surfaces.push(...collectCommandSurfaces(argAt(argv, i + 1), depth + 1));
+          break;
+        }
+        if (a.startsWith('-c') && a.length > 2) {
+          surfaces.push(...collectCommandSurfaces(a.slice(2), depth + 1));
+          break;
+        }
+      }
+    }
+  }
+  return surfaces;
+}
+
+function anySurface(command: string, pred: (argv: string[]) => boolean): boolean {
+  for (const argv of collectCommandSurfaces(command)) {
+    if (pred(argv)) return true;
+  }
+  return false;
+}
+
+/** Safe argv access under noUncheckedIndexedAccess. */
+function argAt(argv: string[], i: number): string {
+  return argv[i] ?? '';
+}
+
+// ---------------------------------------------------------------------------
 // Named command predicates
 // ---------------------------------------------------------------------------
 
@@ -300,27 +510,20 @@ function wgetPipedToShell(command: string): boolean {
 
 /** `gh api` then, anywhere after, `-X DELETE` or `--method[ =]DELETE` (case-insensitive). */
 function ghApiDelete(command: string): boolean {
-  const lower = command.toLowerCase();
-  let idx = lower.indexOf('gh');
-  while (idx !== -1) {
-    const startOk = idx === 0 || !isWordChar(lower[idx - 1]);
-    if (startOk) {
-      let p = idx + 2;
-      let sawWs = false;
-      while (isWhitespace(lower[p])) {
-        p += 1;
-        sawWs = true;
-      }
-      if (sawWs && lower.startsWith('api', p)) {
-        const apiEnd = p + 3;
-        if (apiEnd >= lower.length || !isWordChar(lower[apiEnd])) {
-          if (deleteFormAfter(lower, apiEnd)) return true;
-        }
+  // Command-position: only when `gh` is the effective binary (GAP-384).
+  // Still scan the rest of that argv for DELETE forms.
+  return anySurface(command, (argv) => {
+    if (cmdBase(argAt(argv, 0)).toLowerCase() !== 'gh') return false;
+    // Rebuild a mini command line from argv for deleteFormAfter.
+    const lower = argv.join(' ').toLowerCase();
+    // "gh" is at start of lower; find "api" as a subsequent argv word.
+    for (let i = 1; i < argv.length; i += 1) {
+      if (argAt(argv, i).toLowerCase() === 'api') {
+        return deleteFormAfter(lower, 0);
       }
     }
-    idx = lower.indexOf('gh', idx + 1);
-  }
-  return false;
+    return false;
+  });
 }
 
 /** `-x` (+ ws) + `delete`, or `--method` + (` ` | `=`) + ws + `delete`, in already-lowercased text. */
@@ -345,6 +548,242 @@ function deleteFormAfter(lower: string, from: number): boolean {
   return false;
 }
 
+/** `gh auth token` as consecutive subcommands — not prose in `--body`. */
+function ghAuthToken(command: string): boolean {
+  return anySurface(command, (argv) => {
+    if (cmdBase(argAt(argv, 0)).toLowerCase() !== 'gh') return false;
+    return argAt(argv, 1) === 'auth' && argAt(argv, 2) === 'token';
+  });
+}
+
+/** `npm token create|revoke|list` as consecutive subcommands. */
+function npmTokenMgmt(command: string): boolean {
+  return anySurface(command, (argv) => {
+    if (cmdBase(argAt(argv, 0)) !== 'npm' || argAt(argv, 1) !== 'token') return false;
+    const op = argAt(argv, 2);
+    return op === 'create' || op === 'revoke' || op === 'list';
+  });
+}
+
+/** True when a node argv token is an inline-eval flag (-e/--eval/-p/--print). */
+function isNodeEvalFlag(token: string): boolean {
+  if (
+    token === '-e' ||
+    token === '--eval' ||
+    token === '-p' ||
+    token === '--print'
+  ) {
+    return true;
+  }
+  if (token.startsWith('--eval=') || token.startsWith('--print=')) return true;
+  // Attached short form: -eCODE / -pCODE (not -experimental…).
+  if (token.startsWith('-e') && token.length > 2 && token[2] !== '-') return true;
+  if (token.startsWith('-p') && token.length > 2 && token[2] !== '-') return true;
+  return false;
+}
+
+/** `node -e` / `-p` / `--eval` / `--print` in command position only. */
+function nodeInlineEval(command: string): boolean {
+  return anySurface(command, (argv) => {
+    if (cmdBase(argAt(argv, 0)) !== 'node') return false;
+    for (let i = 1; i < argv.length; i += 1) {
+      if (isNodeEvalFlag(argAt(argv, i))) return true;
+    }
+    return false;
+  });
+}
+
+/** `python` / `python3` with `-c` in command position. Optional code needle. */
+function pythonDashC(
+  command: string,
+  codeNeedle?: string,
+): boolean {
+  return anySurface(command, (argv) => {
+    const base = cmdBase(argAt(argv, 0));
+    if (base !== 'python' && base !== 'python3') return false;
+    for (let i = 1; i < argv.length; i += 1) {
+      const a = argAt(argv, i);
+      if (a === '-c') {
+        if (!codeNeedle) return true;
+        const code = i + 1 < argv.length ? argAt(argv, i + 1) : '';
+        return code.includes(codeNeedle);
+      }
+      if (a.startsWith('-c') && a.length > 2) {
+        if (!codeNeedle) return true;
+        return a.slice(2).includes(codeNeedle);
+      }
+    }
+    return false;
+  });
+}
+
+function pythonSocket(command: string): boolean {
+  return pythonDashC(command, 'socket');
+}
+
+function pythonSubprocess(command: string): boolean {
+  return pythonDashC(command, 'subprocess');
+}
+
+function pythonInlineEval(command: string): boolean {
+  return pythonDashC(command);
+}
+
+/** `pnpm dlx` as consecutive subcommands. */
+function pnpmDlx(command: string): boolean {
+  return anySurface(
+    command,
+    (argv) => cmdBase(argAt(argv, 0)) === 'pnpm' && argAt(argv, 1) === 'dlx',
+  );
+}
+
+/** `npm exec` as consecutive subcommands. */
+function npmExec(command: string): boolean {
+  return anySurface(
+    command,
+    (argv) => cmdBase(argAt(argv, 0)) === 'npm' && argAt(argv, 1) === 'exec',
+  );
+}
+
+/**
+ * GAP-388: `npx -y <pkg>` is dangerous; `npx <pkg> --yes` (package's own flag)
+ * is not. Only count -y/--yes before the first non-flag token of an npx argv.
+ */
+function npxYesFlag(command: string): boolean {
+  return anySurface(command, (argv) => {
+    if (cmdBase(argAt(argv, 0)) !== 'npx') return false;
+    let sawPackage = false;
+    for (let i = 1; i < argv.length; i += 1) {
+      const t = argAt(argv, i);
+      if (sawPackage) continue;
+      if (t === '-y' || t === '--yes') return true;
+      if (t.length > 0 && t[0] === '-') continue;
+      sawPackage = true;
+    }
+    return false;
+  });
+}
+
+/**
+ * Credential-shaped env names: TOKEN / SECRET / PASSWORD / PASSWD / API_KEY /
+ * ACCESS_KEY / PRIVATE_KEY as whole segments or suffixes (_TOKEN etc.).
+ */
+function isCredentialEnvName(name: string): boolean {
+  if (name.length === 0) return false;
+  const upper = name.toUpperCase();
+  const exact = new Set([
+    'TOKEN',
+    'SECRET',
+    'PASSWORD',
+    'PASSWD',
+    'API_KEY',
+    'ACCESS_KEY',
+    'PRIVATE_KEY',
+    'AUTH_TOKEN',
+    'ACCESS_TOKEN',
+    'REFRESH_TOKEN',
+    'CLIENT_SECRET',
+    'GITHUB_TOKEN',
+    'GH_TOKEN',
+    'NPM_TOKEN',
+    'AWS_SECRET_ACCESS_KEY',
+    'AWS_ACCESS_KEY_ID',
+  ]);
+  if (exact.has(upper)) return true;
+  const suffixes = [
+    '_TOKEN',
+    '_SECRET',
+    '_PASSWORD',
+    '_PASSWD',
+    '_API_KEY',
+    '_ACCESS_KEY',
+    '_PRIVATE_KEY',
+  ];
+  for (const s of suffixes) {
+    if (upper.endsWith(s) && upper.length > s.length) return true;
+  }
+  return false;
+}
+
+/** Extract ENV name from `$VAR`, `${VAR}`, or bare `VAR` (printenv form). */
+function credentialNameFromArg(arg: string): string | null {
+  if (arg.length === 0) return null;
+  if (arg[0] === '$') {
+    if (arg[1] === '{') {
+      if (arg[arg.length - 1] !== '}') return null;
+      const inner = arg.slice(2, -1);
+      // ${VAR:-default} — take leading name.
+      let name = '';
+      for (let i = 0; i < inner.length; i += 1) {
+        const c = inner.charCodeAt(i);
+        const ok =
+          (c >= 48 && c <= 57) ||
+          (c >= 65 && c <= 90) ||
+          (c >= 97 && c <= 122) ||
+          c === 95;
+        if (!ok) break;
+        name += inner[i];
+      }
+      return name.length > 0 ? name : null;
+    }
+    // $VAR
+    let name = '';
+    for (let i = 1; i < arg.length; i += 1) {
+      const c = arg.charCodeAt(i);
+      const ok =
+        (c >= 48 && c <= 57) ||
+        (c >= 65 && c <= 90) ||
+        (c >= 97 && c <= 122) ||
+        c === 95;
+      if (!ok) break;
+      name += arg[i];
+    }
+    return name.length > 0 ? name : null;
+  }
+  // bare name for printenv / env | — only all-caps-ish identifiers
+  let okBare = true;
+  for (let i = 0; i < arg.length; i += 1) {
+    const c = arg.charCodeAt(i);
+    if (
+      !(
+        (c >= 48 && c <= 57) ||
+        (c >= 65 && c <= 90) ||
+        (c >= 97 && c <= 122) ||
+        c === 95
+      )
+    ) {
+      okBare = false;
+      break;
+    }
+  }
+  return okBare ? arg : null;
+}
+
+/**
+ * echo/printf/printenv of a credential-shaped variable.
+ * True positive: `echo $GITHUB_TOKEN`. Does not fire on prose that merely
+ * mentions the word token inside a quoted --body.
+ */
+function credentialPrint(command: string): boolean {
+  return anySurface(command, (argv) => {
+    const base = cmdBase(argAt(argv, 0));
+    if (base !== 'echo' && base !== 'printf' && base !== 'printenv') return false;
+    // printenv NAME  or  printenv
+    // echo/printf: look for $VAR / ${VAR} among args
+    for (let i = 1; i < argv.length; i += 1) {
+      const arg = argAt(argv, i);
+      if (base === 'printenv') {
+        if (isCredentialEnvName(arg)) return true;
+        continue;
+      }
+      // printf format string might be first arg — still scan all for $CRED
+      const name = credentialNameFromArg(arg);
+      if (name && isCredentialEnvName(name)) return true;
+    }
+    return false;
+  });
+}
+
 const COMMAND_PREDICATES: Record<string, (command: string) => boolean> = {
   powershellInvocation,
   wslInterop,
@@ -352,6 +791,16 @@ const COMMAND_PREDICATES: Record<string, (command: string) => boolean> = {
   curlPipedToInterpreter,
   wgetPipedToShell,
   ghApiDelete,
+  ghAuthToken,
+  npmTokenMgmt,
+  nodeInlineEval,
+  pythonSocket,
+  pythonSubprocess,
+  pythonInlineEval,
+  pnpmDlx,
+  npmExec,
+  npxYesFlag,
+  credentialPrint,
 };
 
 // ---------------------------------------------------------------------------
