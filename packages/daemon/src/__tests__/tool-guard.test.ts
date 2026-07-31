@@ -239,9 +239,7 @@ describe('GAP-384 command-position scoping (prose false-positives)', () => {
   });
 
   it('allows sed replacement containing the literal text node -e', () => {
-    expect(
-      evaluateCommand('sed -i "s|old|node -e process.exit(0)|" file.js', manifest),
-    ).toBeNull();
+    expect(evaluateCommand('sed -i "s|old|node -e process.exit(0)|" file.js', manifest)).toBeNull();
   });
 
   it('allows commit -m / --message prose that mentions npm token create', () => {
