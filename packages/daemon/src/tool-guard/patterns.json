@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "dangerousCommands": [
     {
       "reason": "reading SSH key files",
@@ -88,21 +88,13 @@
     { "reason": "WSL interop execution bypass", "kind": "predicate", "predicate": "wslInterop" },
     {
       "reason": "Python socket (potential reverse shell)",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "python", "bStart": true },
-        { "s": "-c", "bEnd": true },
-        { "s": "socket" }
-      ]
+      "kind": "predicate",
+      "predicate": "pythonSocket"
     },
     {
       "reason": "Python subprocess (potential escape)",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "python", "bStart": true },
-        { "s": "-c", "bEnd": true },
-        { "s": "subprocess" }
-      ]
+      "kind": "predicate",
+      "predicate": "pythonSubprocess"
     },
     {
       "reason": "redirect to Windows filesystem",
@@ -116,39 +108,13 @@
     },
     {
       "reason": "printing GitHub auth token to stdout",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "gh", "bStart": true, "bEnd": true },
-        { "s": "auth", "bStart": true, "bEnd": true },
-        { "s": "token", "bStart": true, "bEnd": true }
-      ]
+      "kind": "predicate",
+      "predicate": "ghAuthToken"
     },
     {
       "reason": "npm token management",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "npm", "bStart": true, "bEnd": true },
-        { "s": "token", "bStart": true, "bEnd": true },
-        { "s": "create", "bStart": true, "bEnd": true }
-      ]
-    },
-    {
-      "reason": "npm token management",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "npm", "bStart": true, "bEnd": true },
-        { "s": "token", "bStart": true, "bEnd": true },
-        { "s": "revoke", "bStart": true, "bEnd": true }
-      ]
-    },
-    {
-      "reason": "npm token management",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "npm", "bStart": true, "bEnd": true },
-        { "s": "token", "bStart": true, "bEnd": true },
-        { "s": "list", "bStart": true, "bEnd": true }
-      ]
+      "kind": "predicate",
+      "predicate": "npmTokenMgmt"
     },
     {
       "reason": "curl piped to an interpreter (remote code execution)",
@@ -162,54 +128,33 @@
     },
     {
       "reason": "inline node eval (node -e / -p)",
-      "kind": "matchers",
-      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "-e", "bEnd": true }]
-    },
-    {
-      "reason": "inline node eval (node -e / -p)",
-      "kind": "matchers",
-      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "--eval", "bEnd": true }]
-    },
-    {
-      "reason": "inline node eval (node -e / -p)",
-      "kind": "matchers",
-      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "-p", "bEnd": true }]
-    },
-    {
-      "reason": "inline node eval (node -e / -p)",
-      "kind": "matchers",
-      "matchers": [{ "s": "node", "bStart": true, "bEnd": true }, { "s": "--print", "bEnd": true }]
+      "kind": "predicate",
+      "predicate": "nodeInlineEval"
     },
     {
       "reason": "inline python eval (python -c)",
-      "kind": "matchers",
-      "matchers": [{ "s": "python", "bStart": true }, { "s": "-c", "bEnd": true }]
+      "kind": "predicate",
+      "predicate": "pythonInlineEval"
     },
     {
       "reason": "pnpm dlx (downloads + runs a remote package)",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "pnpm", "bStart": true, "bEnd": true },
-        { "s": "dlx", "bStart": true, "bEnd": true }
-      ]
+      "kind": "predicate",
+      "predicate": "pnpmDlx"
     },
     {
       "reason": "npm exec (runs an arbitrary package)",
-      "kind": "matchers",
-      "matchers": [
-        { "s": "npm", "bStart": true, "bEnd": true },
-        { "s": "exec", "bStart": true, "bEnd": true }
-      ]
+      "kind": "predicate",
+      "predicate": "npmExec"
     },
     {
       "reason": "npx --yes (unprompted remote package execution)",
-      "kind": "matchers",
-      "matchers": [{ "s": "npx", "bStart": true, "bEnd": true }, { "s": "-y", "bEnd": true }]
+      "kind": "predicate",
+      "predicate": "npxYesFlag"
     },
     {
-      "reason": "npx --yes (unprompted remote package execution)",
-      "kind": "matchers",
-      "matchers": [{ "s": "npx", "bStart": true, "bEnd": true }, { "s": "--yes", "bEnd": true }]
+      "reason": "printing credential-shaped env var to stdout",
+      "kind": "predicate",
+      "predicate": "credentialPrint"
     },
     { "reason": "destructive gh api DELETE", "kind": "predicate", "predicate": "ghApiDelete" }
   ],

