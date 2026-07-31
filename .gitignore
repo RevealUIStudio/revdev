@@ -44,5 +44,10 @@ coverage/
 
 # opensrc context (fetched on demand)
 opensrc/
-.claude/
+# Local Claude/agent state ignored; materialized rules/agents/skills tracked (GAP-372 copy-mode).
+.claude/*
+!.claude/rules/
+!.claude/agents/
+!.claude/skills/
+!.claude/.revcon-manifest.json
 .agents/
