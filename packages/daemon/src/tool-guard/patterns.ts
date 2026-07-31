@@ -238,24 +238,14 @@ function isEnvAssignment(token: string): boolean {
   if (token.length === 0 || token[0] === '-') return false;
   let i = 0;
   const first = token.charCodeAt(0);
-  if (
-    !(
-      (first >= 65 && first <= 90) ||
-      (first >= 97 && first <= 122) ||
-      first === 95
-    )
-  ) {
+  if (!((first >= 65 && first <= 90) || (first >= 97 && first <= 122) || first === 95)) {
     return false;
   }
   i = 1;
   while (i < token.length) {
     const c = token.charCodeAt(i);
     if (c === 61) return i > 0; // '='
-    const ok =
-      (c >= 48 && c <= 57) ||
-      (c >= 65 && c <= 90) ||
-      (c >= 97 && c <= 122) ||
-      c === 95;
+    const ok = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
     if (!ok) return false;
     i += 1;
   }
@@ -567,12 +557,7 @@ function npmTokenMgmt(command: string): boolean {
 
 /** True when a node argv token is an inline-eval flag (-e/--eval/-p/--print). */
 function isNodeEvalFlag(token: string): boolean {
-  if (
-    token === '-e' ||
-    token === '--eval' ||
-    token === '-p' ||
-    token === '--print'
-  ) {
+  if (token === '-e' || token === '--eval' || token === '-p' || token === '--print') {
     return true;
   }
   if (token.startsWith('--eval=') || token.startsWith('--print=')) return true;
@@ -594,10 +579,7 @@ function nodeInlineEval(command: string): boolean {
 }
 
 /** `python` / `python3` with `-c` in command position. Optional code needle. */
-function pythonDashC(
-  command: string,
-  codeNeedle?: string,
-): boolean {
+function pythonDashC(command: string, codeNeedle?: string): boolean {
   return anySurface(command, (argv) => {
     const base = cmdBase(argAt(argv, 0));
     if (base !== 'python' && base !== 'python3') return false;
@@ -717,10 +699,7 @@ function credentialNameFromArg(arg: string): string | null {
       for (let i = 0; i < inner.length; i += 1) {
         const c = inner.charCodeAt(i);
         const ok =
-          (c >= 48 && c <= 57) ||
-          (c >= 65 && c <= 90) ||
-          (c >= 97 && c <= 122) ||
-          c === 95;
+          (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
         if (!ok) break;
         name += inner[i];
       }
@@ -730,11 +709,7 @@ function credentialNameFromArg(arg: string): string | null {
     let name = '';
     for (let i = 1; i < arg.length; i += 1) {
       const c = arg.charCodeAt(i);
-      const ok =
-        (c >= 48 && c <= 57) ||
-        (c >= 65 && c <= 90) ||
-        (c >= 97 && c <= 122) ||
-        c === 95;
+      const ok = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
       if (!ok) break;
       name += arg[i];
     }
@@ -744,14 +719,7 @@ function credentialNameFromArg(arg: string): string | null {
   let okBare = true;
   for (let i = 0; i < arg.length; i += 1) {
     const c = arg.charCodeAt(i);
-    if (
-      !(
-        (c >= 48 && c <= 57) ||
-        (c >= 65 && c <= 90) ||
-        (c >= 97 && c <= 122) ||
-        c === 95
-      )
-    ) {
+    if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95)) {
       okBare = false;
       break;
     }
