@@ -1,6 +1,6 @@
 import {
-  StatusDot as PresentationStatusDot,
   type StatusDotStatus as PresentationStatus,
+  StatusDot as PresentationStatusDot,
 } from '@revealui/presentation';
 
 const statusMap = {

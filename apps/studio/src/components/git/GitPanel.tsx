@@ -24,8 +24,8 @@ import type {
   GitFileEntry,
   GitStatusResult,
 } from '../../types';
-import ConfirmDialog from '../ui/ConfirmDialog';
-import ErrorAlert from '../ui/ErrorAlert';
+import ConfirmDialog from '../adapters/ConfirmDialog';
+import ErrorAlert from '../adapters/ErrorAlert';
 import DiffView from './DiffView';
 
 // ── Status badge ─────────────────────────────────────────────────────────────

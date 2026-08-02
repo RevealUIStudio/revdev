@@ -3,7 +3,7 @@ import { vaultCopy } from '../../lib/invoke';
 
 const COPY_FEEDBACK_MS = 2_000;
 
-import Button from '../ui/Button';
+import Button from '../adapters/Button';
 
 interface SecretDetailProps {
   path: string | null;

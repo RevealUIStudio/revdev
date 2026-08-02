@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SecretInfo } from '../../types';
-import ConfirmDialog from '../ui/ConfirmDialog';
+import ConfirmDialog from '../adapters/ConfirmDialog';
 
 interface SecretListProps {
   secrets: SecretInfo[];

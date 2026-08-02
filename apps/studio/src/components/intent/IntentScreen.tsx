@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
 
 interface IntentScreenProps {
   onSelect: (intent: 'deploy' | 'develop') => Promise<void> | void;

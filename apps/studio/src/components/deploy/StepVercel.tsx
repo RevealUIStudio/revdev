@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { vercelCreateProject, vercelValidateToken } from '../../lib/deploy';
 import type { StudioConfig, VercelProject, WizardData } from '../../types';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
+import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 import WizardStep from './WizardStep';
 
 const REQUIRED_PROJECTS = [

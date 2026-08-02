@@ -16,9 +16,9 @@ import {
   harnessAgentStop,
 } from '../../lib/invoke';
 import type { AgentSessionInfo, HarnessAgentProcess } from '../../types';
+import Button from '../adapters/Button';
+import StatusDot from '../adapters/StatusDot';
 import TerminalView from '../terminal/TerminalView';
-import Button from '../ui/Button';
-import StatusDot from '../ui/StatusDot';
 
 function harnessRowsToSessions(rows: HarnessAgentProcess[]): AgentSessionInfo[] {
   return rows.map((r) => ({

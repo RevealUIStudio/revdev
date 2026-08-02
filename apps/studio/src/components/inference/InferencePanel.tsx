@@ -9,7 +9,7 @@ import { useState } from 'react';
 
 import { useInference } from '../../hooks/use-inference';
 import type { LocalAiTier } from '../../types';
-import ConfirmDialog from '../ui/ConfirmDialog';
+import ConfirmDialog from '../adapters/ConfirmDialog';
 
 interface PendingDelete {
   kind: 'model' | 'snapshot';

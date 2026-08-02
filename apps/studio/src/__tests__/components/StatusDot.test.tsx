@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import StatusDot from '../../components/ui/StatusDot';
+import StatusDot from '../../components/adapters/StatusDot';
 
 describe('StatusDot', () => {
   it('renders a span element', () => {

@@ -7,7 +7,7 @@ import {
   daemonStatus,
   daemonStop,
 } from '../../lib/invoke';
-import ConfirmDialog from '../ui/ConfirmDialog';
+import ConfirmDialog from '../adapters/ConfirmDialog';
 
 interface DaemonPanelProps {
   harnessStatus: HarnessStatus;

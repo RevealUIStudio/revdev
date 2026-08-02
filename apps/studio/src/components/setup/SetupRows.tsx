@@ -13,10 +13,10 @@ import {
   vaultIsInitialized,
 } from '../../lib/invoke';
 import type { SnapModel, TerminalProfile } from '../../types';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
-import Input from '../ui/Input';
-import StatusDot from '../ui/StatusDot';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
+import Input from '../adapters/Input';
+import StatusDot from '../adapters/StatusDot';
 
 const SETUP_DONE_KEY = 'revealui_project_setup_done';
 const SETUP_CMD = 'pnpm setup:env';

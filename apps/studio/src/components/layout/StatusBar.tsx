@@ -1,5 +1,5 @@
 import { useStatusContext } from '../../hooks/use-status';
-import StatusDot from '../ui/StatusDot';
+import StatusDot from '../adapters/StatusDot';
 
 /** Max characters for truncated error message in the status bar. */
 const ERROR_TRUNCATE_LENGTH = 60;

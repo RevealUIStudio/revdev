@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { getConfig } from '../../lib/config';
 import { healthCheck } from '../../lib/deploy';
 import type { StudioConfig } from '../../types';
-import Button from '../ui/Button';
-import PanelHeader from '../ui/PanelHeader';
-import StatusDot from '../ui/StatusDot';
+import Button from '../adapters/Button';
+import PanelHeader from '../adapters/PanelHeader';
+import StatusDot from '../adapters/StatusDot';
 
 type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'checking';
 

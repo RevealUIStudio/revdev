@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import ConfirmDialog from '../../components/adapters/ConfirmDialog';
 
 describe('ConfirmDialog', () => {
   it('renders the title and body when open', () => {

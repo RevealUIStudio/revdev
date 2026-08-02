@@ -1,7 +1,7 @@
 import { useApps } from '../../hooks/use-apps';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
-import PanelHeader from '../ui/PanelHeader';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
+import PanelHeader from '../adapters/PanelHeader';
 import AppCard from './AppCard';
 
 export default function AppsPanel() {

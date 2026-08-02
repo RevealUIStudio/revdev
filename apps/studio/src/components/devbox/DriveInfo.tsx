@@ -1,5 +1,5 @@
 import type { MountStatus } from '../../types';
-import Card from '../ui/Card';
+import Card from '../adapters/Card';
 
 interface DriveInfoProps {
   mount: MountStatus;

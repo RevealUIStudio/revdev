@@ -1,9 +1,9 @@
 import type { Terminal } from '@xterm/xterm';
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocalShell } from '../../hooks/use-local-shell';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
-import StatusDot from '../ui/StatusDot';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
+import StatusDot from '../adapters/StatusDot';
 import TerminalView from './TerminalView';
 
 /**

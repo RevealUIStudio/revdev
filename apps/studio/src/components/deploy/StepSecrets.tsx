@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { generateKek, generateSecret } from '../../lib/deploy';
 import type { WizardData } from '../../types';
-import Button from '../ui/Button';
+import Button from '../adapters/Button';
 import WizardStep from './WizardStep';
 
 interface StepSecretsProps {

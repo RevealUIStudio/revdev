@@ -1,7 +1,7 @@
 import { useDevBox } from '../../hooks/use-devbox';
 import { useStatus } from '../../hooks/use-status';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
 import DriveInfo from './DriveInfo';
 import MountLog from './MountLog';
 

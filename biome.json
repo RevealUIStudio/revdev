@@ -73,6 +73,33 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/studio/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/components/ui",
+                      "**/components/ui/**",
+                      "**/components/ui/*",
+                      "*/ui",
+                      "*/ui/*",
+                      "**/ui/*"
+                    ],
+                    "message": "Local components/ui is retired (studio-dogfood Phase 4). Import Studio adapters from components/adapters or @revealui/presentation. See ADR 2026-05-16-fleet-revealui-native-compliance."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

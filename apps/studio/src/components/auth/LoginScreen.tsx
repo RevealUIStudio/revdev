@@ -11,8 +11,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthContext } from '../../hooks/use-auth';
 import { useSettingsContext } from '../../hooks/use-settings';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
+import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
