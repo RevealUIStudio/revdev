@@ -15,7 +15,7 @@ import {
   harnessAgentStop,
 } from '../../lib/invoke';
 import type { AgentBackend, HarnessAgentProcess } from '../../types';
-import ConfirmDialog from '../ui/ConfirmDialog';
+import ConfirmDialog from '../adapters/ConfirmDialog';
 
 type SpawnMode = 'harness' | 'local';
 

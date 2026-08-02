@@ -1,6 +1,6 @@
 import { useTiles } from '../../hooks/use-tiles';
-import Button from '../ui/Button';
-import PanelHeader from '../ui/PanelHeader';
+import Button from '../adapters/Button';
+import PanelHeader from '../adapters/PanelHeader';
 import CategorySection from './CategorySection';
 import Tile from './Tile';
 

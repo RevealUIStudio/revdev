@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import ErrorAlert from '../ui/ErrorAlert';
+import ErrorAlert from '../adapters/ErrorAlert';
 
 interface WizardStepProps {
   title: string;

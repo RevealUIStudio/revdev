@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import Dialog from '../../components/ui/Dialog';
+import Dialog from '../../components/adapters/Dialog';
 
 describe('Dialog', () => {
   it('renders nothing when closed', () => {

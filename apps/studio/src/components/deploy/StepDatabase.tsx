@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { neonTestConnection, runDbMigrate, runDbSeed } from '../../lib/deploy';
 import type { StudioConfig, WizardData } from '../../types';
-import Button from '../ui/Button';
-import ConfirmDialog from '../ui/ConfirmDialog';
-import Input from '../ui/Input';
+import Button from '../adapters/Button';
+import ConfirmDialog from '../adapters/ConfirmDialog';
+import Input from '../adapters/Input';
 import WizardStep from './WizardStep';
 
 type Phase = 'input' | 'testing' | 'migrating' | 'seeding' | 'done';

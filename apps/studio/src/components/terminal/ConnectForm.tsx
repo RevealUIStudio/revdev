@@ -2,9 +2,9 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useState } from 'react';
 import { sshBookmarkDelete, sshBookmarkList, sshBookmarkSave } from '../../lib/invoke';
 import type { SshAuth, SshBookmark, SshConnectParams } from '../../types';
-import Button from '../ui/Button';
-import ConfirmDialog from '../ui/ConfirmDialog';
-import Input from '../ui/Input';
+import Button from '../adapters/Button';
+import ConfirmDialog from '../adapters/ConfirmDialog';
+import Input from '../adapters/Input';
 
 interface ConnectFormProps {
   onConnect: (params: SshConnectParams) => void;

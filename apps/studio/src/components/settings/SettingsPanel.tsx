@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import type { Theme } from '../../hooks/use-settings';
 import { useSettingsContext } from '../../hooks/use-settings';
 import { getDaemonUrl, pairWithDaemon, setDaemonToken, setDaemonUrl } from '../../lib/invoke';
-import Card from '../ui/Card';
-import PanelHeader from '../ui/PanelHeader';
+import Card from '../adapters/Card';
+import PanelHeader from '../adapters/PanelHeader';
 
 type SettingsTab = 'appearance' | 'connection' | 'about';
 

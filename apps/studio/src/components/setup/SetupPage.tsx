@@ -1,7 +1,7 @@
 import { useSetup } from '../../hooks/use-setup';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
-import PanelHeader from '../ui/PanelHeader';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
+import PanelHeader from '../adapters/PanelHeader';
 import {
   DevPodRow,
   GitIdentityRow,

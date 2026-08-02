@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { vercelDeploy, vercelGetDeployment, vercelSetEnv } from '../../lib/deploy';
 import type { StudioConfig, WizardData } from '../../types';
-import Button from '../ui/Button';
+import Button from '../adapters/Button';
 import WizardStep from './WizardStep';
 
 interface StepDeployProps {

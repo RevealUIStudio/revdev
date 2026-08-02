@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
-import Input from '../ui/Input';
-import Modal from '../ui/Modal';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
+import Input from '../adapters/Input';
+import Modal from '../adapters/Modal';
 
 interface CreateSecretDialogProps {
   // Returns true on success; on false the dialog stays open and preserves input

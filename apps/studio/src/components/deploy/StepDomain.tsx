@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { StudioConfig, WizardData } from '../../types';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
+import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 import WizardStep from './WizardStep';
 
 interface StepDomainProps {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useVault } from '../../hooks/use-vault';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
 import CreateSecretDialog from './CreateSecretDialog';
 import NamespaceFilter from './NamespaceFilter';
 import SearchBar from './SearchBar';

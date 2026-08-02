@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import ConfirmDialog from '../ui/ConfirmDialog';
+import ConfirmDialog from '../adapters/ConfirmDialog';
 import AgentChat from './AgentChat';
 import ApprovalQueue from './ApprovalQueue';
 import FileReservations from './FileReservations';

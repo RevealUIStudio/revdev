@@ -5,9 +5,9 @@ const LOG_POLL_INTERVAL_MS = 3_000;
 
 import { readAppLog } from '../../lib/invoke';
 import type { AppStatus } from '../../types';
-import Button from '../ui/Button';
-import Card from '../ui/Card';
-import StatusDot from '../ui/StatusDot';
+import Button from '../adapters/Button';
+import Card from '../adapters/Card';
+import StatusDot from '../adapters/StatusDot';
 
 interface AppCardProps {
   status: AppStatus;
