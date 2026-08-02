@@ -18,7 +18,7 @@ describe('ErrorAlert', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders error message', () => {
+  it('renders error message with role=alert', () => {
     render(<ErrorAlert message="Something went wrong" />);
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
   });

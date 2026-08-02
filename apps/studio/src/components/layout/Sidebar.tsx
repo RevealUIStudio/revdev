@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import type { Page } from '../../types';
 
 interface SidebarProps {
@@ -5,22 +6,88 @@ interface SidebarProps {
   onNavigate: (page: Page) => void;
 }
 
-const NAV_ITEMS: { page: Page; label: string; icon: string }[] = [
-  { page: 'dashboard', label: 'Dashboard', icon: 'grid' },
-  { page: 'gallery', label: 'Launcher', icon: 'rocket' },
-  { page: 'vault', label: 'Vault', icon: 'lock' },
-  { page: 'infrastructure', label: 'Infrastructure', icon: 'server' },
-  { page: 'sync', label: 'Sync', icon: 'refresh' },
-  { page: 'terminal', label: 'Terminal', icon: 'terminal' },
-  { page: 'git', label: 'Git', icon: 'git' },
-  { page: 'editor', label: 'Editor', icon: 'editor' },
-  { page: 'agent', label: 'Agent', icon: 'agent' },
-  { page: 'inference', label: 'Inference', icon: 'inference' },
-  { page: 'setup', label: 'Setup', icon: 'settings' },
-  { page: 'settings', label: 'Settings', icon: 'wrench' },
+type NavItem = { page: Page; label: string; icon: string };
+type NavGroupId = 'operate' | 'build' | 'configure';
+
+interface NavGroup {
+  id: NavGroupId;
+  label: string;
+  items: NavItem[];
+}
+
+/**
+ * Frontend-excellence Phase 2 hard rule: 12 destinations → 3 progressive-
+ * disclosure groups (Operate / Build / Configure). Group containing the
+ * current page starts open; others start collapsed.
+ */
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: 'operate',
+    label: 'Operate',
+    items: [
+      { page: 'dashboard', label: 'Dashboard', icon: 'grid' },
+      { page: 'gallery', label: 'Launcher', icon: 'rocket' },
+      { page: 'agent', label: 'Agent', icon: 'agent' },
+      { page: 'terminal', label: 'Terminal', icon: 'terminal' },
+      { page: 'vault', label: 'Vault', icon: 'lock' },
+    ],
+  },
+  {
+    id: 'build',
+    label: 'Build',
+    items: [
+      { page: 'editor', label: 'Editor', icon: 'editor' },
+      { page: 'git', label: 'Git', icon: 'git' },
+      { page: 'inference', label: 'Inference', icon: 'inference' },
+      { page: 'sync', label: 'Sync', icon: 'refresh' },
+    ],
+  },
+  {
+    id: 'configure',
+    label: 'Configure',
+    items: [
+      { page: 'infrastructure', label: 'Infrastructure', icon: 'server' },
+      { page: 'setup', label: 'Setup', icon: 'settings' },
+      { page: 'settings', label: 'Settings', icon: 'wrench' },
+    ],
+  },
 ];
 
+function groupForPage(page: Page): NavGroupId {
+  for (const group of NAV_GROUPS) {
+    if (group.items.some((item) => item.page === page)) {
+      return group.id;
+    }
+  }
+  // deploy and any future pages: default into Operate so the nav is never empty
+  return 'operate';
+}
+
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
+  const activeGroup = useMemo(() => groupForPage(currentPage), [currentPage]);
+  const [openGroups, setOpenGroups] = useState<Record<NavGroupId, boolean>>(() => ({
+    operate: activeGroup === 'operate',
+    build: activeGroup === 'build',
+    configure: activeGroup === 'configure',
+  }));
+
+  // Keep the group that owns the current page open when navigation lands
+  // from outside the sidebar (e.g. deep-link / intent screen).
+  const effectiveOpen: Record<NavGroupId, boolean> = {
+    operate: openGroups.operate || activeGroup === 'operate',
+    build: openGroups.build || activeGroup === 'build',
+    configure: openGroups.configure || activeGroup === 'configure',
+  };
+
+  function toggleGroup(id: NavGroupId) {
+    setOpenGroups((prev) => ({
+      ...prev,
+      // Do not collapse the group that owns the current page — user would
+      // lose the highlighted item without a way to see where they are.
+      [id]: activeGroup === id ? true : !prev[id],
+    }));
+  }
+
   return (
     <aside className="flex h-full w-56 flex-col border-r border-edge bg-surface-1">
       <div className="flex items-center gap-2 border-b border-edge px-4 py-4">
@@ -29,22 +96,44 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         </div>
         <span className="text-sm font-semibold">RevealUI Studio</span>
       </div>
-      <nav className="flex-1 px-2 py-3">
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.page}
-            type="button"
-            onClick={() => onNavigate(item.page)}
-            className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
-              currentPage === item.page
-                ? 'bg-surface-3 text-fg'
-                : 'text-fg-muted hover:bg-surface-3 hover:text-fg'
-            }`}
-          >
-            <NavIcon name={item.icon} />
-            {item.label}
-          </button>
-        ))}
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3" aria-label="Studio">
+        {NAV_GROUPS.map((group) => {
+          const isOpen = effectiveOpen[group.id];
+          return (
+            <div key={group.id} className="pb-1">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.id)}
+                aria-expanded={isOpen}
+                className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide text-fg-muted uppercase hover:bg-surface-3 hover:text-fg"
+              >
+                <span>{group.label}</span>
+                <span aria-hidden="true" className="text-[10px]">
+                  {isOpen ? '▾' : '▸'}
+                </span>
+              </button>
+              {isOpen && (
+                <div className="mt-0.5 space-y-0.5">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.page}
+                      type="button"
+                      onClick={() => onNavigate(item.page)}
+                      className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+                        currentPage === item.page
+                          ? 'bg-surface-3 text-fg'
+                          : 'text-fg-muted hover:bg-surface-3 hover:text-fg'
+                      }`}
+                    >
+                      <NavIcon name={item.icon} />
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
     </aside>
   );

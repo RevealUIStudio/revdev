@@ -76,8 +76,8 @@ importers:
         specifier: ^5.2.8
         version: 5.2.8
       '@revealui/presentation':
-        specifier: ^0.9.1
-        version: 0.9.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: ^0.12.1
+        version: 0.12.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -430,11 +430,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.28.1':
     resolution: {integrity: sha512-Svl7tq8k/08+p6CXPpRjQ1fKX+1odH/BQbb48fV6fj3CWHhsoIOoY87w1oHXm0qEpkIK3ZfVgp0hed3XBXzXMQ==}
@@ -810,6 +810,16 @@ packages:
       drizzle-zod:
         optional: true
 
+  '@revealui/contracts@0.8.1':
+    resolution: {integrity: sha512-bQY4HFibIsffTty6OxEclnueqWxk5q70d/m9mtNC3a5vdjMh7K3V4XADnvDNqayrzG6fYLkjz4Eq98ccDuYk0Q==}
+    engines: {node: '>=24.13.0'}
+    peerDependencies:
+      drizzle-zod: ^0.8.3
+      typescript: '>=6.0.0'
+    peerDependenciesMeta:
+      drizzle-zod:
+        optional: true
+
   '@revealui/contracts@1.4.0':
     resolution: {integrity: sha512-84jp/fzhI1GpMUZ3WnLUQLlQqE3f74nK/TGQE+xdqx11G1WcIxSLG1v8IjiGRJO16R7rTeoPKhFHvTj2xXm1DQ==}
     engines: {node: '>=24.13.0'}
@@ -827,8 +837,8 @@ packages:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
-  '@revealui/presentation@0.9.1':
-    resolution: {integrity: sha512-w+qIqj6wxg6PcRe90LW8dX3GAJDxod4iGgyQamDTg6Gp43izFFIB3NJOeFHi8aHvRojdyuAPHviHWxgBSRNR1g==}
+  '@revealui/presentation@0.12.1':
+    resolution: {integrity: sha512-bHzMaetE7VjF/Jp5g+7/NMTrUomUm4bYw1J0FbFys1a5KGMijArx+dAv4qP8rzkl8QC1XBNj+7U68E6Jtiz/aw==}
     engines: {node: '>=24.13.0'}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
@@ -842,8 +852,8 @@ packages:
     resolution: {integrity: sha512-Gl0YLjh5JmE4Cpat0djARZWuXZ5FuEwXuk1Jr3E/uq+hKD2XiUxPP133KqkIj95PadGiCpLMz8DYc1pgQFLlVg==}
     engines: {node: '>=24.13.0'}
 
-  '@revealui/tokens@0.2.0':
-    resolution: {integrity: sha512-dLU9Svi65SigQr9eFa5OMtEjBZfqxSd6Yw/ANx3vaDhOUtZaMMT3FFDQsKAXEV21eHOsXLePOoCCfc5HyKKFeQ==}
+  '@revealui/tokens@0.3.0':
+    resolution: {integrity: sha512-ETlCSoEdJXXieWowcnZE577MpFcED8KSUPvGhgBfK7GThuH7QFtAmq0nvD2jEAf0uvP1v+iraCTUmtSH/ZEDYQ==}
     engines: {node: '>=24.13.0'}
 
   '@revealui/utils@0.3.5':
@@ -3302,6 +3312,11 @@ snapshots:
       typescript: 6.0.3
       zod: 4.4.3
 
+  '@revealui/contracts@0.8.1(typescript@6.0.3)':
+    dependencies:
+      typescript: 6.0.3
+      zod: 4.4.3
+
   '@revealui/contracts@1.4.0(typescript@6.0.3)':
     dependencies:
       typescript: 6.0.3
@@ -3341,12 +3356,16 @@ snapshots:
       - pg-native
       - typescript
 
-  '@revealui/presentation@0.9.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@revealui/presentation@0.12.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)':
     dependencies:
-      '@revealui/tokens': 0.2.0
+      '@revealui/contracts': 0.8.1(typescript@6.0.3)
+      '@revealui/tokens': 0.3.0
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       tailwind-merge: 3.6.0
+    transitivePeerDependencies:
+      - drizzle-zod
+      - typescript
 
   '@revealui/resilience@0.2.4': {}
 
@@ -3360,7 +3379,7 @@ snapshots:
       - drizzle-zod
       - typescript
 
-  '@revealui/tokens@0.2.0': {}
+  '@revealui/tokens@0.3.0': {}
 
   '@revealui/utils@0.3.5':
     dependencies:
