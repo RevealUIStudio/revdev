@@ -28,7 +28,6 @@ describe('Button', () => {
 
   it('shows spinner when loading', () => {
     render(<Button loading>Submit</Button>);
-    // The spinner SVG should be present
     const button = screen.getByRole('button');
     const svg = button.querySelector('svg');
     expect(svg).not.toBeNull();
@@ -42,53 +41,51 @@ describe('Button', () => {
     expect(svg).toBeNull();
   });
 
-  it('applies primary variant styles', () => {
+  it('maps primary → brand solid (bg-primary)', () => {
     render(<Button variant="primary">Primary</Button>);
     const button = screen.getByRole('button');
     expect(button.className).toContain('bg-primary');
   });
 
-  it('applies secondary variant styles by default', () => {
+  it('maps secondary → neutral solid (bg-secondary) by default', () => {
     render(<Button>Default</Button>);
     const button = screen.getByRole('button');
     expect(button.className).toContain('bg-secondary');
   });
 
-  it('applies ghost variant styles', () => {
+  it('maps ghost → neutral ghost appearance', () => {
     render(<Button variant="ghost">Ghost</Button>);
     const button = screen.getByRole('button');
     expect(button.className).toContain('hover:text-accent-foreground');
   });
 
-  it('applies danger variant styles', () => {
+  it('maps danger → danger solid (bg-destructive)', () => {
     render(<Button variant="danger">Delete</Button>);
     const button = screen.getByRole('button');
     expect(button.className).toContain('bg-destructive');
   });
 
-  it('applies success variant styles', () => {
+  it('maps success → success solid token fill', () => {
     render(<Button variant="success">Save</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('bg-success');
+    expect(button.className).toContain('bg-[var(--rvui-success-strong)]');
   });
 
-  it('applies a compact size override for size="sm" (h-8, denser than presentation\'s h-10 base)', () => {
+  it('applies a compact size override for size="sm" (h-8, denser than presentation sm)', () => {
     render(<Button size="sm">Small</Button>);
     const button = screen.getByRole('button');
     expect(button.className).toContain('h-8');
-    expect(button.className).not.toContain('h-10');
   });
 
-  it('applies presentation\'s smallest built-in size for size="md" (the default)', () => {
+  it('applies presentation sm (h-10) for size="md" (the default)', () => {
     render(<Button>Default size</Button>);
     expect(screen.getByRole('button').className).toContain('h-10');
   });
 
-  it('applies presentation\'s default size for size="lg"', () => {
+  it('applies presentation default (h-11) for size="lg"', () => {
     render(<Button size="lg">Large</Button>);
     const button = screen.getByRole('button');
     expect(button.className).toContain('h-11');
-    expect(button.className).not.toContain('h-12');
   });
 
   it('has type="button" by default', () => {

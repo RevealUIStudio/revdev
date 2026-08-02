@@ -1,24 +1,23 @@
-import { ButtonCVA as PresentationButton } from '@revealui/presentation';
+import { Button as PresentationButton } from '@revealui/presentation';
 import type { ButtonHTMLAttributes } from 'react';
 
-const variantMap = {
-  primary: 'primary',
-  secondary: 'secondary',
-  ghost: 'ghost',
-  danger: 'destructive',
-  success: 'secondary',
+/**
+ * Studio consumer variants → presentation (0.12+) axes:
+ * `variant` is colour intent; `appearance` is visual weight.
+ */
+const intentMap = {
+  primary: { variant: 'brand', appearance: 'solid' },
+  secondary: { variant: 'neutral', appearance: 'solid' },
+  ghost: { variant: 'neutral', appearance: 'ghost' },
+  danger: { variant: 'danger', appearance: 'solid' },
+  success: { variant: 'success', appearance: 'solid' },
 } as const;
 
 /**
- * Presentation's CVA size scale (`sm`=h-10/40px, `default`=h-11/44px,
- * `lg`=h-12/48px) runs noticeably taller than Studio's old hand-rolled
- * buttons (~24-36px, compact desktop chrome). Shifted down a step so
- * Studio keeps its density: `md` (Studio's most-used size) takes
- * presentation's smallest built-in size (`sm`); `lg` takes presentation's
- * `default`. Presentation has nothing smaller than `sm`, so Studio's `sm`
- * stays on presentation `sm` and layers a compact `className` override
- * (h-8) on top — `cn()` appends the caller's `className` last, so it wins
- * over the size variant's own `h-10 px-3 py-2`.
+ * Presentation size scale (0.12+): sm=h-10, default=h-11, lg=h-12.
+ * Studio density: md (most-used) takes presentation `sm`; lg takes
+ * presentation `default`. Studio `sm` stays on presentation `sm` with a
+ * compact className override (h-8) so dense chrome survives.
  */
 const sizeMap = {
   sm: 'sm',
@@ -32,7 +31,7 @@ const compactSizeOverride = {
   lg: undefined,
 } as const;
 
-export type ButtonVariant = keyof typeof variantMap;
+export type ButtonVariant = keyof typeof intentMap;
 export type ButtonSize = keyof typeof sizeMap;
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -42,14 +41,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Phase 2 remainder (2026-07-18): shimmed to render
- * `@revealui/presentation`'s CVA `Button`. Consumer API (default export,
- * `variant`, `size`, `loading`, `className`) unchanged.
- *
- * `success` has no matching presentation variant, so it renders the
- * `secondary` variant's base classes with a `className` color override —
- * the package's `cn()` appends the caller's `className` last, so it wins
- * over the variant's baked-in `bg-*`/`text-*` classes.
+ * Phase 2 residual (studio-dogfood): re-shimmed for `@revealui/presentation`
+ * 0.12+ Button API (variant × appearance axes, post Catalyst re-authorship).
+ * Consumer API (default export, `variant`, `size`, `loading`, `className`)
+ * unchanged.
  */
 export default function Button({
   variant = 'secondary',
@@ -59,18 +54,14 @@ export default function Button({
   className,
   ...props
 }: ButtonProps) {
-  const overrideClassName = [
-    variant === 'success' && 'bg-success text-fg font-medium hover:brightness-110',
-    compactSizeOverride[size],
-    className,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const intent = intentMap[variant];
+  const overrideClassName = [compactSizeOverride[size], className].filter(Boolean).join(' ');
 
   return (
     <PresentationButton
       type={type}
-      variant={variantMap[variant]}
+      variant={intent.variant}
+      appearance={intent.appearance}
       size={sizeMap[size]}
       isLoading={loading}
       className={overrideClassName || undefined}

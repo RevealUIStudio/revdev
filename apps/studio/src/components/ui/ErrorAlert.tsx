@@ -1,17 +1,24 @@
+import { Callout } from '@revealui/presentation';
+
 interface ErrorAlertProps {
   message: string | null | undefined;
   className?: string;
 }
 
+/**
+ * Phase 2 residual (studio-dogfood): shimmed to `@revealui/presentation`
+ * `Callout` (variant=error). Presentation's `Alert` is a modal alertdialog
+ * and is the wrong primitive for inline panel errors.
+ *
+ * Consumer API (default export, `message`, `className`) unchanged.
+ * Empty / null / undefined message still renders nothing.
+ */
 export default function ErrorAlert({ message, className = '' }: ErrorAlertProps) {
   if (!message) return null;
 
   return (
-    <div
-      className={`rounded-md border border-[var(--rvui-error)]/30 bg-[var(--rvui-error-subtle)] px-4 py-3 text-sm text-[var(--rvui-error)] ${className}`}
-      role="alert"
-    >
-      {message}
-    </div>
+    <Callout variant="error" role="alert" className={className} icon={null}>
+      <span className="text-error">{message}</span>
+    </Callout>
   );
 }

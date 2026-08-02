@@ -1,37 +1,34 @@
-/**
- * Studio status indicator — a small decorative colored dot.
- *
- * Phase 2 PR-1 (2026-05-16): status colors migrated from hardcoded
- * Tailwind palette classes (`bg-green-500`, `bg-yellow-500`, `bg-red-500`,
- * `bg-neutral-600`) to `--rvui-success/warning/error/text-2` design tokens
- * defined in `@revealui/presentation/tokens.css`. Consumer API
- * (default export, `status`, `size`, `pulse`, `className`) unchanged.
- *
- * StatusDot itself has no `@revealui/presentation` equivalent yet
- * (presentation has `Badge` for text content, but no pure decorative dot
- * primitive). It is named as a future promotion candidate. For Phase 2
- * PR-1, the dot is token-backed but still lives in Studio.
- *
- * Sequencing tracked in the internal Studio dogfood lane plan;
- * design rule codified in the internal fleet RevealUI-native
- * compliance ADR.
- */
+import {
+  StatusDot as PresentationStatusDot,
+  type StatusDotStatus as PresentationStatus,
+} from '@revealui/presentation';
 
-const statusMeta = {
-  ok: { color: 'bg-[var(--rvui-success)]', label: 'OK' },
-  warn: { color: 'bg-[var(--rvui-warning)]', label: 'Warning' },
-  error: { color: 'bg-[var(--rvui-error)]', label: 'Error' },
-  off: { color: 'bg-[var(--rvui-text-2)]', label: 'Off' },
+const statusMap = {
+  ok: 'ok',
+  warn: 'warn',
+  error: 'error',
+  /** Studio legacy name; presentation uses `idle`. */
+  off: 'idle',
+} as const satisfies Record<string, PresentationStatus>;
+
+const defaultLabel = {
+  ok: 'OK',
+  warn: 'Warning',
+  error: 'Error',
+  off: 'Off',
 } as const;
 
-const sizeMap = {
-  sm: 'size-2',
-  md: 'size-2.5',
-} as const;
+export type StatusDotStatus = keyof typeof statusMap;
+export type StatusDotSize = 'sm' | 'md';
 
 interface StatusDotProps {
-  status: keyof typeof statusMeta;
-  size?: keyof typeof sizeMap;
+  status: StatusDotStatus;
+  /**
+   * Accepted for API compatibility. Presentation renders a single size
+   * (`size-2.5`); this prop does not change the visual size (same narrowing
+   * as the Badge shim).
+   */
+  size?: StatusDotSize;
   pulse?: boolean;
   className?: string;
   /**
@@ -43,32 +40,53 @@ interface StatusDotProps {
   /**
    * Set when an adjacent VISIBLE text label already conveys the status (e.g.
    * HealthCard renders "Degraded" next to the dot). The dot is then hidden from
-   * screen readers to avoid a redundant double-announcement. Defaults to false,
-   * so a bare dot announces its status via `role="img"` + `aria-label`.
+   * screen readers to avoid a redundant double-announcement. Defaults to false.
    */
   decorative?: boolean;
 }
 
+/**
+ * Phase 2 residual (studio-dogfood): shimmed to `@revealui/presentation`
+ * `StatusDot` (requires presentation ≥0.12.0 / Phase-3 quartet publish).
+ *
+ * Consumer API (default export, `status`, `size`, `pulse`, `label`,
+ * `decorative`, `className`) preserved. Studio `off` maps to presentation
+ * `idle`. When `decorative` is true, a local token-backed span is used because
+ * presentation always exposes `role="img"` + `aria-label`.
+ */
 export default function StatusDot({
   status,
-  size = 'sm',
   pulse = false,
   className = '',
   label,
   decorative = false,
 }: StatusDotProps) {
-  const meta = statusMeta[status];
-  // Color alone is not an accessible status cue (color-only fails WCAG 1.4.1 and
-  // is ambiguous for colorblind users). A bare dot therefore exposes its status
-  // as text to assistive tech; a dot paired with a visible label opts out.
-  const a11y = decorative
-    ? ({ 'aria-hidden': true } as const)
-    : ({ role: 'img', 'aria-label': label ?? meta.label } as const);
+  const fill =
+    status === 'ok'
+      ? 'bg-[var(--rvui-success)]'
+      : status === 'warn'
+        ? 'bg-[var(--rvui-warning)]'
+        : status === 'error'
+          ? 'bg-[var(--rvui-error)]'
+          : 'bg-[var(--rvui-text-2)]';
+
+  if (decorative) {
+    return (
+      <span
+        aria-hidden="true"
+        className={['relative inline-flex size-2.5 shrink-0 rounded-full', fill, className]
+          .filter(Boolean)
+          .join(' ')}
+      />
+    );
+  }
 
   return (
-    <span
-      className={`inline-block shrink-0 rounded-full ${meta.color} ${sizeMap[size]} ${pulse ? 'animate-pulse' : ''} ${className}`}
-      {...a11y}
+    <PresentationStatusDot
+      status={statusMap[status]}
+      pulse={pulse}
+      label={label ?? defaultLabel[status]}
+      className={className || undefined}
     />
   );
 }
