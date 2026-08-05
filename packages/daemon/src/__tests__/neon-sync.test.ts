@@ -26,7 +26,7 @@ import {
   serializeEnvelope,
   signEnvelope,
 } from '../agent-identity-crypto.js';
-import { _resetForTesting, setNeonClientForTesting } from '../neon.js';
+import { _resetForTesting, setNeonClientForTesting, sweepExpiredFileClaims } from '../neon.js';
 import { startDaemon } from '../server.js';
 
 /**
@@ -428,6 +428,7 @@ describe('GAP-154 Phase 3: files.* dual-write', () => {
       backend: 'test',
     });
     recordedCalls = [];
+    const before = Date.now();
     await rpc(socketPath, 'files.reserve', {
       actorAgentId: 'file-reserver',
       paths: ['src/a.ts', 'src/b.ts'],
@@ -442,6 +443,16 @@ describe('GAP-154 Phase 3: files.* dual-write', () => {
     expect(allValues).toContain('src/a.ts');
     expect(allValues).toContain('src/b.ts');
     expect(allValues).toContain('file-reserver');
+    // GAP-175: each INSERT carries expires_at (~ now + ttlSeconds)
+    const sql = inserts[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/expires_at/i);
+    const isoExpiry = allValues.find(
+      (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v),
+    ) as string | undefined;
+    expect(isoExpiry).toBeTruthy();
+    const expMs = Date.parse(isoExpiry ?? '');
+    expect(expMs).toBeGreaterThanOrEqual(before + 590_000);
+    expect(expMs).toBeLessThanOrEqual(Date.now() + 610_000);
   });
 
   it('files.release with paths DELETEs scoped to (sessionId, paths)', async () => {
@@ -490,6 +501,20 @@ describe('GAP-154 Phase 3: files.* dual-write', () => {
     const sql = deletes[0]?.strings.join('') ?? '';
     expect(sql).not.toMatch(/file_path/i); // no path filter
     expect(deletes[0]?.values).toEqual(['file-releaser-all']);
+  });
+
+  it('sweepExpiredFileClaims DELETEs Neon rows past expires_at (GAP-175)', async () => {
+    recordedCalls = [];
+    nextResult = [{ file_path: 'src/expired.ts' }];
+    const r = await sweepExpiredFileClaims();
+    expect(r.deleted).toBe(1);
+    const deletes = recordedCalls.filter((c) =>
+      /DELETE\s+FROM\s+coordination_file_claims/i.test(c.strings.join('')),
+    );
+    expect(deletes.length).toBe(1);
+    const sql = deletes[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/expires_at\s+IS\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/expires_at\s*<\s*NOW\(\)/i);
   });
 });
 

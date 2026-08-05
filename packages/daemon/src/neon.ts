@@ -327,25 +327,29 @@ export async function syncMailMarkRead(params: {
 
 /**
  * Mirror a daemon `files.reserve` row(s) into coordination_file_claims.
- * Schema divergence: daemon has TTL + reason; Neon has only (file_path,
- * session_id, claimed_at) composite PK. We sync only the subset; TTL
- * expiry on the daemon side does NOT propagate to Neon (a future cleanup
- * pass needs to handle that). For Phase 3 this is a known limitation.
+ * GAP-175: write `expires_at` (ISO / Date) so Neon can drop expired claims
+ * via `sweepExpiredFileClaims` (piggybacked on the daemon prune timer).
+ * `reason` stays PGlite-only (no Neon column).
  */
 export async function syncFilesReserve(params: {
   sessionId: string;
   paths: string[];
+  /** Absolute expiry for this reservation batch (daemon TTL). */
+  expiresAt: Date | string;
 }): Promise<void> {
   if (!client) return;
   if (params.paths.length === 0) return;
+  const expiresAt =
+    params.expiresAt instanceof Date ? params.expiresAt.toISOString() : params.expiresAt;
   try {
     const c = client;
     for (const p of params.paths) {
       await c`
-        INSERT INTO coordination_file_claims (file_path, session_id)
-        VALUES (${p}, ${params.sessionId})
+        INSERT INTO coordination_file_claims (file_path, session_id, expires_at)
+        VALUES (${p}, ${params.sessionId}, ${expiresAt}::timestamptz)
         ON CONFLICT (file_path, session_id) DO UPDATE
-          SET claimed_at = NOW()
+          SET claimed_at = NOW(),
+              expires_at = EXCLUDED.expires_at
       `;
     }
   } catch (err) {
@@ -354,6 +358,32 @@ export async function syncFilesReserve(params: {
       pathCount: params.paths.length,
       error: String(err),
     });
+  }
+}
+
+/**
+ * Delete Neon file claims past their TTL (GAP-175). Best-effort; no-op without
+ * POSTGRES_URL. Safe to call from the periodic prune timer.
+ */
+export async function sweepExpiredFileClaims(): Promise<{ deleted: number }> {
+  if (!client) return { deleted: 0 };
+  try {
+    const c = client;
+    // Neon serverless returns row metadata inconsistently; count via RETURNING.
+    const rows = await c`
+      DELETE FROM coordination_file_claims
+      WHERE expires_at IS NOT NULL
+        AND expires_at < NOW()
+      RETURNING file_path
+    `;
+    const deleted = Array.isArray(rows) ? rows.length : 0;
+    if (deleted > 0) {
+      log.info('sweepExpiredFileClaims', { deleted });
+    }
+    return { deleted };
+  } catch (err) {
+    log.warn('sweepExpiredFileClaims failed', { error: String(err) });
+    return { deleted: 0 };
   }
 }
 

@@ -43,6 +43,7 @@ import {
   initNeonSync,
   isNeonSyncActive,
   listFleetSessions,
+  sweepExpiredFileClaims,
   syncEventLog,
   syncFilesRelease,
   syncFilesReserve,
@@ -399,6 +400,20 @@ async function runPrune(
   );
   if (prunedTelemetry.rows.length > 0) {
     log.debug('pruned signature telemetry events', { count: prunedTelemetry.rows.length });
+  }
+  // Local file_reservations: drop rows past TTL (queries already filter
+  // expires_at > NOW(); without this, PGlite grows unbounded).
+  const expiredLocal = await db.query<{ file_path: string }>(
+    `DELETE FROM file_reservations WHERE expires_at <= NOW() RETURNING file_path`,
+  );
+  // Neon coordination_file_claims: same TTL semantics (GAP-175). Best-effort
+  // dual-write mirror; no-op when POSTGRES_URL is unset.
+  const neonClaims = await sweepExpiredFileClaims();
+  if (expiredLocal.rows.length > 0 || neonClaims.deleted > 0) {
+    log.info('file claim TTL sweep', {
+      localDeleted: expiredLocal.rows.length,
+      neonDeleted: neonClaims.deleted,
+    });
   }
   pruneState.lastRunAt = new Date();
   pruneState.lastAgedCount = aged.rows.length;
@@ -1591,12 +1606,12 @@ registerHandler('files.reserve', async (params, db, ctx) => {
     reserved.push(p);
   }
 
-  // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3).
-  // Only sync the paths we actually reserved (not conflicts). The TTL +
-  // reason fields don't exist on the Neon side; PGlite remains the source
-  // of truth for expiry. See syncFilesReserve notes.
+  // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3 +
+  // GAP-175 expires_at). Only sync paths actually reserved (not conflicts).
+  // reason stays PGlite-only; Neon TTL is swept by sweepExpiredFileClaims.
   if (reserved.length > 0) {
-    await syncFilesReserve({ sessionId: agentId, paths: reserved });
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+    await syncFilesReserve({ sessionId: agentId, paths: reserved, expiresAt });
   }
   return {
     success: conflicts.length === 0,
