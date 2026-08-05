@@ -105,6 +105,40 @@ describe('evaluateToolAction — command', () => {
   });
 });
 
+describe('evaluateToolActionAsync — live rollup (GAP-375 residual)', () => {
+  it('allows label-add when fetchRollup reports all audits SUCCESS', async () => {
+    const { evaluateToolActionAsync } = await import('../tool-guard/index.js');
+    const green = [
+      'Security Gate',
+      'CodeQL',
+      'Secret Scanning (Gitleaks)',
+      'Dependency Review',
+    ].map((name) => ({ name, conclusion: 'SUCCESS', state: 'COMPLETED' }));
+    const v = await evaluateToolActionAsync(
+      { kind: 'command', command: 'gh pr edit 42 --add-label sec-review:approved' },
+      { fetchRollup: async () => green },
+    );
+    expect(v.allowed).toBe(true);
+  });
+
+  it('blocks label-add when fetchRollup reports a failure', async () => {
+    const { evaluateToolActionAsync } = await import('../tool-guard/index.js');
+    const v = await evaluateToolActionAsync(
+      { kind: 'command', command: 'gh pr edit 42 --add-label sec-review:approved' },
+      {
+        fetchRollup: async () => [
+          { name: 'Security Gate', conclusion: 'FAILURE' },
+          { name: 'CodeQL', conclusion: 'SUCCESS' },
+          { name: 'Secret Scanning (Gitleaks)', conclusion: 'SUCCESS' },
+          { name: 'Dependency Review', conclusion: 'SUCCESS' },
+        ],
+      },
+    );
+    expect(v.allowed).toBe(false);
+    expect(v.rule).toBe('sec-review-label-withhold');
+  });
+});
+
 describe('evaluateToolAction — read', () => {
   it('blocks reading a credential file', () => {
     const v = evaluateToolAction({ kind: 'read', path: `${homedir()}/.ssh/id_ed25519` });
