@@ -1509,15 +1509,17 @@ registerHandler('mail.send', async (params, db, ctx) => {
   if (!to) throw new Error('mail.send: missing "to" (or "toAgent")');
   const subject = str(params.subject);
   const body = str(params.body);
+  // GAP-176: generate UUID once; dual-write the same id to Neon.
+  const id = crypto.randomUUID();
 
-  const result = await db.query<{ id: number }>(
-    `INSERT INTO agent_messages (from_agent, to_agent, subject, body)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    [from, to, subject, body],
+  await db.query(
+    `INSERT INTO agent_messages (id, from_agent, to_agent, subject, body)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, from, to, subject, body],
   );
-  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
-  await syncMailSend({ fromAgent: from, toAgent: to, subject, body });
-  return { sent: true, id: result.rows[0]?.id ?? null };
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3 + GAP-176).
+  await syncMailSend({ id, fromAgent: from, toAgent: to, subject, body });
+  return { sent: true, id };
 });
 
 registerHandler('mail.inbox', async (params, db, ctx) => {
@@ -1544,48 +1546,38 @@ registerHandler('mail.broadcast', async (params, db, ctx) => {
     `SELECT id FROM agent_sessions WHERE ended_at IS NULL AND id <> $1`,
     [from],
   );
+  const neonRows: Array<{ id: string; toAgent: string; subject: string; body: string }> = [];
   for (const target of sessions.rows) {
+    const id = crypto.randomUUID();
     await db.query(
-      `INSERT INTO agent_messages (from_agent, to_agent, subject, body)
-       VALUES ($1, $2, $3, $4)`,
-      [from, target.id, subject, body],
+      `INSERT INTO agent_messages (id, from_agent, to_agent, subject, body)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, from, target.id, subject, body],
     );
+    neonRows.push({ id, toAgent: target.id, subject, body });
   }
-  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
-  await syncMailBroadcast({
-    fromAgent: from,
-    toAgents: sessions.rows.map((r) => r.id),
-    subject,
-    body,
-  });
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3 + GAP-176).
+  await syncMailBroadcast({ fromAgent: from, rows: neonRows });
   return { broadcast: true, sent: sessions.rows.length, recipients: sessions.rows.length };
 });
 
 registerHandler('mail.markRead', async (params, db, ctx) => {
   const agentId = await requireVerifiedAgent(ctx, db, params);
-  // Accept number[] or string[] (JSON numbers or numeric strings).
+  // GAP-176: ids are UUID strings (legacy numeric ids no longer match after
+  // migration 0009 — clients must re-read inbox for new ids).
   const raw = Array.isArray(params.messageIds) ? params.messageIds : [];
   const ids = raw
-    .map((v) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN))
-    .filter((n) => Number.isFinite(n));
+    .map((v) => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : ''))
+    .filter((s) => s.length > 0);
   if (ids.length === 0) return { marked: 0 };
-
-  // Fetch (subject, body) hints BEFORE the update so we can scope the
-  // Neon sync. Without these the sync falls back to "mark N oldest unread"
-  // which is over-broad. See syncMailMarkRead notes.
-  const hintRows = await db.query<{ subject: string; body: string }>(
-    `SELECT subject, body FROM agent_messages
-     WHERE to_agent = $1 AND id = ANY($2::int[]) AND read = FALSE`,
-    [agentId, ids],
-  );
 
   const result = await db.query(
     `UPDATE agent_messages SET read = TRUE
-     WHERE to_agent = $1 AND id = ANY($2::int[])`,
+     WHERE to_agent = $1 AND id = ANY($2::text[])`,
     [agentId, ids],
   );
-  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
-  await syncMailMarkRead({ reader: agentId, ids, hints: hintRows.rows });
+  // Best-effort dual-write by shared UUID (GAP-176).
+  await syncMailMarkRead({ reader: agentId, ids });
   return { marked: result.affectedRows ?? ids.length };
 });
 
