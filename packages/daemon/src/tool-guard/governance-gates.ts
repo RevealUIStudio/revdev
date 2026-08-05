@@ -269,9 +269,7 @@ export function evaluateSecurityAuditRollup(
       problems.push(`${name}: missing`);
       continue;
     }
-    const bad = entries.find(
-      (c) => FAILING.has(c.conclusion ?? '') || FAILING.has(c.state ?? ''),
-    );
+    const bad = entries.find((c) => FAILING.has(c.conclusion ?? '') || FAILING.has(c.state ?? ''));
     if (bad) {
       problems.push(`${name}: ${bad.conclusion || bad.state || 'failing'}`);
       continue;
