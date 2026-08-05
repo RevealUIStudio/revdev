@@ -59,6 +59,17 @@ export interface RunChildOptions {
    * env (see `gitHardenedEnv`); only the generic test seam leaves it unset.
    */
   env?: NodeJS.ProcessEnv;
+  /**
+   * Optional stdin payload. When set, the child's stdin is a pipe and this
+   * string is written then closed (used by format-enforce biome --stdin).
+   */
+  stdin?: string;
+  /**
+   * When true (default), trim stdout/stderr. Set false for byte-sensitive
+   * consumers such as format comparison (GAP-309) where trailing newlines
+   * are load-bearing.
+   */
+  trimOutput?: boolean;
 }
 
 /**
@@ -99,9 +110,13 @@ export function runChild(
     if (signal.aborted) onAbort();
     else signal.addEventListener('abort', onAbort, { once: true });
 
+    const useStdin = opts.stdin !== undefined;
+    const trimOutput = opts.trimOutput !== false;
+    const finish = (s: string): string => (trimOutput ? s.trim() : s);
+
     const child = spawn(command, args, {
       cwd: opts.cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [useStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       signal,
       // Only override the environment when a caller supplies one (runGit does;
       // the generic runChild test seam does not). Passing `undefined` here would
@@ -109,12 +124,29 @@ export function runChild(
       ...(opts.env ? { env: opts.env } : {}),
     });
 
+    if (useStdin && child.stdin) {
+      child.stdin.write(opts.stdin);
+      child.stdin.end();
+    }
+
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (d) => {
+    // stdio[1]/stdio[2] are always 'pipe' above; narrow for TS when stdin is dynamic.
+    const childStdout = child.stdout;
+    const childStderr = child.stderr;
+    if (!childStdout || !childStderr) {
+      resolve({
+        ok: false,
+        stdout: '',
+        stderr: 'spawn did not open stdout/stderr pipes',
+        code: -1,
+      });
+      return;
+    }
+    childStdout.on('data', (d) => {
       stdout += d.toString();
     });
-    child.stderr.on('data', (d) => {
+    childStderr.on('data', (d) => {
       stderr += d.toString();
     });
 
@@ -126,8 +158,8 @@ export function runChild(
           : `${command} aborted by daemon shutdown`;
       return {
         ok: false,
-        stdout: stdout.trim(),
-        stderr: stderr.trim() || message,
+        stdout: finish(stdout),
+        stderr: finish(stderr) || message,
         code,
         aborted: true,
         abortReason: reason,
@@ -141,8 +173,8 @@ export function runChild(
       }
       resolve({
         ok: code === 0,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
+        stdout: finish(stdout),
+        stderr: finish(stderr),
         code: code ?? -1,
       });
     });

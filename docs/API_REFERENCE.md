@@ -313,8 +313,19 @@ Read a file inside a registered project root.
 
 Write (create/overwrite) a file inside a registered project root. Refuses `.git/` internals.
 
+**Format enforcement (GAP-309):** when the registered root declares a formatter
+(`biome.json` / `biome.jsonc` for JS/TS/JSON/CSS, or `Cargo.toml` for `.rs`), the
+daemon **check-and-rejects** unformatted content with `-32007` *before* writing.
+It does **not** rewrite the caller's bytes (rewrite would make agents believe
+they wrote what they sent). Fix by running the command named in
+`error.data.fixCommand` and re-sending. Repos with no formatter config, exempt
+paths (`node_modules`, `dist`, …), and non-formatter extensions are unchanged.
+CI remains the merge guarantee; this is harness-independent edit-time
+enforcement on the daemon path only.
+
 **Params**: `{ repoPath: string, filePath: string, content: string }` (content capped at 768 KiB)
 **Response**: `{ success: true, bytes: number }`
+**Errors**: `-32007` format rejected (`data.kind = "format-rejected"`, includes `fixCommand`)
 
 ---
 
@@ -791,6 +802,8 @@ Update merge request status (e.g., after PR creation or CI result).
 | -32002 | Identity required (call session.register or session.attach first) |
 | -32003 | Signature required (missing or invalid Ed25519 signature on a Signature-required method) |
 | -32004 | Untrusted client key (identity enrollment/rotation rejected; fingerprint not in the trust anchor) |
+| -32006 | Tool-guard denied (blocked command/path/content) |
+| -32007 | Format rejected (GAP-309: content not formatted per repo-declared biome/cargo; see `data.fixCommand`) |
 | -32099 | Server is shutting down |
 | -32000 | Internal error (handler threw) |
 
