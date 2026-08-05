@@ -25,6 +25,16 @@
  *
  * When `POSTGRES_URL` is unset, all helpers are no-ops. The daemon runs
  * fine single-machine; sync is purely additive.
+ *
+ * Intentional non-sync (GAP-174, closed 2026-08-05 — not an audit miss):
+ *   - `memory.*` (agent_memory in PGlite) and `merge.*` (merge_requests in
+ *     PGlite) have NO Neon `coordination_*` counterparts. The Neon schema
+ *     (`@revealui/db` coordination.ts) covers agents, sessions, file claims,
+ *     events, work items, mail, and queue items only. Dual-write for
+ *     memory/merge would need new tables + migrations; that is multi-machine
+ *     scope and rides GAP-154 Phase 5 (cross-machine discovery/gateway) if
+ *     and when fleet-wide agent memory or merge-request lifecycle must
+ *     reconcile across daemons. Until then they stay local-only by design.
  */
 
 import { type NeonQueryFunction, neon } from '@neondatabase/serverless';
