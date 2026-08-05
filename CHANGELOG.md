@@ -9,6 +9,11 @@ Dates are ISO 8601 (UTC).
 
 ### Added
 
+- **GAP-309 format enforcement on `file.write`.** When a registered root declares
+  `biome.json` / `biome.jsonc` or `Cargo.toml`, unformatted content is
+  **check-and-rejected** with JSON-RPC `-32007` (includes `data.fixCommand`)
+  before any disk write. No rewrite of caller bytes; no hardcoded repo path
+  allow-list. See `docs/decisions/2026-08-05-file-write-format-check-and-reject.md`.
 - **GAP-294 §9 agent-scoped grants.** Operator-issued scope grants
   (`permission.grant` / `listGrants` / `revokeGrant`, migration 0009) cover
   sessions in `agent-scoped` mode: consequential by class or method; critical

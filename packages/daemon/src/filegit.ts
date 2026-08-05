@@ -32,6 +32,7 @@ import type { PGlite } from '@electric-sql/pglite';
 import { createLogger } from '@revealui/utils/logger';
 import { findNeverBoundOverlap, neverBoundSet, resolveOperatorHome } from './confinement.js';
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
+import { assertFormattedContent } from './format-enforce.js';
 import { getDaemonConfig, registerHandler } from './server.js';
 import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
 import { runGit, type ShellResult } from './vcs.js';
@@ -821,6 +822,10 @@ registerHandler('file.write', async (params, db, ctx) => {
   if (!verdict.allowed) {
     throw await denyToolAction(db, 'file.write', ctx.agentId, verdict, { path: target });
   }
+  // GAP-309: check-and-reject format enforcement. Driven by the repo's own
+  // biome.json / Cargo.toml (no hardcoded path allow-list). Refuses unformatted
+  // content rather than rewriting it so the caller always knows what landed.
+  await assertFormattedContent({ repoReal, absFile: target, content });
   // Open with O_NOFOLLOW so a symlink swapped in at the FINAL component between
   // resolveInRoot's parent-realpath check and the write (leaf TOCTOU) is
   // refused (ELOOP) — a write can't be redirected outside the registered root.
