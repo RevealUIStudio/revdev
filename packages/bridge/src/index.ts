@@ -522,6 +522,80 @@ server.tool(
   },
 );
 
+server.tool(
+  'permission_list_grants',
+  'List agent-scope permission grants (GAP-294 §9). Optional grantee filter.',
+  {
+    granteeAgentId: z
+      .string()
+      .optional()
+      .describe('When set, only list grants for this grantee agent'),
+    includeInactive: z
+      .boolean()
+      .optional()
+      .describe('Include revoked/expired/exhausted grants (default false)'),
+  },
+  async ({ granteeAgentId, includeInactive }) => {
+    const result = await daemon.call(RPC_METHODS['permission.listGrants'], {
+      ...(granteeAgentId ? { granteeAgentId } : {}),
+      ...(includeInactive ? { includeInactive: true } : {}),
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_grant',
+  'Issue an agent-scope grant (signed operator only; cannot self-grant). Critical methods must be named explicitly.',
+  {
+    granteeAgentId: z.string().describe('Agent session that receives the grant'),
+    classes: z
+      .array(z.enum(['consequential']))
+      .optional()
+      .describe('Action classes covered (critical is never by class)'),
+    methods: z
+      .array(z.string())
+      .optional()
+      .describe('Explicit RPC method names (required to cover critical)'),
+    rootScope: z
+      .string()
+      .optional()
+      .describe('Optional filesystem root prefix the grant is limited to'),
+    expiresAt: z.string().optional().describe('ISO expiry; default 24h from issue'),
+    maxUses: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('Optional use cap; omit for unlimited within TTL'),
+  },
+  async ({ granteeAgentId, classes, methods, rootScope, expiresAt, maxUses }) => {
+    daemon.requireSigned('permission.grant');
+    const result = await daemon.call(RPC_METHODS['permission.grant'], {
+      granteeAgentId,
+      ...(classes ? { classes } : {}),
+      ...(methods ? { methods } : {}),
+      ...(rootScope ? { rootScope } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      ...(maxUses !== undefined ? { maxUses } : {}),
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_revoke_grant',
+  'Revoke an active agent-scope grant (signed operator only)',
+  {
+    grantId: z.string().describe('Grant id from permission_list_grants or permission_grant'),
+  },
+  async ({ grantId }) => {
+    daemon.requireSigned('permission.revokeGrant');
+    const result = await daemon.call(RPC_METHODS['permission.revokeGrant'], { grantId });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------

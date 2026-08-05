@@ -65,13 +65,17 @@ import {
   decideEnforcement,
   emitPermissionShadowEvent,
   evaluateShadow,
+  issueGrant,
+  listGrants,
   listPendingApprovals,
   parseSessionPermissionMode,
   queueApprovalRequired,
   resolveEffectiveMode,
   resolvePermissionMode,
+  revokeGrant,
   setSessionPermissionMode,
   tryConsumeApproval,
+  tryConsumeGrant,
 } from './permission.js';
 import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
@@ -278,8 +282,11 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'harness.prune',
   // GAP-294 Phase 1: approval decisions are signature-required mutations.
   // Phase 2: operator mode overrides are signature-required too.
+  // §9: agent-scope grant issue/revoke are operator-only mutations.
   'permission.decide',
   'permission.setMode',
+  'permission.grant',
+  'permission.revokeGrant',
   // gateway.revokeToken revokes an HTTP gateway bearer token (GAP-421
   // guardrail-2 remediation S5). Signature-required so an unsigned caller
   // cannot revoke another client's session.
@@ -921,9 +928,23 @@ export async function dispatchRpc(
             ? (req.params as Record<string, unknown>)
             : {};
         try {
-          const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
-          if (!consumed) {
-            await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+          // Spec §9: agent-scoped mode consults operator grants before the
+          // pending-approval queue (critical only by explicit method name).
+          if (mode === 'agent-scoped' || decision.reason === 'agent_scoped') {
+            const grantHit = await tryConsumeGrant(db, agentForEvent, req.method, paramsObj);
+            if (grantHit) {
+              // Covered by grant — proceed to dispatch.
+            } else {
+              const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
+              if (!consumed) {
+                await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+              }
+            }
+          } else {
+            const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
+            if (!consumed) {
+              await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+            }
           }
         } catch (permErr) {
           if (permErr instanceof ApprovalRequiredError) {
@@ -2124,6 +2145,45 @@ registerHandler('permission.setMode', async (params, db, ctx) => {
     ...result,
     daemonDefault: resolvePermissionMode(),
   };
+});
+
+registerHandler('permission.listGrants', async (params, db) => {
+  // Read surface: list agent-scope grants (GAP-294 §9). Optional grantee filter.
+  const grantee = strOrNull(params.granteeAgentId) ?? strOrNull(params.agentId) ?? null;
+  const includeInactive = params.includeInactive === true;
+  const grants = await listGrants(db, grantee, includeInactive);
+  return { grants };
+});
+
+registerHandler('permission.grant', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Operator issues a scope grant to another agent.
+  const operator = await requireVerifiedAgent(ctx, db, params);
+  const granteeAgentId = str(params.granteeAgentId ?? params.agentId);
+  const classes = asStringArray(params.classes);
+  const methods = asStringArray(params.methods);
+  const rootScope = strOrNull(params.rootScope);
+  const expiresAt = strOrNull(params.expiresAt);
+  let maxUses: number | null = null;
+  if (params.maxUses !== null && params.maxUses !== undefined && params.maxUses !== '') {
+    maxUses = num(params.maxUses);
+  }
+  const grant = await issueGrant(db, {
+    granteeAgentId,
+    classes: classes.length > 0 ? classes : undefined,
+    methods: methods.length > 0 ? methods : undefined,
+    rootScope,
+    expiresAt,
+    maxUses,
+    issuedBy: operator,
+  });
+  return { grant };
+});
+
+registerHandler('permission.revokeGrant', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Operator revokes an active grant.
+  const operator = await requireVerifiedAgent(ctx, db, params);
+  const grantId = str(params.grantId);
+  return revokeGrant(db, grantId, operator);
 });
 
 // -- Memory -----------------------------------------------------------------

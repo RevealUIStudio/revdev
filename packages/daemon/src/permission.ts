@@ -5,6 +5,7 @@
  *
  * Phase 0: classify + `permission.would_*` events (never blocks when mode=shadow).
  * Phase 1: manual/auto enforcement with pending_approvals + -32004 reject-with-receipt.
+ * Phase agent-grants (§9): operator-issued scope grants for agent-scoped mode.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -109,10 +110,13 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['inference.delete', 'critical'],
   ['inference.start', 'critical'],
   ['inference.stop', 'critical'],
-  // future gate controls (not registered yet — mapped for enumeration honesty)
+  // gate controls (enumeration honesty + live handlers)
   ['permission.pending', 'routine'],
   ['permission.decide', 'critical'],
   ['permission.setMode', 'critical'],
+  ['permission.listGrants', 'routine'],
+  ['permission.grant', 'critical'],
+  ['permission.revokeGrant', 'critical'],
   // Revokes a bearer credential — reversible (a new one can be paired), so
   // consequential rather than critical (GAP-421 guardrail-2 remediation S5).
   ['gateway.revokeToken', 'consequential'],
@@ -225,8 +229,14 @@ export function emitPermissionShadowEvent(
  */
 export function expectedClassifiedMethods(): string[] {
   const fromProtocol = Object.values(RPC_METHODS) as string[];
-  // identity.rotate is in RPC_METHODS; permission.* are future.
-  const extras = ['permission.pending', 'permission.decide', 'permission.setMode'];
+  const extras = [
+    'permission.pending',
+    'permission.decide',
+    'permission.setMode',
+    'permission.listGrants',
+    'permission.grant',
+    'permission.revokeGrant',
+  ];
   return [...new Set([...fromProtocol, ...extras])].sort();
 }
 
@@ -236,13 +246,22 @@ export function isShadowOnly(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 export type EnforceDecision =
-  | { action: 'allow'; reason: 'routine' | 'auto_consequential' | 'consumed_approval' }
-  | { action: 'require_approval'; reason: 'manual' | 'auto_critical' | 'auto_other' }
+  | {
+      action: 'allow';
+      reason: 'routine' | 'auto_consequential' | 'consumed_approval' | 'agent_grant';
+    }
+  | {
+      action: 'require_approval';
+      reason: 'manual' | 'auto_critical' | 'auto_other' | 'agent_scoped';
+    }
   | { action: 'deny'; reason: 'deny_list' };
 
 /**
- * Live policy for manual/auto (Phase 1). Agent-scoped falls back to manual
- * until grants ship (spec §9 deferred).
+ * Live policy for manual / auto / agent-scoped (spec §4 + §9).
+ *
+ * Agent-scoped: routine allows; consequential/critical return require_approval
+ * so the gate can try matching an operator grant before queueing (§9).
+ * Critical coverage requires an explicit method name on the grant (never class).
  */
 export function decideEnforcement(
   method: string,
@@ -250,14 +269,13 @@ export function decideEnforcement(
   env: NodeJS.ProcessEnv = process.env,
 ): EnforceDecision {
   const actionClass = classifyMethod(method);
-  const effective: PermissionMode =
-    mode === 'agent-scoped' ? 'manual' : mode === 'shadow' ? 'shadow' : mode;
+  const effective: PermissionMode = mode === 'shadow' ? 'shadow' : mode;
 
   if (effective === 'shadow') {
     return { action: 'allow', reason: 'routine' };
   }
 
-  // Deny-list (auto + manual): comma-separated method names in env.
+  // Deny-list (all enforce modes): comma-separated method names in env.
   const denyRaw = (env.REVDEV_PERMISSION_DENY_METHODS ?? '').trim();
   if (denyRaw.length > 0) {
     const deny = new Set(
@@ -282,11 +300,375 @@ export function decideEnforcement(
     return { action: 'allow', reason: 'routine' };
   }
 
+  if (effective === 'agent-scoped') {
+    if (actionClass === 'routine') {
+      return { action: 'allow', reason: 'routine' };
+    }
+    // Caller consults permission_grants; unmatched → manual-style queue.
+    return { action: 'require_approval', reason: 'agent_scoped' };
+  }
+
   // manual
   if (actionClass === 'routine') {
     return { action: 'allow', reason: 'routine' };
   }
   return { action: 'require_approval', reason: 'manual' };
+}
+
+/** Grant may name these action classes (critical never by class — methods only). */
+export const GRANTABLE_CLASSES = ['consequential'] as const;
+export type GrantableClass = (typeof GRANTABLE_CLASSES)[number];
+
+/** Default grant TTL when operator omits expiresAt (24h). */
+export const GRANT_DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
+
+export interface PermissionGrantRow {
+  id: string;
+  granteeAgentId: string;
+  classes: string[];
+  methods: string[];
+  rootScope: string | null;
+  expiresAt: string;
+  maxUses: number | null;
+  usesRemaining: number | null;
+  issuedBy: string;
+  issuedAt: string;
+  revokedAt: string | null;
+  status: string;
+}
+
+function parseJsonStringArray(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((x): x is string => typeof x === 'string');
+  }
+  if (typeof raw === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((x): x is string => typeof x === 'string');
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Whether a grant covers this method for the given action class (spec §9).
+ * - critical: only if methods[] names the method (never by class)
+ * - consequential: classes includes 'consequential' OR methods names the method
+ * - routine: always covered without a grant (not called for routine)
+ */
+export function grantCoversMethod(
+  grant: { classes: string[]; methods: string[] },
+  method: string,
+  actionClass: ActionClass,
+): boolean {
+  if (actionClass === 'critical') {
+    return grant.methods.includes(method);
+  }
+  if (actionClass === 'consequential') {
+    return grant.classes.includes('consequential') || grant.methods.includes(method);
+  }
+  return true;
+}
+
+/**
+ * Optional root_scope prefix check when the call params carry a path.
+ * If the grant has no root_scope, or params have no pathish field, match is ok
+ * (confinement / requireRoot remain senior — I3).
+ */
+export function grantRootMatches(
+  rootScope: string | null | undefined,
+  params: Record<string, unknown> | undefined,
+): boolean {
+  if (!rootScope) return true;
+  if (!params) return true;
+  const pathish =
+    (typeof params.filePath === 'string' && params.filePath) ||
+    (typeof params.repoPath === 'string' && params.repoPath) ||
+    (typeof params.path === 'string' && params.path) ||
+    (typeof params.cwd === 'string' && params.cwd) ||
+    '';
+  if (!pathish) return true;
+  const root = rootScope.endsWith('/') ? rootScope : `${rootScope}/`;
+  return pathish === rootScope || pathish.startsWith(root);
+}
+
+/**
+ * Find an active grant covering (agent, method), optionally consume one use.
+ * Returns grant id when allowed; null when no grant covers the call.
+ */
+export async function tryConsumeGrant(
+  db: PGlite,
+  granteeAgentId: string,
+  method: string,
+  params: Record<string, unknown> | undefined,
+): Promise<{ grantId: string } | null> {
+  const actionClass = classifyMethod(method);
+
+  // Expire stale active grants opportunistically.
+  await db.query(
+    `UPDATE permission_grants SET status = 'expired'
+     WHERE status = 'active' AND expires_at <= NOW()`,
+  );
+
+  const r = await db.query<{
+    id: string;
+    classes: unknown;
+    methods: unknown;
+    root_scope: string | null;
+    uses_remaining: number | null;
+  }>(
+    `SELECT id, classes, methods, root_scope, uses_remaining
+     FROM permission_grants
+     WHERE grantee_agent_id = $1 AND status = 'active' AND expires_at > NOW()
+       AND (uses_remaining IS NULL OR uses_remaining > 0)
+     ORDER BY issued_at ASC`,
+    [granteeAgentId],
+  );
+
+  for (const row of r.rows) {
+    const classes = parseJsonStringArray(row.classes);
+    const methods = parseJsonStringArray(row.methods);
+    if (!grantCoversMethod({ classes, methods }, method, actionClass)) continue;
+    if (!grantRootMatches(row.root_scope, params)) continue;
+
+    if (row.uses_remaining !== null && row.uses_remaining !== undefined) {
+      const updated = await db.query<{ uses_remaining: number }>(
+        `UPDATE permission_grants
+         SET uses_remaining = uses_remaining - 1,
+             status = CASE WHEN uses_remaining - 1 <= 0 THEN 'exhausted' ELSE status END
+         WHERE id = $1 AND status = 'active' AND uses_remaining > 0
+         RETURNING uses_remaining`,
+        [row.id],
+      );
+      if (!updated.rows[0]) continue;
+    }
+
+    void db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+      granteeAgentId,
+      'permission.grant_allowed',
+      JSON.stringify({
+        grantId: row.id,
+        method,
+        actionClass,
+      }),
+    ]);
+
+    return { grantId: row.id };
+  }
+
+  return null;
+}
+
+export interface IssueGrantInput {
+  granteeAgentId: string;
+  classes?: string[];
+  methods?: string[];
+  rootScope?: string | null;
+  expiresAt?: string | Date | null;
+  maxUses?: number | null;
+  issuedBy: string;
+}
+
+/**
+ * Operator-issued scope grant (spec §9). At least one of classes or methods
+ * required. Critical methods may only appear in methods[] (never as a class).
+ */
+export async function issueGrant(db: PGlite, input: IssueGrantInput): Promise<PermissionGrantRow> {
+  const grantee = input.granteeAgentId?.trim();
+  if (!grantee) {
+    throw new Error('permission.grant: granteeAgentId is required');
+  }
+  if (input.issuedBy === grantee) {
+    throw new Error('permission.grant: an agent cannot issue a grant to itself');
+  }
+
+  const classes = (input.classes ?? []).map((c) => c.trim().toLowerCase()).filter(Boolean);
+  const methods = (input.methods ?? []).map((m) => m.trim()).filter(Boolean);
+
+  for (const c of classes) {
+    if (c === 'critical') {
+      throw new Error(
+        'permission.grant: critical cannot be granted by class; name methods explicitly',
+      );
+    }
+    if (c === 'routine') {
+      throw new Error('permission.grant: routine needs no grant');
+    }
+    if (!(GRANTABLE_CLASSES as readonly string[]).includes(c)) {
+      throw new Error(`permission.grant: unknown class '${c}' (allowed: consequential)`);
+    }
+  }
+  if (classes.length === 0 && methods.length === 0) {
+    throw new Error('permission.grant: provide classes and/or methods');
+  }
+
+  let maxUses: number | null = null;
+  if (input.maxUses !== null && input.maxUses !== undefined) {
+    if (!Number.isInteger(input.maxUses) || input.maxUses < 1) {
+      throw new Error('permission.grant: maxUses must be a positive integer when set');
+    }
+    maxUses = input.maxUses;
+  }
+
+  let expiresAt: Date;
+  if (input.expiresAt) {
+    expiresAt = input.expiresAt instanceof Date ? input.expiresAt : new Date(input.expiresAt);
+    if (Number.isNaN(expiresAt.getTime())) {
+      throw new Error('permission.grant: expiresAt is not a valid date');
+    }
+    if (expiresAt.getTime() <= Date.now()) {
+      throw new Error('permission.grant: expiresAt must be in the future');
+    }
+  } else {
+    expiresAt = new Date(Date.now() + GRANT_DEFAULT_TTL_MS);
+  }
+
+  const id = randomUUID();
+  const rootScope =
+    typeof input.rootScope === 'string' && input.rootScope.trim() ? input.rootScope.trim() : null;
+
+  await db.query(
+    `INSERT INTO permission_grants (
+       id, grantee_agent_id, classes, methods, root_scope,
+       expires_at, max_uses, uses_remaining, issued_by, status
+     ) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, 'active')`,
+    [
+      id,
+      grantee,
+      JSON.stringify(classes),
+      JSON.stringify(methods),
+      rootScope,
+      expiresAt.toISOString(),
+      maxUses,
+      maxUses,
+      input.issuedBy,
+    ],
+  );
+
+  void db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+    grantee,
+    'permission.grant_issued',
+    JSON.stringify({
+      grantId: id,
+      classes,
+      methods,
+      rootScope,
+      maxUses,
+      expiresAt: expiresAt.toISOString(),
+      issuedBy: input.issuedBy,
+    }),
+  ]);
+
+  return {
+    id,
+    granteeAgentId: grantee,
+    classes,
+    methods,
+    rootScope,
+    expiresAt: expiresAt.toISOString(),
+    maxUses,
+    usesRemaining: maxUses,
+    issuedBy: input.issuedBy,
+    issuedAt: new Date().toISOString(),
+    revokedAt: null,
+    status: 'active',
+  };
+}
+
+export async function listGrants(
+  db: PGlite,
+  granteeFilter?: string | null,
+  includeInactive = false,
+): Promise<PermissionGrantRow[]> {
+  await db.query(
+    `UPDATE permission_grants SET status = 'expired'
+     WHERE status = 'active' AND expires_at <= NOW()`,
+  );
+
+  const statusClause = includeInactive ? '' : ` AND status = 'active' AND expires_at > NOW()`;
+  const sql = granteeFilter
+    ? `SELECT id, grantee_agent_id, classes, methods, root_scope, expires_at,
+              max_uses, uses_remaining, issued_by, issued_at, revoked_at, status
+       FROM permission_grants
+       WHERE grantee_agent_id = $1${statusClause}
+       ORDER BY issued_at DESC`
+    : `SELECT id, grantee_agent_id, classes, methods, root_scope, expires_at,
+              max_uses, uses_remaining, issued_by, issued_at, revoked_at, status
+       FROM permission_grants
+       WHERE 1=1${statusClause}
+       ORDER BY issued_at DESC`;
+
+  const r = await db.query<{
+    id: string;
+    grantee_agent_id: string;
+    classes: unknown;
+    methods: unknown;
+    root_scope: string | null;
+    expires_at: string;
+    max_uses: number | null;
+    uses_remaining: number | null;
+    issued_by: string;
+    issued_at: string;
+    revoked_at: string | null;
+    status: string;
+  }>(sql, granteeFilter ? [granteeFilter] : []);
+
+  return r.rows.map((row) => ({
+    id: row.id,
+    granteeAgentId: row.grantee_agent_id,
+    classes: parseJsonStringArray(row.classes),
+    methods: parseJsonStringArray(row.methods),
+    rootScope: row.root_scope,
+    expiresAt: row.expires_at,
+    maxUses: row.max_uses,
+    usesRemaining: row.uses_remaining,
+    issuedBy: row.issued_by,
+    issuedAt: row.issued_at,
+    revokedAt: row.revoked_at,
+    status: row.status,
+  }));
+}
+
+export async function revokeGrant(
+  db: PGlite,
+  grantId: string,
+  operatorAgentId: string,
+): Promise<{ id: string; status: string }> {
+  if (!grantId?.trim()) {
+    throw new Error('permission.revokeGrant: grantId is required');
+  }
+
+  const found = await db.query<{
+    id: string;
+    grantee_agent_id: string;
+    status: string;
+  }>(`SELECT id, grantee_agent_id, status FROM permission_grants WHERE id = $1`, [grantId]);
+  const row = found.rows[0];
+  if (!row) {
+    throw new Error(`permission.revokeGrant: unknown grantId ${grantId}`);
+  }
+  if (row.status !== 'active') {
+    throw new Error(`permission.revokeGrant: grant ${grantId} is ${row.status}, not active`);
+  }
+
+  await db.query(
+    `UPDATE permission_grants
+     SET status = 'revoked', revoked_at = NOW()
+     WHERE id = $1 AND status = 'active'`,
+    [grantId],
+  );
+
+  void db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+    row.grantee_agent_id,
+    'permission.grant_revoked',
+    JSON.stringify({ grantId, revokedBy: operatorAgentId }),
+  ]);
+
+  return { id: grantId, status: 'revoked' };
 }
 
 export function summarizeParams(

@@ -9,6 +9,11 @@ Dates are ISO 8601 (UTC).
 
 ### Added
 
+- **GAP-294 §9 agent-scoped grants.** Operator-issued scope grants
+  (`permission.grant` / `listGrants` / `revokeGrant`, migration 0009) cover
+  sessions in `agent-scoped` mode: consequential by class or method; critical
+  only by explicit method name. Unmatched calls still escalate to the pending
+  approval queue. Bridge MCP tools + Studio signing parity included.
 - **GAP-294 Phase 0 permission shadow gate.** Every RPC is classified
   (`routine` / `consequential` / `critical` per owner-countersigned map) and
   emits `permission.would_allow` / `permission.would_require_approval` events

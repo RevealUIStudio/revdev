@@ -74,6 +74,9 @@ const SIGNED = [
   'permission.decide',
   // Phase 2: operator mode override.
   'permission.setMode',
+  // §9: agent-scope grant issue/revoke.
+  'permission.grant',
+  'permission.revokeGrant',
   // gateway.revokeToken revokes an HTTP gateway bearer token (GAP-421
   // guardrail-2 remediation S5).
   'gateway.revokeToken',
