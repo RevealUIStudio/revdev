@@ -17,6 +17,7 @@
 import { homedir } from 'node:os';
 import type { PGlite } from '@electric-sql/pglite';
 import { createLogger } from '@revealui/utils/logger';
+import { evaluateGovernanceCommand } from './governance-gates.js';
 import {
   evaluateCommand,
   evaluateContentSecrets,
@@ -99,7 +100,13 @@ export function evaluateToolAction(action: ToolAction): GuardVerdict {
     case 'command': {
       const command = action.command ?? '';
       const hit = evaluateCommand(command, manifest);
-      return hit ? deny('dangerous-command', hit.reason) : ALLOW;
+      if (hit) return deny('dangerous-command', hit.reason);
+      // GAP-375: provider-agnostic disposition + sec-review label withhold
+      const gov = evaluateGovernanceCommand(command);
+      if (!gov.allowed) {
+        return deny(gov.rule ?? 'governance', gov.reason ?? 'blocked by governance gate');
+      }
+      return ALLOW;
     }
     case 'read': {
       const normPath = normalizePath(action.path ?? '');

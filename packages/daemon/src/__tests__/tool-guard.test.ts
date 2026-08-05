@@ -65,6 +65,44 @@ describe('evaluateToolAction — command', () => {
     expect(evaluateToolAction({ kind: 'command', command: 'node dist/cli.js' }).allowed).toBe(true);
     expect(evaluateToolAction({ kind: 'command', command: 'pnpm install' }).allowed).toBe(true);
   });
+
+  // GAP-375 — native disposition + sec-review label withhold
+  it('blocks gh pr merge (disposition-actions)', () => {
+    const v = evaluateToolAction({ kind: 'command', command: 'gh pr merge 12 --merge' });
+    expect(v.allowed).toBe(false);
+    expect(v.rule).toBe('disposition-no-merge');
+  });
+
+  it('blocks sec-review:approved label-add without override', () => {
+    const prev = process.env.SEC_REVIEW_AUDIT_OVERRIDE;
+    delete process.env.SEC_REVIEW_AUDIT_OVERRIDE;
+    try {
+      const v = evaluateToolAction({
+        kind: 'command',
+        command: 'gh pr edit 9 --add-label sec-review:approved',
+      });
+      expect(v.allowed).toBe(false);
+      expect(v.rule).toBe('sec-review-label-withhold');
+    } finally {
+      if (prev === undefined) delete process.env.SEC_REVIEW_AUDIT_OVERRIDE;
+      else process.env.SEC_REVIEW_AUDIT_OVERRIDE = prev;
+    }
+  });
+
+  it('allows sec-review label-add when SEC_REVIEW_AUDIT_OVERRIDE=1', () => {
+    const prev = process.env.SEC_REVIEW_AUDIT_OVERRIDE;
+    process.env.SEC_REVIEW_AUDIT_OVERRIDE = '1';
+    try {
+      const v = evaluateToolAction({
+        kind: 'command',
+        command: 'gh pr edit 9 --add-label sec-review:approved',
+      });
+      expect(v.allowed).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.SEC_REVIEW_AUDIT_OVERRIDE;
+      else process.env.SEC_REVIEW_AUDIT_OVERRIDE = prev;
+    }
+  });
 });
 
 describe('evaluateToolAction — read', () => {
