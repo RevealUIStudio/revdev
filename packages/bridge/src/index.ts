@@ -466,6 +466,62 @@ server.tool(
   },
 );
 
+// -- Permission modes (GAP-294) ---------------------------------------------
+// Headless decision surface (design: permission.pending / decide / setMode).
+// decide + setMode are signature-required; operator must use a trusted signed
+// identity (not the requester session). Studio has the same RPCs via Tauri.
+
+server.tool(
+  'permission_pending',
+  'List pending permission approvals (GAP-294). Optional agentId filter.',
+  {
+    agentId: z
+      .string()
+      .optional()
+      .describe('When set, only list pending approvals for this agent session'),
+  },
+  async ({ agentId }) => {
+    const result = await daemon.call(RPC_METHODS['permission.pending'], agentId ? { agentId } : {});
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_decide',
+  'Approve or deny a pending permission approval (signed operator only; self-approval rejected)',
+  {
+    approvalId: z.string().describe('Pending approval id from permission_pending'),
+    verdict: z.enum(['approved', 'denied']).describe('Decision for the requester'),
+  },
+  async ({ approvalId, verdict }) => {
+    daemon.requireSigned('permission.decide');
+    const result = await daemon.call(RPC_METHODS['permission.decide'], {
+      approvalId,
+      verdict,
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_set_mode',
+  'Set per-session permission mode override for another agent (signed operator only)',
+  {
+    agentId: z.string().describe('Target agent session id (cannot be the operator itself)'),
+    mode: z
+      .enum(['manual', 'auto', 'agent-scoped', 'shadow', 'default'])
+      .describe("Mode override, or 'default' to clear and use daemon REVDEV_PERMISSION_MODE"),
+  },
+  async ({ agentId, mode }) => {
+    daemon.requireSigned('permission.setMode');
+    const result = await daemon.call(RPC_METHODS['permission.setMode'], {
+      agentId,
+      mode: mode === 'default' ? null : mode,
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------

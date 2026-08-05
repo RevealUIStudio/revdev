@@ -86,6 +86,8 @@ Environment:
   REVDEV_DAEMON_MAX_LINE_BYTES  Max bytes per JSON-RPC frame (default: ${DAEMON_DEFAULTS.maxLineBytes}, ~1 MiB)
   REVDEV_DAEMON_GIT_TIMEOUT_MS  Max wall-clock per git spawn (default: ${DAEMON_DEFAULTS.gitTimeoutMs} ms = ${DAEMON_DEFAULTS.gitTimeoutMs / 1000} s)
   REVDEV_DAEMON_SHUTDOWN_GRACE_MS  Max wait for in-flight handlers during close() (default: ${DAEMON_DEFAULTS.shutdownGracePeriodMs} ms = ${DAEMON_DEFAULTS.shutdownGracePeriodMs / 1000} s)
+  REVDEV_PERMISSION_MODE       GAP-294 mode: shadow (default) | manual | auto | agent-scoped
+                               shadow = would_* events only (no block). Flip only after soak review.
 
 ${LICENSE_TIER_HELP}
 `);
