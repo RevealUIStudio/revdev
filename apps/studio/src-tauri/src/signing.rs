@@ -109,6 +109,9 @@ pub fn requires_signature(method: &str) -> bool {
             | "permission.decide"
             // Phase 2 — operator mode override.
             | "permission.setMode"
+            // §9 — agent-scope grant issue/revoke. MUST mirror server.ts.
+            | "permission.grant"
+            | "permission.revokeGrant"
             // Revokes an HTTP gateway bearer token (GAP-421 guardrail-2
             // remediation S5). MUST mirror server.ts MUTATING_OR_CONTENT_METHODS.
             | "gateway.revokeToken"
@@ -640,15 +643,18 @@ mod tests {
         assert!(requires_signature("session.end"));
         // GAP-312: same eviction primitive as session.end, fleet-wide fan-out.
         assert!(requires_signature("harness.prune"));
-        // GAP-294 Phase 1.
+        // GAP-294 Phase 1 / Phase 2 / §9 grants.
         assert!(requires_signature("permission.decide"));
         assert!(requires_signature("gateway.revokeToken"));
         assert!(requires_signature("permission.setMode"));
+        assert!(requires_signature("permission.grant"));
+        assert!(requires_signature("permission.revokeGrant"));
         assert!(!requires_signature("ping"));
         assert!(!requires_signature("session.list"));
         // harness.health is a read; it stays unsigned. Guards against a
         // copy-paste that gates the wrong half of the harness.* surface.
         assert!(!requires_signature("harness.health"));
         assert!(!requires_signature("permission.pending"));
+        assert!(!requires_signature("permission.listGrants"));
     }
 }

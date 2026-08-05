@@ -109,12 +109,16 @@ const EXEMPT_METHODS = new Set([
   'inference.status',
   'inference.chat',
   'inference.generate',
-  // GAP-294 permission queue: free so FREE-tier daily-driver file/git still
-  // has a path to list/decide approvals when REVDEV_PERMISSION_MODE=manual.
-  // (Decide is still signature-gated; self-approval is rejected.)
+  // GAP-294 permission queue + agent-scope grants: free so FREE-tier
+  // daily-driver file/git still has a path to list/decide approvals and
+  // manage grants when REVDEV_PERMISSION_MODE is enforce.
+  // (Decide/grant/revoke are still signature-gated; self-issue rejected.)
   'permission.pending',
   'permission.decide',
   'permission.setMode',
+  'permission.listGrants',
+  'permission.grant',
+  'permission.revokeGrant',
   // GAP-337: health/monitoring must answer without a Pro license (same class
   // as ping). Multi-agent harness.prune stays Pro.
   'harness.health',
