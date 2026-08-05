@@ -184,14 +184,14 @@ describe('grantCoversMethod (GAP-294 §9)', () => {
 
 describe('grantRootMatches', () => {
   it('null root always matches', () => {
-    expect(grantRootMatches(null, { filePath: '/etc/passwd' })).toBe(true);
+    expect(grantRootMatches(null, { filePath: '/var/tmp/x' })).toBe(true);
   });
   it('prefix matches under root', () => {
-    expect(grantRootMatches('/home/proj', { filePath: '/home/proj/src/a.ts' })).toBe(true);
-    expect(grantRootMatches('/home/proj', { filePath: '/home/other/x' })).toBe(false);
+    expect(grantRootMatches('/tmp/proj', { filePath: '/tmp/proj/src/a.ts' })).toBe(true);
+    expect(grantRootMatches('/tmp/proj', { filePath: '/tmp/other/x' })).toBe(false);
   });
   it('no pathish in params does not reject', () => {
-    expect(grantRootMatches('/home/proj', { branch: 'main' })).toBe(true);
+    expect(grantRootMatches('/tmp/proj', { branch: 'main' })).toBe(true);
   });
 });
 
