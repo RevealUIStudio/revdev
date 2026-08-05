@@ -44,7 +44,7 @@ import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { requireRootAndDir } from './filegit.js';
 import { getDaemonConfig, registerHandler, type SocketContext } from './server.js';
 import { agentEvents, issueStreamTicket } from './spawn-events.js';
-import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
+import { denyToolAction, evaluateToolActionAsync } from './tool-guard/index.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
 
@@ -256,7 +256,8 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   // can touch, this refuses a command that matches a dangerous pattern (curl |
   // sh, inline eval, credential reads) before any process is forked.
   const commandLine = args.length > 0 ? `${command} ${args.join(' ')}` : command;
-  const guardVerdict = evaluateToolAction({ kind: 'command', command: commandLine });
+  // GAP-375 residual: async path may allow sec-review:approved when gh reports audit green
+  const guardVerdict = await evaluateToolActionAsync({ kind: 'command', command: commandLine });
   if (!guardVerdict.allowed) {
     throw await denyToolAction(db, 'agent.spawn', ownerAgentId, guardVerdict, {
       command: commandLine,
