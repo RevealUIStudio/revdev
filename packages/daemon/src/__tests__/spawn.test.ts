@@ -361,7 +361,9 @@ describe('agent.spawn', () => {
       repoPath: repoRoot,
     })) as { processId: string; privateKeyPem: string; did: string };
 
-    const parsedB = parseDid(b.did)!;
+    const parsedB = parseDid(b.did);
+    expect(parsedB).not.toBeNull();
+    if (!parsedB) throw new Error('expected parseable sibling DID');
     const signAsB = (method: string, params: Record<string, unknown>): string =>
       serializeEnvelope(
         signEnvelope(
