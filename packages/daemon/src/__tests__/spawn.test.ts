@@ -324,12 +324,13 @@ describe('agent.spawn', () => {
     // Child principal can drive agent.input by signing as itself.
     const parsed = parseDid(result.did);
     expect(parsed).not.toBeNull();
+    if (!parsed) throw new Error('expected parseable child DID');
     const childSign = (method: string, params: Record<string, unknown>): string =>
       serializeEnvelope(
         signEnvelope(
           {
             did: result.did,
-            kid: parsed!.fingerprint,
+            kid: parsed.fingerprint,
             nonce: generateNonce(),
             ts: Math.floor(Date.now() / 1000),
             method,
