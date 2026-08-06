@@ -9,6 +9,11 @@ Dates are ISO 8601 (UTC).
 
 ### Added
 
+- **GAP-269 spawned agent identity.** `agent.spawn` mints a distinct
+  key-derived child principal (`key_origin=spawned`), returns one-shot
+  `privateKeyPem` / DID, and records `parent_agent` + child `owner_agent` on
+  the process row. Parent or child may drive stop/input/resize/output;
+  siblings cannot. Migration 0011.
 - **GAP-309 format enforcement on `file.write`.** When a registered root declares
   `biome.json` / `biome.jsonc` or `Cargo.toml`, unformatted content is
   **check-and-rejected** with JSON-RPC `-32007` (includes `data.fixCommand`)

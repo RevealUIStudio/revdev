@@ -657,6 +657,11 @@ PTY-backed process spawning under the daemon's sandbox. All five methods are **P
 
 Spawn a command as a PTY process inside a granted project root, with an allow-listed environment (`TERM`, `LANG`, `LC_*`, `CI`, `NO_COLOR`, `REVDEV_*` only).
 
+**GAP-269 identity:** every spawn mints a distinct key-derived child principal
+(`key_origin=spawned`) and returns a one-shot `privateKeyPem`. The child
+principal owns the process row; the calling parent remains a supervisor who may
+still drive stop/input/resize/output. Siblings cannot drive each other.
+
 **Params**:
 | Field | Type | Description |
 |-------|------|-------------|
@@ -667,7 +672,7 @@ Spawn a command as a PTY process inside a granted project root, with an allow-li
 | `cols` / `rows` | number? | PTY size (default 80×24) |
 | `env` | object? | Caller env overrides, filtered by the allow-list |
 
-**Response**: `{ processId: string, pid: number }`
+**Response**: `{ processId: string, pid: number, agentId: string, did: string, publicKeyPem: string, privateKeyPem: string, parentAgentId: string }`
 
 ---
 
@@ -675,7 +680,7 @@ Spawn a command as a PTY process inside a granted project root, with an allow-li
 **Tier**: Pro
 **Signature**: required
 
-Send SIGTERM to a live PTY process. Only the owning agent may stop it.
+Send SIGTERM to a live PTY process. Controllers: the child principal or the parent supervisor.
 
 **Params**: `{ processId: string }`
 **Response**: `{ stopped: string, status: string }`

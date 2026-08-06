@@ -80,7 +80,7 @@ import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PGlite } from '@electric-sql/pglite';
-import { formatDid } from '@revdev/protocol/did';
+import { formatDid, parseDid } from '@revdev/protocol/did';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   computeFingerprint,
@@ -286,6 +286,105 @@ describe('agent.spawn', () => {
     );
     expect(typeof result.pid).toBe('number');
     expect(result.pid).toBeGreaterThan(0);
+  });
+
+  // GAP-269: each spawn mints a distinct key-derived principal for the child.
+  it('mints a child principal distinct from the parent (GAP-269)', async () => {
+    const result = (await signedRpc(owner, 'agent.spawn', {
+      command: 'bash',
+      repoPath: repoRoot,
+    })) as {
+      processId: string;
+      agentId: string;
+      did: string;
+      publicKeyPem: string;
+      privateKeyPem: string;
+      parentAgentId: string;
+    };
+
+    expect(result.agentId).not.toBe(owner.agentId);
+    expect(result.parentAgentId).toBe(owner.agentId);
+    expect(result.did).toContain(result.agentId);
+    expect(result.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+    expect(result.privateKeyPem).toContain('BEGIN PRIVATE KEY');
+
+    const idRow = await db.query<{ key_origin: string }>(
+      `SELECT key_origin FROM agent_identity WHERE agent_id = $1`,
+      [result.agentId],
+    );
+    expect(idRow.rows[0]?.key_origin).toBe('spawned');
+
+    const procRow = await db.query<{ owner_agent: string; parent_agent: string }>(
+      `SELECT owner_agent, parent_agent FROM agent_processes WHERE id = $1`,
+      [result.processId],
+    );
+    expect(procRow.rows[0]?.owner_agent).toBe(result.agentId);
+    expect(procRow.rows[0]?.parent_agent).toBe(owner.agentId);
+
+    // Child principal can drive agent.input by signing as itself.
+    const parsed = parseDid(result.did);
+    expect(parsed).not.toBeNull();
+    if (!parsed) throw new Error('expected parseable child DID');
+    const childSign = (method: string, params: Record<string, unknown>): string =>
+      serializeEnvelope(
+        signEnvelope(
+          {
+            did: result.did,
+            kid: parsed.fingerprint,
+            nonce: generateNonce(),
+            ts: Math.floor(Date.now() / 1000),
+            method,
+            paramsHash: hashParams(method, params),
+          },
+          result.privateKeyPem,
+        ),
+      );
+    const inputParams = { processId: result.processId, data: 'echo child\n' };
+    const inputRes = await rpcFrame(
+      socketPath,
+      'agent.input',
+      inputParams,
+      childSign('agent.input', inputParams),
+    );
+    expect(inputRes.error).toBeUndefined();
+    expect(inputRes.result).toEqual({ written: true });
+    _lastPty?._fireExit(0);
+  });
+
+  it('rejects sibling PTY drive (GAP-269)', async () => {
+    const a = (await signedRpc(owner, 'agent.spawn', {
+      command: 'bash',
+      repoPath: repoRoot,
+    })) as { processId: string; privateKeyPem: string; did: string };
+    const b = (await signedRpc(owner, 'agent.spawn', {
+      command: 'bash',
+      repoPath: repoRoot,
+    })) as { processId: string; privateKeyPem: string; did: string };
+
+    const parsedB = parseDid(b.did);
+    expect(parsedB).not.toBeNull();
+    if (!parsedB) throw new Error('expected parseable sibling DID');
+    const signAsB = (method: string, params: Record<string, unknown>): string =>
+      serializeEnvelope(
+        signEnvelope(
+          {
+            did: b.did,
+            kid: parsedB.fingerprint,
+            nonce: generateNonce(),
+            ts: Math.floor(Date.now() / 1000),
+            method,
+            paramsHash: hashParams(method, params),
+          },
+          b.privateKeyPem,
+        ),
+      );
+    // Child B must not drive child A's PTY.
+    const params = { processId: a.processId, data: 'nope\n' };
+    const res = await rpcFrame(socketPath, 'agent.input', params, signAsB('agent.input', params));
+    expect(res.error?.message).toMatch(/not owned by caller/);
+    // Release live-count slots (mock PTYs never exit alone).
+    await signedRpc(owner, 'agent.stop', { processId: a.processId });
+    await signedRpc(owner, 'agent.stop', { processId: b.processId });
   });
 
   it('rejects when command is missing (schema validation)', async () => {
