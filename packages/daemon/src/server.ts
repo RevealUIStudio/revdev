@@ -43,6 +43,7 @@ import {
   initNeonSync,
   isNeonSyncActive,
   listFleetSessions,
+  sweepExpiredFileClaims,
   syncEventLog,
   syncFilesRelease,
   syncFilesReserve,
@@ -64,13 +65,17 @@ import {
   decideEnforcement,
   emitPermissionShadowEvent,
   evaluateShadow,
+  issueGrant,
+  listGrants,
   listPendingApprovals,
   parseSessionPermissionMode,
   queueApprovalRequired,
   resolveEffectiveMode,
   resolvePermissionMode,
+  revokeGrant,
   setSessionPermissionMode,
   tryConsumeApproval,
+  tryConsumeGrant,
 } from './permission.js';
 import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
@@ -137,6 +142,9 @@ const IDENTITY_EXEMPT = new Set([
   'session.register',
   'session.attach',
   'session.list',
+  // GAP-459: peer metadata composite (same class as session.list — no file
+  // content). Optional actorAgentId still labels isSelf when provided.
+  'context.snapshot',
   'harness.health',
   // `harness.prune` was here. It reaches notifyAgentEnded for EVERY matched
   // session, so an identity-exempt, unsigned caller could evict every agent's
@@ -274,8 +282,11 @@ export const MUTATING_OR_CONTENT_METHODS = new Set([
   'harness.prune',
   // GAP-294 Phase 1: approval decisions are signature-required mutations.
   // Phase 2: operator mode overrides are signature-required too.
+  // §9: agent-scope grant issue/revoke are operator-only mutations.
   'permission.decide',
   'permission.setMode',
+  'permission.grant',
+  'permission.revokeGrant',
   // gateway.revokeToken revokes an HTTP gateway bearer token (GAP-421
   // guardrail-2 remediation S5). Signature-required so an unsigned caller
   // cannot revoke another client's session.
@@ -319,11 +330,20 @@ const pruneState: PruneState = {
  * invoke on demand via the `harness.prune` RPC for ops use, in addition to
  * the periodic timer set up in `startDaemon`.
  */
+/**
+ * Minimum heartbeat-idle seconds accepted on the RPC path (GAP-459 reaper).
+ * Floor prevents a misconfigured client from wiping every live session the way
+ * staleDays:0 once did (GAP-312). Periodic auto-prune keeps this at 0
+ * (start-age path only).
+ */
+export const MIN_HEARTBEAT_STALE_SECONDS = 3600;
+
 async function runPrune(
   db: PGlite,
   staleDays: number,
   hardDeleteDays: number,
-): Promise<{ aged: number; deleted: number }> {
+  heartbeatStaleSeconds = 0,
+): Promise<{ aged: number; deleted: number; heartbeatStaleSeconds: number }> {
   // Floor at ONE DAY, not zero. The previous Math.max(0, ...) let a caller pass
   // staleDays: 0 (or any negative, which clamped to 0), turning the WHERE
   // clause into `started_at < NOW()`, every live session, and fanning
@@ -335,16 +355,37 @@ async function runPrune(
   // GAP-312.
   const stale = Number.isFinite(staleDays) ? Math.max(1, staleDays) : 7;
   const hard = Number.isFinite(hardDeleteDays) ? Math.max(1, hardDeleteDays) : 30;
+  // heartbeatStaleSeconds: 0 disables the updated_at arm (periodic default).
+  // Positive values are floored at MIN_HEARTBEAT_STALE_SECONDS on the RPC path.
+  const heartbeat =
+    Number.isFinite(heartbeatStaleSeconds) && heartbeatStaleSeconds > 0
+      ? Math.max(MIN_HEARTBEAT_STALE_SECONDS, Math.floor(heartbeatStaleSeconds))
+      : 0;
 
-  // Parameterized interval avoids SQL injection on the days value.
+  // Parameterized intervals avoid SQL injection on the thresholds.
+  // Arm A: classic start-age (sessions that never ended and began long ago).
+  // Arm B: heartbeat-idle (GAP-459) — no updated_at activity for $2 seconds.
+  // Either arm alone is enough; exit_summary distinguishes for forensics.
   const aged = await db.query<{ id: string }>(
     `UPDATE agent_sessions
         SET ended_at = NOW(),
-            exit_summary = COALESCE(exit_summary, 'pruned-stale')
+            exit_summary = COALESCE(
+              exit_summary,
+              CASE
+                WHEN started_at < NOW() - INTERVAL '1 day' * $1 THEN 'pruned-stale'
+                ELSE 'pruned-heartbeat'
+              END
+            )
       WHERE ended_at IS NULL
-        AND started_at < NOW() - INTERVAL '1 day' * $1
+        AND (
+          started_at < NOW() - INTERVAL '1 day' * $1
+          OR (
+            $2::int > 0
+            AND updated_at < NOW() - make_interval(secs => $2)
+          )
+        )
       RETURNING id`,
-    [stale],
+    [stale, heartbeat],
   );
   // Evict filesystem roots for every stale-terminated agent (B6 item 10).
   for (const { id } of aged.rows) notifyAgentEnded(id, db);
@@ -367,6 +408,20 @@ async function runPrune(
   if (prunedTelemetry.rows.length > 0) {
     log.debug('pruned signature telemetry events', { count: prunedTelemetry.rows.length });
   }
+  // Local file_reservations: drop rows past TTL (queries already filter
+  // expires_at > NOW(); without this, PGlite grows unbounded).
+  const expiredLocal = await db.query<{ file_path: string }>(
+    `DELETE FROM file_reservations WHERE expires_at <= NOW() RETURNING file_path`,
+  );
+  // Neon coordination_file_claims: same TTL semantics (GAP-175). Best-effort
+  // dual-write mirror; no-op when POSTGRES_URL is unset.
+  const neonClaims = await sweepExpiredFileClaims();
+  if (expiredLocal.rows.length > 0 || neonClaims.deleted > 0) {
+    log.info('file claim TTL sweep', {
+      localDeleted: expiredLocal.rows.length,
+      neonDeleted: neonClaims.deleted,
+    });
+  }
   pruneState.lastRunAt = new Date();
   pruneState.lastAgedCount = aged.rows.length;
   pruneState.lastDeletedCount = deleted.rows.length;
@@ -376,9 +431,14 @@ async function runPrune(
       deleted: pruneState.lastDeletedCount,
       staleDays: stale,
       hardDeleteDays: hard,
+      heartbeatStaleSeconds: heartbeat,
     });
   }
-  return { aged: pruneState.lastAgedCount, deleted: pruneState.lastDeletedCount };
+  return {
+    aged: pruneState.lastAgedCount,
+    deleted: pruneState.lastDeletedCount,
+    heartbeatStaleSeconds: heartbeat,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -868,9 +928,23 @@ export async function dispatchRpc(
             ? (req.params as Record<string, unknown>)
             : {};
         try {
-          const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
-          if (!consumed) {
-            await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+          // Spec §9: agent-scoped mode consults operator grants before the
+          // pending-approval queue (critical only by explicit method name).
+          if (mode === 'agent-scoped' || decision.reason === 'agent_scoped') {
+            const grantHit = await tryConsumeGrant(db, agentForEvent, req.method, paramsObj);
+            if (grantHit) {
+              // Covered by grant — proceed to dispatch.
+            } else {
+              const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
+              if (!consumed) {
+                await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+              }
+            }
+          } else {
+            const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
+            if (!consumed) {
+              await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
+            }
           }
         } catch (permErr) {
           if (permErr instanceof ApprovalRequiredError) {
@@ -1435,15 +1509,17 @@ registerHandler('mail.send', async (params, db, ctx) => {
   if (!to) throw new Error('mail.send: missing "to" (or "toAgent")');
   const subject = str(params.subject);
   const body = str(params.body);
+  // GAP-176: generate UUID once; dual-write the same id to Neon.
+  const id = crypto.randomUUID();
 
-  const result = await db.query<{ id: number }>(
-    `INSERT INTO agent_messages (from_agent, to_agent, subject, body)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    [from, to, subject, body],
+  await db.query(
+    `INSERT INTO agent_messages (id, from_agent, to_agent, subject, body)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, from, to, subject, body],
   );
-  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
-  await syncMailSend({ fromAgent: from, toAgent: to, subject, body });
-  return { sent: true, id: result.rows[0]?.id ?? null };
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3 + GAP-176).
+  await syncMailSend({ id, fromAgent: from, toAgent: to, subject, body });
+  return { sent: true, id };
 });
 
 registerHandler('mail.inbox', async (params, db, ctx) => {
@@ -1470,48 +1546,38 @@ registerHandler('mail.broadcast', async (params, db, ctx) => {
     `SELECT id FROM agent_sessions WHERE ended_at IS NULL AND id <> $1`,
     [from],
   );
+  const neonRows: Array<{ id: string; toAgent: string; subject: string; body: string }> = [];
   for (const target of sessions.rows) {
+    const id = crypto.randomUUID();
     await db.query(
-      `INSERT INTO agent_messages (from_agent, to_agent, subject, body)
-       VALUES ($1, $2, $3, $4)`,
-      [from, target.id, subject, body],
+      `INSERT INTO agent_messages (id, from_agent, to_agent, subject, body)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, from, target.id, subject, body],
     );
+    neonRows.push({ id, toAgent: target.id, subject, body });
   }
-  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
-  await syncMailBroadcast({
-    fromAgent: from,
-    toAgents: sessions.rows.map((r) => r.id),
-    subject,
-    body,
-  });
+  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3 + GAP-176).
+  await syncMailBroadcast({ fromAgent: from, rows: neonRows });
   return { broadcast: true, sent: sessions.rows.length, recipients: sessions.rows.length };
 });
 
 registerHandler('mail.markRead', async (params, db, ctx) => {
   const agentId = await requireVerifiedAgent(ctx, db, params);
-  // Accept number[] or string[] (JSON numbers or numeric strings).
+  // GAP-176: ids are UUID strings (legacy numeric ids no longer match after
+  // migration 0009 — clients must re-read inbox for new ids).
   const raw = Array.isArray(params.messageIds) ? params.messageIds : [];
   const ids = raw
-    .map((v) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN))
-    .filter((n) => Number.isFinite(n));
+    .map((v) => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : ''))
+    .filter((s) => s.length > 0);
   if (ids.length === 0) return { marked: 0 };
-
-  // Fetch (subject, body) hints BEFORE the update so we can scope the
-  // Neon sync. Without these the sync falls back to "mark N oldest unread"
-  // which is over-broad. See syncMailMarkRead notes.
-  const hintRows = await db.query<{ subject: string; body: string }>(
-    `SELECT subject, body FROM agent_messages
-     WHERE to_agent = $1 AND id = ANY($2::int[]) AND read = FALSE`,
-    [agentId, ids],
-  );
 
   const result = await db.query(
     `UPDATE agent_messages SET read = TRUE
-     WHERE to_agent = $1 AND id = ANY($2::int[])`,
+     WHERE to_agent = $1 AND id = ANY($2::text[])`,
     [agentId, ids],
   );
-  // Best-effort dual-write to coordination_mail (GAP-154 Phase 3).
-  await syncMailMarkRead({ reader: agentId, ids, hints: hintRows.rows });
+  // Best-effort dual-write by shared UUID (GAP-176).
+  await syncMailMarkRead({ reader: agentId, ids });
   return { marked: result.affectedRows ?? ids.length };
 });
 
@@ -1553,12 +1619,12 @@ registerHandler('files.reserve', async (params, db, ctx) => {
     reserved.push(p);
   }
 
-  // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3).
-  // Only sync the paths we actually reserved (not conflicts). The TTL +
-  // reason fields don't exist on the Neon side; PGlite remains the source
-  // of truth for expiry. See syncFilesReserve notes.
+  // Best-effort dual-write to coordination_file_claims (GAP-154 Phase 3 +
+  // GAP-175 expires_at). Only sync paths actually reserved (not conflicts).
+  // reason stays PGlite-only; Neon TTL is swept by sweepExpiredFileClaims.
   if (reserved.length > 0) {
-    await syncFilesReserve({ sessionId: agentId, paths: reserved });
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+    await syncFilesReserve({ sessionId: agentId, paths: reserved, expiresAt });
   }
   return {
     success: conflicts.length === 0,
@@ -1805,6 +1871,146 @@ registerHandler('events.query', async (params, db) => {
   return { events: result.rows };
 });
 
+// -- Peer context (GAP-459 Phase 1) -----------------------------------------
+//
+// Composite advisory snapshot so harnesses can paint peer presence, claims,
+// and active paths in ONE call. Does not invent a third store: composes
+// agent_sessions + file_reservations + tasks + events (peer.* types).
+// Autonomy rule (ADR 2026-07-28): this is awareness only — never a lock.
+// Unavailable clients must degrade VISIBLY (adapters print WARN), never
+// silently pretend peers are absent when the daemon is down.
+
+registerHandler('context.snapshot', async (params, db, ctx) => {
+  const eventLimit = Math.min(num(params.eventLimit, 50), 200);
+  const includeSelf = params.includeSelf === true;
+  // Prefer bound identity so we can label self vs peers. Unsigned callers
+  // with no actor still get a fleet-wide snapshot (selfAgentId null).
+  const selfAgentId =
+    (ctx.agentId && String(ctx.agentId)) || strOrNull(params.actorAgentId) || null;
+
+  // agent_sessions columns: id (also the agent identity), env, task, files,
+  // activity_state (migration 0005), timestamps. No separate agent_name col —
+  // name is encoded in env as `${backend}:${agentName}` at register time.
+  const sessionsResult = await db.query<Record<string, unknown>>(
+    `SELECT id, env, task, files, activity_state, pid, started_at, updated_at,
+            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - updated_at))))::int AS "staleSeconds",
+            (activity_state = 'active'
+             AND updated_at > NOW() - make_interval(secs => $1)) AS active
+       FROM agent_sessions
+      WHERE ended_at IS NULL
+      ORDER BY started_at DESC`,
+    [ACTIVE_WINDOW_SECONDS],
+  );
+
+  // Intentional cross-agent path enumeration for SAME-MACHINE studio
+  // coordination (owner directive GAP-459). Paths only, no content. Trust
+  // boundary remains the 0600 socket + Pro license. Do NOT expand this to
+  // fleet/Neon without a separate security design.
+  // Note: filter expiry in SQL; if a driver returns string timestamps that
+  // compare poorly against NOW(), fall back to returning recent rows and
+  // filter in JS below.
+  const reservationsResult = await db.query<Record<string, unknown>>(
+    `SELECT agent_id, file_path, reserved_at, expires_at, reason
+       FROM file_reservations
+      WHERE expires_at > NOW()
+      ORDER BY reserved_at DESC
+      LIMIT 200`,
+  );
+
+  // tasks: description is the free-text title line; status is open|claimed|...
+  // No updated_at column on the daemon schema.
+  const tasksResult = await db.query<Record<string, unknown>>(
+    `SELECT id, description, status, owner, claimed_at, created_at
+       FROM tasks
+      WHERE status IN ('open', 'claimed', 'in_progress')
+      ORDER BY created_at DESC
+      LIMIT 100`,
+  );
+
+  // Shared findings/claims published via events.log with peer.* types
+  // (contract: peer.finding, peer.claim, peer.intent). Global events table
+  // is already cross-agent readable (events.query).
+  const findingsResult = await db.query<Record<string, unknown>>(
+    `SELECT agent_id, event_type, payload, created_at
+       FROM events
+      WHERE event_type LIKE 'peer.%'
+      ORDER BY created_at DESC
+      LIMIT $1`,
+    [eventLimit],
+  );
+
+  const sessions = sessionsResult.rows.map((r) => {
+    const id = String(r.id);
+    const env = typeof r.env === 'string' ? r.env : '';
+    const colon = env.indexOf(':');
+    const agentName = colon >= 0 ? env.slice(colon + 1) : env || id;
+    return {
+      id,
+      agentId: id,
+      agentName,
+      env,
+      task: r.task,
+      files: r.files,
+      activityState: r.activity_state,
+      pid: r.pid,
+      startedAt: r.started_at,
+      updatedAt: r.updated_at,
+      staleSeconds: r.staleSeconds,
+      active: r.active,
+      isSelf: selfAgentId != null && id === selfAgentId,
+    };
+  });
+
+  const peers = includeSelf ? sessions : sessions.filter((s) => !s.isSelf);
+
+  const reservations = reservationsResult.rows
+    .map((r) => ({
+      agentId: (r.agent_id ?? r.agentId) as string,
+      path: String(r.file_path ?? r.filePath ?? r.path ?? ''),
+      reservedAt: r.reserved_at ?? r.reservedAt,
+      expiresAt: r.expires_at ?? r.expiresAt,
+      reason: r.reason,
+    }))
+    .filter((r) => r.path.length > 0)
+    .filter((r) => includeSelf || !selfAgentId || String(r.agentId) !== selfAgentId);
+
+  const tasks = tasksResult.rows.map((r) => ({
+    id: r.id,
+    title: r.description,
+    status: r.status,
+    owner: r.owner,
+    claimedAt: r.claimed_at,
+    createdAt: r.created_at,
+  }));
+
+  const findings = findingsResult.rows.map((r) => ({
+    agentId: r.agent_id,
+    eventType: r.event_type,
+    payload: r.payload,
+    createdAt: r.created_at,
+  }));
+
+  return {
+    available: true,
+    scope: 'local',
+    selfAgentId,
+    generatedAt: new Date().toISOString(),
+    activeWindowSeconds: ACTIVE_WINDOW_SECONDS,
+    peers,
+    sessions,
+    reservations,
+    tasks,
+    findings,
+    // Adapter contract: when the daemon is DOWN, callers invent
+    // { available: false, reason: 'daemon-unavailable' } client-side.
+    degradation: {
+      mode: 'advisory',
+      rule: 'never-block',
+      note: 'A claim is a signal, not a mutex (ADR 2026-07-28).',
+    },
+  };
+});
+
 // -- Health -----------------------------------------------------------------
 
 registerHandler('harness.health', async (_params, db) => {
@@ -1881,13 +2087,19 @@ registerHandler('harness.prune', async (params, db, ctx) => {
   // regression cannot hand runPrune a fleet-wide selector.
   const staleDays = Math.max(1, num(params.staleDays, DAEMON_DEFAULTS.staleSessionDays));
   const hardDeleteDays = Math.max(1, num(params.hardDeleteDays, DAEMON_DEFAULTS.hardDeleteDays));
-  const result = await runPrune(db, staleDays, hardDeleteDays);
+  // Optional GAP-459 heartbeat arm. Omitted/0 = start-age only (backward compatible).
+  // Positive values re-floored at MIN_HEARTBEAT_STALE_SECONDS inside runPrune.
+  const heartbeatRaw = num(params.heartbeatStaleSeconds, 0);
+  const heartbeatStaleSeconds =
+    heartbeatRaw > 0 ? Math.max(MIN_HEARTBEAT_STALE_SECONDS, heartbeatRaw) : 0;
+  const result = await runPrune(db, staleDays, hardDeleteDays, heartbeatStaleSeconds);
   return {
     aged: result.aged,
     deleted: result.deleted,
     runAt: pruneState.lastRunAt?.toISOString() ?? null,
     staleDays,
     hardDeleteDays,
+    heartbeatStaleSeconds: result.heartbeatStaleSeconds,
   };
 });
 
@@ -1933,6 +2145,45 @@ registerHandler('permission.setMode', async (params, db, ctx) => {
     ...result,
     daemonDefault: resolvePermissionMode(),
   };
+});
+
+registerHandler('permission.listGrants', async (params, db) => {
+  // Read surface: list agent-scope grants (GAP-294 §9). Optional grantee filter.
+  const grantee = strOrNull(params.granteeAgentId) ?? strOrNull(params.agentId) ?? null;
+  const includeInactive = params.includeInactive === true;
+  const grants = await listGrants(db, grantee, includeInactive);
+  return { grants };
+});
+
+registerHandler('permission.grant', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Operator issues a scope grant to another agent.
+  const operator = await requireVerifiedAgent(ctx, db, params);
+  const granteeAgentId = str(params.granteeAgentId ?? params.agentId);
+  const classes = asStringArray(params.classes);
+  const methods = asStringArray(params.methods);
+  const rootScope = strOrNull(params.rootScope);
+  const expiresAt = strOrNull(params.expiresAt);
+  let maxUses: number | null = null;
+  if (params.maxUses !== null && params.maxUses !== undefined && params.maxUses !== '') {
+    maxUses = num(params.maxUses);
+  }
+  const grant = await issueGrant(db, {
+    granteeAgentId,
+    classes: classes.length > 0 ? classes : undefined,
+    methods: methods.length > 0 ? methods : undefined,
+    rootScope,
+    expiresAt,
+    maxUses,
+    issuedBy: operator,
+  });
+  return { grant };
+});
+
+registerHandler('permission.revokeGrant', async (params, db, ctx) => {
+  // Signature-required (MUTATING). Operator revokes an active grant.
+  const operator = await requireVerifiedAgent(ctx, db, params);
+  const grantId = str(params.grantId);
+  return revokeGrant(db, grantId, operator);
 });
 
 // -- Memory -----------------------------------------------------------------

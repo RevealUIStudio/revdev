@@ -1,20 +1,20 @@
 /**
  * agent.* handlers — PTY-backed process spawning + supervision.
  *
- * Implements the non-identity half of P4 (ADR 2026-06-25 "agnostic Reasoner
- * port + Driver-pluggable loop"). This module:
+ * P4 (ADR 2026-06-25) identity + driver halves (GAP-269 closes the identity half):
  *   - Maintains an in-memory registry of live PTY handles (Map<processId, entry>)
  *   - Persists metadata rows in `agent_processes` (survives restart as 'exited')
  *   - Buffers output in `agent_process_output` for poll-based `agent.output`
- *   - Enforces per-agent ownership: only the spawning agent may send input,
- *     resize, or stop a process it owns
+ *   - Mints a distinct key-derived principal for every spawn (`key_origin=spawned`)
+ *   - Ownership: parent (supervisor) OR child principal may drive stop/input/
+ *     resize/output; siblings and unrelated signers are rejected
  *
  * Authentication: all five methods are in MUTATING_OR_CONTENT_METHODS and in
  * signing.rs requires_signature(), so the dispatch gate binds ctx.agentId to a
  * verified Ed25519 signer. The spoofable actorAgentId param auth is gone.
  *
- * Authorization: agent.spawn additionally requires the signer to hold (own, or
- * have been granted) the project root its command will run in. See the handler.
+ * Authorization: agent.spawn additionally requires the *parent* signer to hold
+ * (own, or have been granted) the project root its command will run in.
  *
  * Containment (Phase 1, GAP-288, spec 2026-07-10-agent-spawn-confinement-phase-1):
  * on Linux and WSL2 the command runs inside a `bwrap` sandbox with a
@@ -29,9 +29,11 @@
 
 import { randomUUID } from 'node:crypto';
 import type { PGlite } from '@electric-sql/pglite';
+import { formatDid } from '@revdev/protocol/did';
 import { createLogger } from '@revealui/utils/logger';
 import type { IDisposable, IPty } from 'node-pty';
 import * as nodePty from 'node-pty';
+import { computeFingerprint, generateAgentKeypair } from './agent-identity-crypto.js';
 import {
   buildConfinedEnv,
   ensureAgentHome,
@@ -44,7 +46,7 @@ import { onAgentEnded, onDaemonStarted } from './eviction.js';
 import { requireRootAndDir } from './filegit.js';
 import { getDaemonConfig, registerHandler, type SocketContext } from './server.js';
 import { agentEvents, issueStreamTicket } from './spawn-events.js';
-import { denyToolAction, evaluateToolAction } from './tool-guard/index.js';
+import { denyToolAction, evaluateToolActionAsync } from './tool-guard/index.js';
 
 const log = createLogger({ service: 'revdev-daemon/spawn' });
 
@@ -61,10 +63,74 @@ const MAX_PROCESSES_PER_AGENT = 10;
 
 interface ProcessEntry {
   pty: IPty;
+  /** Child principal that owns the process row (GAP-269). */
   ownerAgentId: string;
+  /** Supervisor who called agent.spawn (GAP-269). */
+  parentAgentId: string;
   dataDisposable: IDisposable;
   exitDisposable: IDisposable;
   outputSeq: number;
+}
+
+/** True when the verified signer may drive this process (parent or child). */
+function isProcessController(entry: ProcessEntry, callerAgentId: string): boolean {
+  return entry.ownerAgentId === callerAgentId || entry.parentAgentId === callerAgentId;
+}
+
+function isRowController(
+  row: { owner_agent: string; parent_agent: string | null },
+  callerAgentId: string,
+): boolean {
+  return (
+    row.owner_agent === callerAgentId ||
+    (row.parent_agent !== null && row.parent_agent === callerAgentId)
+  );
+}
+
+/**
+ * Mint a distinct key-derived principal for a spawned process (GAP-269).
+ * Returns a one-shot privateKeyPem (same shape as session.register bootstrap).
+ */
+async function mintSpawnedAgentIdentity(
+  db: PGlite,
+  parentAgentId: string,
+): Promise<{
+  agentId: string;
+  did: string;
+  publicKeyPem: string;
+  privateKeyPem: string;
+  fingerprint: string;
+}> {
+  const agentId = randomUUID();
+  const kp = generateAgentKeypair();
+  const fingerprint = computeFingerprint(kp.publicKeyRaw);
+  const did = formatDid(agentId, fingerprint);
+
+  await db.query(
+    `INSERT INTO agent_identity (agent_id, did, fingerprint, public_key_pem, key_origin)
+     VALUES ($1, $2, $3, $4, 'spawned')`,
+    [agentId, did, fingerprint, kp.publicKeyPem],
+  );
+  await db.query(
+    `INSERT INTO agent_identity_keys (fingerprint, agent_id, public_key_pem)
+     VALUES ($1, $2, $3)`,
+    [fingerprint, agentId, kp.publicKeyPem],
+  );
+  // Session row so eviction / session.list see the child as a live agent id.
+  await db.query(
+    `INSERT INTO agent_sessions (id, env, task, pid)
+     VALUES ($1, $2, $3, NULL)
+     ON CONFLICT (id) DO NOTHING`,
+    [agentId, `spawned:${parentAgentId}`, `spawned-by:${parentAgentId}`],
+  );
+
+  return {
+    agentId,
+    did,
+    publicKeyPem: kp.publicKeyPem,
+    privateKeyPem: kp.privateKeyPem,
+    fingerprint,
+  };
 }
 
 /**
@@ -79,10 +145,11 @@ const registry = new Map<string, ProcessEntry>();
 // Helpers
 // ---------------------------------------------------------------------------
 
-function liveCountForAgent(ownerAgentId: string): number {
+/** Concurrent live PTYs charged to a supervisor (parent) or child principal. */
+function liveCountForAgent(agentId: string): number {
   let n = 0;
   for (const entry of registry.values()) {
-    if (entry.ownerAgentId === ownerAgentId) n++;
+    if (entry.parentAgentId === agentId || entry.ownerAgentId === agentId) n++;
   }
   return n;
 }
@@ -133,7 +200,8 @@ function markExited(db: PGlite, processId: string, exitCode: number | null): voi
 
 onAgentEnded((agentId: string) => {
   for (const [processId, entry] of registry) {
-    if (entry.ownerAgentId !== agentId) continue;
+    // Kill when the child principal ends OR the supervisor session ends.
+    if (entry.ownerAgentId !== agentId && entry.parentAgentId !== agentId) continue;
     try {
       entry.pty.kill();
     } catch {
@@ -225,26 +293,29 @@ function safeEnvRecord(v: unknown): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 /**
- * agent.spawn — fork a PTY child process and return processId + pid.
+ * agent.spawn — fork a PTY child process and return processId + pid + child identity.
  *
  * Security:
  *   - Signature-gated: requireAgent() accepts only a verified Ed25519 signer,
  *     never a caller-supplied actorAgentId.
- *   - Authorized: `repoPath` must be a registered root the signer owns or was
+ *   - GAP-269: mints a distinct key-derived child principal (`key_origin=spawned`)
+ *     and returns a one-shot privateKeyPem so the child (or parent holding the
+ *     key) can sign agent.* as that principal.
+ *   - Authorized: `repoPath` must be a registered root the *parent* owns or was
  *     granted, and `cwd` must resolve at or beneath it (requireRootAndDir).
  *     There is no default cwd; a missing repoPath is a hard error.
  *   - Confined: on Linux/WSL2 the command runs inside a bwrap sandbox; on
  *     platforms with no backend the spawn fails closed (confinement.ts).
  *   - env is an allow-list (filterCallerEnv) over a deny-by-default baseline
- *     with HOME pointed at the per-agent home (buildConfinedEnv).
- *   - Per-agent concurrency is capped at MAX_PROCESSES_PER_AGENT.
+ *     with HOME pointed at the per-child home (buildConfinedEnv).
+ *   - Per-agent concurrency is capped at MAX_PROCESSES_PER_AGENT (parent budget).
  *
  * `command` is not constrained to an allow-list — an authorized caller may run
  * any binary — but the sandbox bounds what that binary can touch to the granted
  * root and the agent home. A command allow-list is out of Phase 1 scope.
  */
 registerHandler('agent.spawn', async (params, db, ctx) => {
-  const ownerAgentId = requireAgent(ctx, params);
+  const parentAgentId = requireAgent(ctx, params);
 
   const command = stringParam(params, 'command');
   if (!command) throw new Error('agent.spawn: missing command');
@@ -256,9 +327,10 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   // can touch, this refuses a command that matches a dangerous pattern (curl |
   // sh, inline eval, credential reads) before any process is forked.
   const commandLine = args.length > 0 ? `${command} ${args.join(' ')}` : command;
-  const guardVerdict = evaluateToolAction({ kind: 'command', command: commandLine });
+  // GAP-375 residual: async path may allow sec-review:approved when gh reports audit green
+  const guardVerdict = await evaluateToolActionAsync({ kind: 'command', command: commandLine });
   if (!guardVerdict.allowed) {
-    throw await denyToolAction(db, 'agent.spawn', ownerAgentId, guardVerdict, {
+    throw await denyToolAction(db, 'agent.spawn', parentAgentId, guardVerdict, {
       command: commandLine,
     });
   }
@@ -266,7 +338,7 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   const rows = positiveInt(params.rows, 24);
 
   // Authorization. The signature gate above proves WHO is asking; this proves
-  // they may run a command THERE. `repoPath` must be a root the signer opened
+  // they may run a command THERE. `repoPath` must be a root the parent opened
   // or was granted via project.grant, and `cwd` must resolve to a real
   // directory at or beneath it. We keep BOTH the realpath'd root (bound
   // read-write) and the resolved cwd (started in) — see requireRootAndDir.
@@ -281,7 +353,7 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   const { repoReal, cwd } = await requireRootAndDir(
     repoPath,
     stringParam(params, 'cwd') || undefined,
-    ownerAgentId,
+    parentAgentId,
   );
 
   // Env allow-list (spec §7). A non-allow-listed caller key (HOME, PATH, any
@@ -289,13 +361,18 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   // home is built or process spawned.
   const callerEnv = filterCallerEnv(safeEnvRecord(params.env));
 
-  if (liveCountForAgent(ownerAgentId) >= MAX_PROCESSES_PER_AGENT) {
+  if (liveCountForAgent(parentAgentId) >= MAX_PROCESSES_PER_AGENT) {
     throw new Error(
-      `agent.spawn: per-agent process limit (${MAX_PROCESSES_PER_AGENT}) reached for agent ${ownerAgentId}`,
+      `agent.spawn: per-agent process limit (${MAX_PROCESSES_PER_AGENT}) reached for agent ${parentAgentId}`,
     );
   }
 
-  // Per-agent persistent home (spec §5); HOME points here inside the sandbox.
+  // GAP-269: mint child principal before the PTY so a failed insert never
+  // leaves an unowned process.
+  const child = await mintSpawnedAgentIdentity(db, parentAgentId);
+  const ownerAgentId = child.agentId;
+
+  // Per-child persistent home (spec §5); HOME points here inside the sandbox.
   const dataDir = getDaemonConfig().dataDir;
   const agentHome = await ensureAgentHome(dataDir, ownerAgentId);
   const env = buildConfinedEnv(callerEnv, agentHome);
@@ -326,7 +403,12 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
     file = command;
     argv = args;
     confinement = 'none';
-    log.warn('agent.spawn running UNCONFINED via escape hatch', { command, ownerAgentId, cwd });
+    log.warn('agent.spawn running UNCONFINED via escape hatch', {
+      command,
+      parentAgentId,
+      ownerAgentId,
+      cwd,
+    });
   } else {
     // No backend and no escape hatch — refuse rather than spawn unprotected.
     throw new Error(
@@ -345,14 +427,25 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   });
 
   await db.query(
-    `INSERT INTO agent_processes (id, owner_agent, command, args, cwd, pid, status, confinement)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'running', $7)`,
-    [processId, ownerAgentId, command, JSON.stringify(args), cwd, pty.pid, confinement],
+    `INSERT INTO agent_processes
+       (id, owner_agent, parent_agent, command, args, cwd, pid, status, confinement)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'running', $8)`,
+    [
+      processId,
+      ownerAgentId,
+      parentAgentId,
+      command,
+      JSON.stringify(args),
+      cwd,
+      pty.pid,
+      confinement,
+    ],
   );
 
   const entry: ProcessEntry = {
     pty,
     ownerAgentId,
+    parentAgentId,
     outputSeq: 0,
     dataDisposable: pty.onData((chunk) => bufferOutput(db, processId, chunk)),
     exitDisposable: pty.onExit(({ exitCode }) => {
@@ -364,15 +457,31 @@ registerHandler('agent.spawn', async (params, db, ctx) => {
   };
   registry.set(processId, entry);
 
-  log.info('spawned PTY process', { processId, command, pid: pty.pid, ownerAgentId });
+  log.info('spawned PTY process', {
+    processId,
+    command,
+    pid: pty.pid,
+    ownerAgentId,
+    parentAgentId,
+  });
 
-  return { processId, pid: pty.pid };
+  return {
+    processId,
+    pid: pty.pid,
+    agentId: child.agentId,
+    did: child.did,
+    publicKeyPem: child.publicKeyPem,
+    // One-shot: parent holds the child's key to drive agent.* as the child, or
+    // injects it into the child process. Never re-returned on later calls.
+    privateKeyPem: child.privateKeyPem,
+    parentAgentId,
+  };
 });
 
 /**
  * agent.stop — send SIGTERM to the PTY and mark the DB row killed.
  *
- * P4-IDENTITY TODO: signature-gate (see agent.spawn TODO above).
+ * Controllers: child principal (owner_agent) or parent (parent_agent).
  */
 registerHandler('agent.stop', async (params, db, ctx) => {
   const callerAgentId = requireAgent(ctx, params);
@@ -381,19 +490,20 @@ registerHandler('agent.stop', async (params, db, ctx) => {
 
   const entry = registry.get(processId);
   if (!entry) {
-    const row = await db.query<{ owner_agent: string; status: string }>(
-      `SELECT owner_agent, status FROM agent_processes WHERE id = $1`,
-      [processId],
-    );
+    const row = await db.query<{
+      owner_agent: string;
+      parent_agent: string | null;
+      status: string;
+    }>(`SELECT owner_agent, parent_agent, status FROM agent_processes WHERE id = $1`, [processId]);
     if (row.rows.length === 0) throw new Error(`agent.stop: unknown processId ${processId}`);
     const r = row.rows[0];
-    if (r && r.owner_agent !== callerAgentId) {
+    if (r && !isRowController(r, callerAgentId)) {
       throw new Error(`agent.stop: process ${processId} is not owned by caller`);
     }
     return { stopped: processId, status: r?.status ?? 'unknown' };
   }
 
-  if (entry.ownerAgentId !== callerAgentId) {
+  if (!isProcessController(entry, callerAgentId)) {
     throw new Error(`agent.stop: process ${processId} is not owned by caller`);
   }
 
@@ -416,37 +526,37 @@ registerHandler('agent.stop', async (params, db, ctx) => {
 });
 
 /**
- * agent.list — enumerate the caller's spawned PTY processes.
+ * agent.list — enumerate PTY processes the caller supervises or owns.
  *
- * Scoped to the verified signer (owner_agent = ctx.agentId): a caller only
- * ever sees its own processes, never another agent's — the same per-agent
- * scoping git.status/list/log use, and why this method is signature-required
- * (server.ts MUTATING_OR_CONTENT_METHODS). Rows are read from `agent_processes`
+ * Scoped to parent_agent OR owner_agent = verified signer (GAP-269). A caller
+ * never sees another lineage's processes. Rows are read from `agent_processes`
  * (the persistent record), so exited/killed history is included until pruned by
- * agent.remove. Fields are daemon-native — the caller (Studio invoke.ts) adapts
- * them to its AgentSessionInfo shape; `command` is the only human label the
- * daemon has (agent.spawn is a generic command spawner with no model/prompt).
+ * agent.remove.
  */
 registerHandler('agent.list', async (params, db, ctx) => {
   const callerAgentId = requireAgent(ctx, params);
 
   const rows = await db.query<{
     id: string;
+    owner_agent: string;
+    parent_agent: string | null;
     command: string;
     cwd: string;
     pid: number | null;
     status: string;
     exit_code: number | null;
   }>(
-    `SELECT id, command, cwd, pid, status, exit_code
+    `SELECT id, owner_agent, parent_agent, command, cwd, pid, status, exit_code
        FROM agent_processes
-      WHERE owner_agent = $1
+      WHERE owner_agent = $1 OR parent_agent = $1
       ORDER BY created_at DESC`,
     [callerAgentId],
   );
 
   return rows.rows.map((r) => ({
     processId: r.id,
+    agentId: r.owner_agent,
+    parentAgentId: r.parent_agent,
     command: r.command,
     cwd: r.cwd,
     pid: r.pid,
@@ -471,7 +581,7 @@ registerHandler('agent.remove', async (params, db, ctx) => {
 
   const entry = registry.get(processId);
   if (entry) {
-    if (entry.ownerAgentId !== callerAgentId) {
+    if (!isProcessController(entry, callerAgentId)) {
       throw new Error(`agent.remove: process ${processId} is not owned by caller`);
     }
     try {
@@ -481,13 +591,13 @@ registerHandler('agent.remove', async (params, db, ctx) => {
     }
     registry.delete(processId);
   } else {
-    const row = await db.query<{ owner_agent: string }>(
-      `SELECT owner_agent FROM agent_processes WHERE id = $1`,
+    const row = await db.query<{ owner_agent: string; parent_agent: string | null }>(
+      `SELECT owner_agent, parent_agent FROM agent_processes WHERE id = $1`,
       [processId],
     );
     if (row.rows.length === 0) throw new Error(`agent.remove: unknown processId ${processId}`);
     const r = row.rows[0];
-    if (r && r.owner_agent !== callerAgentId) {
+    if (r && !isRowController(r, callerAgentId)) {
       throw new Error(`agent.remove: process ${processId} is not owned by caller`);
     }
   }
@@ -499,8 +609,7 @@ registerHandler('agent.remove', async (params, db, ctx) => {
 
 /**
  * agent.input — write bytes to a live PTY's stdin/tty.
- *
- * P4-IDENTITY TODO: signature-gate (see agent.spawn TODO above).
+ * Controllers: child principal or parent supervisor.
  */
 registerHandler('agent.input', async (params, _db, ctx) => {
   const callerAgentId = requireAgent(ctx, params);
@@ -511,7 +620,7 @@ registerHandler('agent.input', async (params, _db, ctx) => {
 
   const entry = registry.get(processId);
   if (!entry) throw new Error(`agent.input: process ${processId} is not running`);
-  if (entry.ownerAgentId !== callerAgentId) {
+  if (!isProcessController(entry, callerAgentId)) {
     throw new Error(`agent.input: process ${processId} is not owned by caller`);
   }
 
@@ -521,8 +630,7 @@ registerHandler('agent.input', async (params, _db, ctx) => {
 
 /**
  * agent.resize — resize the PTY window.
- *
- * P4-IDENTITY TODO: signature-gate (see agent.spawn TODO above).
+ * Controllers: child principal or parent supervisor.
  */
 registerHandler('agent.resize', async (params, _db, ctx) => {
   const callerAgentId = requireAgent(ctx, params);
@@ -533,7 +641,7 @@ registerHandler('agent.resize', async (params, _db, ctx) => {
 
   const entry = registry.get(processId);
   if (!entry) throw new Error(`agent.resize: process ${processId} is not running`);
-  if (entry.ownerAgentId !== callerAgentId) {
+  if (!isProcessController(entry, callerAgentId)) {
     throw new Error(`agent.resize: process ${processId} is not owned by caller`);
   }
 
@@ -549,10 +657,10 @@ registerHandler('agent.resize', async (params, _db, ctx) => {
  * read from the beginning. The `cursor` in the response should be passed on
  * the next poll. `status` tells the caller when to stop polling.
  *
+ * Controllers: child principal or parent supervisor.
+ *
  * Real-time push is not available over this JSON-RPC transport (newline-
  * delimited JSON has no server-push model). Poll-based mirrors events.query.
- *
- * P4-IDENTITY TODO: signature-gate (see agent.spawn TODO above).
  */
 registerHandler('agent.output', async (params, db, ctx) => {
   const callerAgentId = requireAgent(ctx, params);
@@ -561,14 +669,15 @@ registerHandler('agent.output', async (params, db, ctx) => {
   const cursor = positiveIntOrZero(Number(params.cursor ?? 0));
   const limit = Math.min(positiveInt(params.limit, 100), 1000);
 
-  const procRow = await db.query<{ owner_agent: string; status: string }>(
-    `SELECT owner_agent, status FROM agent_processes WHERE id = $1`,
-    [processId],
-  );
+  const procRow = await db.query<{
+    owner_agent: string;
+    parent_agent: string | null;
+    status: string;
+  }>(`SELECT owner_agent, parent_agent, status FROM agent_processes WHERE id = $1`, [processId]);
   if (procRow.rows.length === 0) throw new Error(`agent.output: unknown processId ${processId}`);
   const proc = procRow.rows[0];
   if (!proc) throw new Error(`agent.output: unknown processId ${processId}`);
-  if (proc.owner_agent !== callerAgentId) {
+  if (!isRowController(proc, callerAgentId)) {
     throw new Error(`agent.output: process ${processId} is not owned by caller`);
   }
 
@@ -604,24 +713,21 @@ registerHandler('agent.output', async (params, db, ctx) => {
  *
  * The HTTP gateway's bearer token is a transport credential, not a
  * principal: it does not carry an Ed25519 signature or prove PTY
- * ownership. This handler re-runs the EXACT same ownership check
- * `agent.output` uses (`owner_agent === callerAgentId`) before minting a
- * ticket, so `/api/stream` inherits the same signature + identity +
- * ownership gates as every other read of this content, just resolved once
- * at subscribe time instead of per-poll.
+ * ownership. This handler re-runs the same ownership check as
+ * `agent.output` (parent OR child controller) before minting a ticket.
  */
 registerHandler('agent.streamTicket', async (params, db, ctx) => {
   const callerAgentId = requireAgent(ctx, params);
   const processId = stringParam(params, 'processId');
   if (!processId) throw new Error('agent.streamTicket: missing processId');
 
-  const procRow = await db.query<{ owner_agent: string }>(
-    `SELECT owner_agent FROM agent_processes WHERE id = $1`,
+  const procRow = await db.query<{ owner_agent: string; parent_agent: string | null }>(
+    `SELECT owner_agent, parent_agent FROM agent_processes WHERE id = $1`,
     [processId],
   );
   const proc = procRow.rows[0];
   if (!proc) throw new Error(`agent.streamTicket: unknown processId ${processId}`);
-  if (proc.owner_agent !== callerAgentId) {
+  if (!isRowController(proc, callerAgentId)) {
     throw new Error(`agent.streamTicket: process ${processId} is not owned by caller`);
   }
 

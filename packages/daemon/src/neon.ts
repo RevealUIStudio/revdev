@@ -25,6 +25,16 @@
  *
  * When `POSTGRES_URL` is unset, all helpers are no-ops. The daemon runs
  * fine single-machine; sync is purely additive.
+ *
+ * Intentional non-sync (GAP-174, closed 2026-08-05 — not an audit miss):
+ *   - `memory.*` (agent_memory in PGlite) and `merge.*` (merge_requests in
+ *     PGlite) have NO Neon `coordination_*` counterparts. The Neon schema
+ *     (`@revealui/db` coordination.ts) covers agents, sessions, file claims,
+ *     events, work items, mail, and queue items only. Dual-write for
+ *     memory/merge would need new tables + migrations; that is multi-machine
+ *     scope and rides GAP-154 Phase 5 (cross-machine discovery/gateway) if
+ *     and when fleet-wide agent memory or merge-request lifecycle must
+ *     reconcile across daemons. Until then they stay local-only by design.
  */
 
 import { type NeonQueryFunction, neon } from '@neondatabase/serverless';
@@ -206,8 +216,9 @@ export async function listFleetSessions(): Promise<FleetSessionRow[]> {
 // enum translation, missing columns deferred to metadata JSONB, etc.).
 // ---------------------------------------------------------------------------
 
-/** Mirror a daemon `mail.send` row into coordination_mail. */
+/** Mirror a daemon `mail.send` row into coordination_mail (GAP-176 UUID id). */
 export async function syncMailSend(params: {
+  id: string;
   fromAgent: string;
   toAgent: string;
   subject: string;
@@ -217,11 +228,12 @@ export async function syncMailSend(params: {
   try {
     const c = client;
     await c`
-      INSERT INTO coordination_mail (from_agent, to_agent, subject, body)
-      VALUES (${params.fromAgent}, ${params.toAgent}, ${params.subject}, ${params.body})
+      INSERT INTO coordination_mail (id, from_agent, to_agent, subject, body)
+      VALUES (${params.id}::uuid, ${params.fromAgent}, ${params.toAgent}, ${params.subject}, ${params.body})
     `;
   } catch (err) {
     log.warn('syncMailSend failed', {
+      id: params.id,
       fromAgent: params.fromAgent,
       toAgent: params.toAgent,
       error: String(err),
@@ -230,112 +242,81 @@ export async function syncMailSend(params: {
 }
 
 /**
- * Mirror a daemon `mail.broadcast` (one row per recipient). The daemon's
- * INSERT loop in mail.broadcast fans out — this helper takes the same
- * recipient list to keep the per-row write parity with PGlite.
+ * Mirror a daemon `mail.broadcast` (one row per recipient). Each row carries
+ * its own UUID so markRead can target a single message (GAP-176).
  */
 export async function syncMailBroadcast(params: {
   fromAgent: string;
-  toAgents: string[];
-  subject: string;
-  body: string;
+  rows: Array<{ id: string; toAgent: string; subject: string; body: string }>;
 }): Promise<void> {
   if (!client) return;
-  if (params.toAgents.length === 0) return;
+  if (params.rows.length === 0) return;
   try {
     const c = client;
-    for (const to of params.toAgents) {
+    for (const row of params.rows) {
       await c`
-        INSERT INTO coordination_mail (from_agent, to_agent, subject, body)
-        VALUES (${params.fromAgent}, ${to}, ${params.subject}, ${params.body})
+        INSERT INTO coordination_mail (id, from_agent, to_agent, subject, body)
+        VALUES (${row.id}::uuid, ${params.fromAgent}, ${row.toAgent}, ${row.subject}, ${row.body})
       `;
     }
   } catch (err) {
     log.warn('syncMailBroadcast failed', {
       fromAgent: params.fromAgent,
-      recipients: params.toAgents.length,
+      recipients: params.rows.length,
       error: String(err),
     });
   }
 }
 
 /**
- * Mirror a daemon `mail.markRead` to Neon. The daemon uses SERIAL ids
- * scoped to its local PGlite — those ids will not match Neon's SERIAL ids
- * (different sequences). We therefore mark by (toAgent, fromAgent,
- * subject, createdAt-window) heuristic rather than id. For Phase 3 we
- * just bulk-mark all unread mail FROM the fromAgent TO the markReader.
- *
- * NOTE: this is a best-effort approximation. If two agents send overlapping
- * "ping" subjects, marking one read on the daemon will mark BOTH on Neon.
- * Phase 3+ may add a stable cross-DB id (UUID) to avoid this; logged as a
- * known limitation here.
+ * Mirror a daemon `mail.markRead` to Neon by shared UUID primary key (GAP-176).
+ * No subject/body heuristic — the same id exists on both PGlite and Neon.
  */
-export async function syncMailMarkRead(params: {
-  reader: string;
-  ids: number[]; // daemon-local PGlite ids
-  // Best-effort: also pass the (subject + body) tuples to scope the Neon
-  // UPDATE more precisely. If absent, falls back to "mark all unread to
-  // this reader" which is over-broad.
-  hints?: Array<{ subject: string; body: string }>;
-}): Promise<void> {
+export async function syncMailMarkRead(params: { reader: string; ids: string[] }): Promise<void> {
   if (!client) return;
   if (params.ids.length === 0) return;
   try {
     const c = client;
-    if (params.hints && params.hints.length > 0) {
-      // Mark unread rows whose (subject, body) match any hint.
-      for (const hint of params.hints) {
-        await c`
-          UPDATE coordination_mail
-            SET read = TRUE
-          WHERE to_agent = ${params.reader}
-            AND read = FALSE
-            AND subject = ${hint.subject}
-            AND body = ${hint.body}
-        `;
-      }
-    } else {
-      // Over-broad fallback. Match the count being marked locally to
-      // bound the impact: only mark the N oldest unread rows.
-      const limit = params.ids.length;
-      await c`
-        UPDATE coordination_mail
-          SET read = TRUE
-        WHERE id IN (
-          SELECT id FROM coordination_mail
-          WHERE to_agent = ${params.reader} AND read = FALSE
-          ORDER BY created_at ASC
-          LIMIT ${limit}
-        )
-      `;
-    }
+    await c`
+      UPDATE coordination_mail
+        SET read = TRUE
+      WHERE to_agent = ${params.reader}
+        AND id = ANY(${params.ids}::uuid[])
+    `;
   } catch (err) {
-    log.warn('syncMailMarkRead failed', { reader: params.reader, error: String(err) });
+    log.warn('syncMailMarkRead failed', {
+      reader: params.reader,
+      idCount: params.ids.length,
+      error: String(err),
+    });
   }
 }
 
 /**
  * Mirror a daemon `files.reserve` row(s) into coordination_file_claims.
- * Schema divergence: daemon has TTL + reason; Neon has only (file_path,
- * session_id, claimed_at) composite PK. We sync only the subset; TTL
- * expiry on the daemon side does NOT propagate to Neon (a future cleanup
- * pass needs to handle that). For Phase 3 this is a known limitation.
+ * GAP-175: write `expires_at` (ISO / Date) so Neon can drop expired claims
+ * via `sweepExpiredFileClaims` (piggybacked on the daemon prune timer).
+ * `reason` stays PGlite-only (no Neon column).
  */
 export async function syncFilesReserve(params: {
   sessionId: string;
   paths: string[];
+  /** Absolute expiry for this reservation batch (daemon TTL). */
+  expiresAt: Date | string;
 }): Promise<void> {
   if (!client) return;
   if (params.paths.length === 0) return;
+  const expiresAt =
+    params.expiresAt instanceof Date ? params.expiresAt.toISOString() : params.expiresAt;
   try {
     const c = client;
     for (const p of params.paths) {
       await c`
-        INSERT INTO coordination_file_claims (file_path, session_id)
-        VALUES (${p}, ${params.sessionId})
+        INSERT INTO coordination_file_claims (file_path, session_id, expires_at)
+        VALUES (${p}, ${params.sessionId}, ${expiresAt}::timestamptz)
         ON CONFLICT (file_path, session_id) DO UPDATE
-          SET claimed_at = NOW()
+          SET claimed_at = NOW(),
+              expires_at = EXCLUDED.expires_at
       `;
     }
   } catch (err) {
@@ -344,6 +325,32 @@ export async function syncFilesReserve(params: {
       pathCount: params.paths.length,
       error: String(err),
     });
+  }
+}
+
+/**
+ * Delete Neon file claims past their TTL (GAP-175). Best-effort; no-op without
+ * POSTGRES_URL. Safe to call from the periodic prune timer.
+ */
+export async function sweepExpiredFileClaims(): Promise<{ deleted: number }> {
+  if (!client) return { deleted: 0 };
+  try {
+    const c = client;
+    // Neon serverless returns row metadata inconsistently; count via RETURNING.
+    const rows = await c`
+      DELETE FROM coordination_file_claims
+      WHERE expires_at IS NOT NULL
+        AND expires_at < NOW()
+      RETURNING file_path
+    `;
+    const deleted = Array.isArray(rows) ? rows.length : 0;
+    if (deleted > 0) {
+      log.info('sweepExpiredFileClaims', { deleted });
+    }
+    return { deleted };
+  } catch (err) {
+    log.warn('sweepExpiredFileClaims failed', { error: String(err) });
+    return { deleted: 0 };
   }
 }
 

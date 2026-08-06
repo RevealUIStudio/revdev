@@ -7,7 +7,7 @@
 
 import { useHealth } from '../../hooks/use-health';
 import type { HealthCheck } from '../../lib/health-api';
-import StatusDot from '../ui/StatusDot';
+import StatusDot from '../adapters/StatusDot';
 
 const STATUS_MAP = {
   healthy: { dot: 'ok', label: 'Healthy', color: 'text-success' },

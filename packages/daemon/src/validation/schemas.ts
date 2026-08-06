@@ -313,6 +313,21 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  // GAP-459 Phase 1: composite peer-context read (advisory awareness).
+  // Pro multi-agent coordination (not EXEMPT). Not signature-required:
+  // metadata only (presence, paths, task titles, event summaries) — no
+  // file contents. Same trust boundary as session.list + files.* on the
+  // 0600 socket.
+  'context.snapshot': z
+    .object({
+      // Recent peer finding/claim events window (default 50, max 200).
+      eventLimit: z.number().int().min(1).max(200).optional(),
+      // When true, include the caller's own session/reservations too.
+      includeSelf: z.boolean().optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
   // -- Memory -----------------------------------------------------------------
   // Field names match DB columns (`agent_memory.memory_type`, `.content`,
   // `.metadata`) and the RevealUI fleet's typed-record framing
@@ -374,6 +389,10 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       staleDays: z.number().min(1).optional(),
       hardDeleteDays: z.number().min(1).optional(),
+      // GAP-459: also end sessions with no updated_at activity for this many
+      // seconds. Floor 3600s (1h) when provided — 0/omit disables the arm.
+      // Not .int()-only: fractional seconds are harmless; floor is the property.
+      heartbeatStaleSeconds: z.number().min(3600).optional(),
       actorAgentId,
     })
     .passthrough(),

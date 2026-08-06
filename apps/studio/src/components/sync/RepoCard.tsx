@@ -1,6 +1,6 @@
 import type { SyncResult } from '../../types';
-import Button from '../ui/Button';
-import Card from '../ui/Card';
+import Button from '../adapters/Button';
+import Card from '../adapters/Card';
 
 interface RepoCardProps {
   result: SyncResult;

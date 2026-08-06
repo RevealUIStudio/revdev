@@ -26,7 +26,7 @@ import {
   serializeEnvelope,
   signEnvelope,
 } from '../agent-identity-crypto.js';
-import { _resetForTesting, setNeonClientForTesting } from '../neon.js';
+import { _resetForTesting, setNeonClientForTesting, sweepExpiredFileClaims } from '../neon.js';
 import { startDaemon } from '../server.js';
 
 /**
@@ -317,35 +317,35 @@ describe('GAP-154: daemon → Neon dual-write wiring', () => {
 // ---------------------------------------------------------------------------
 
 describe('GAP-154 Phase 3: mail.* dual-write', () => {
-  it('mail.send mirrors to coordination_mail', async () => {
-    // Need a registered sender for the RPC (mail.send requireAgent's it).
+  it('mail.send mirrors to coordination_mail with shared UUID (GAP-176)', async () => {
     await rpc(socketPath, 'session.register', {
       agentId: 'mail-sender',
       agentName: 'mail-sender',
       backend: 'test',
     });
     recordedCalls = [];
-    await rpc(socketPath, 'mail.send', {
+    const sent = (await rpc(socketPath, 'mail.send', {
       actorAgentId: 'mail-sender',
       to: 'mail-recipient',
       subject: 'phase 3 hi',
       body: 'hello from a mock',
-    });
+    })) as { id: string };
+    expect(typeof sent.id).toBe('string');
+    expect(sent.id.length).toBeGreaterThan(10);
     expect(recordedCalls.length).toBe(1);
     const [send] = recordedCalls;
     const sql = send?.strings.join('') ?? '';
     expect(sql).toMatch(/INSERT\s+INTO\s+coordination_mail/i);
-    expect(send?.values).toEqual([
-      'mail-sender',
-      'mail-recipient',
-      'phase 3 hi',
-      'hello from a mock',
-    ]);
+    expect(sql).toMatch(/\bid\b/i);
+    // values: id, from, to, subject, body
+    expect(send?.values[0]).toBe(sent.id);
+    expect(send?.values).toContain('mail-sender');
+    expect(send?.values).toContain('mail-recipient');
+    expect(send?.values).toContain('phase 3 hi');
+    expect(send?.values).toContain('hello from a mock');
   });
 
   it('mail.broadcast fans out one Neon write per recipient', async () => {
-    // Register sender + 2 recipients (broadcast targets all OTHER active
-    // sessions).
     await rpc(socketPath, 'session.register', {
       agentId: 'broadcaster',
       agentName: 'broadcaster',
@@ -367,21 +367,24 @@ describe('GAP-154 Phase 3: mail.* dual-write', () => {
       subject: 'broadcast subject',
       body: 'broadcast body',
     });
-    // One Neon INSERT per recipient.
     const inserts = recordedCalls.filter((c) =>
       /INSERT\s+INTO\s+coordination_mail/i.test(c.strings.join('')),
     );
     expect(inserts.length).toBeGreaterThanOrEqual(2);
-    // Recipients should appear in the values somewhere.
     const allValues = inserts.flatMap((c) => c.values);
     expect(allValues).toContain('recipient-a');
     expect(allValues).toContain('recipient-b');
-    // Sender should not appear as a TO target.
-    const tos = inserts.map((c) => c.values[1]);
+    // Each INSERT carries its own UUID as first value.
+    for (const ins of inserts) {
+      expect(typeof ins.values[0]).toBe('string');
+      expect(String(ins.values[0]).length).toBeGreaterThan(10);
+    }
+    // toAgent is values[2] after id, fromAgent (id, from, to, subject, body)
+    const tos = inserts.map((c) => c.values[2]);
     expect(tos).not.toContain('broadcaster');
   });
 
-  it('mail.markRead uses hints to scope the Neon UPDATE', async () => {
+  it('mail.markRead dual-writes by UUID only — not subject/body (GAP-176)', async () => {
     await rpc(socketPath, 'session.register', {
       agentId: 'reader',
       agentName: 'reader',
@@ -392,31 +395,39 @@ describe('GAP-154 Phase 3: mail.* dual-write', () => {
       agentName: 'sender',
       backend: 'test',
     });
-    // Send one message, capture its id.
-    const sendResult = (await rpc(socketPath, 'mail.send', {
+    // Two identical subject/body messages — heuristic would mark both; UUID marks one.
+    const a = (await rpc(socketPath, 'mail.send', {
       actorAgentId: 'sender',
       to: 'reader',
-      subject: 'specific subject',
-      body: 'specific body',
-    })) as { id: number };
+      subject: 'same subject',
+      body: 'same body',
+    })) as { id: string };
+    const b = (await rpc(socketPath, 'mail.send', {
+      actorAgentId: 'sender',
+      to: 'reader',
+      subject: 'same subject',
+      body: 'same body',
+    })) as { id: string };
+    expect(a.id).not.toBe(b.id);
     recordedCalls = [];
 
     await rpc(socketPath, 'mail.markRead', {
       actorAgentId: 'reader',
-      messageIds: [sendResult.id],
+      messageIds: [a.id],
     });
-    // markRead does: SELECT hints (PGlite fetch — not mocked) + UPDATE
-    // PGlite (also not mocked) + the syncMailMarkRead helper which calls
-    // Neon. The mock recorder receives only the Neon call.
     const updates = recordedCalls.filter((c) =>
       /UPDATE\s+coordination_mail/i.test(c.strings.join('')),
     );
-    expect(updates.length).toBeGreaterThanOrEqual(1);
-    // The hint-scoped UPDATE should reference the subject + body.
+    expect(updates.length).toBe(1);
     const update = updates[0];
+    const sql = update?.strings.join('') ?? '';
+    expect(sql).toMatch(/id\s*=\s*ANY/i);
+    expect(sql).not.toMatch(/subject\s*=/i);
+    expect(sql).not.toMatch(/body\s*=/i);
     expect(update?.values).toContain('reader');
-    expect(update?.values).toContain('specific subject');
-    expect(update?.values).toContain('specific body');
+    // ids array is the second bind
+    expect(update?.values).toEqual(expect.arrayContaining(['reader', [a.id]]));
+    expect(update?.values.flat()).not.toContain(b.id);
   });
 });
 
@@ -428,6 +439,7 @@ describe('GAP-154 Phase 3: files.* dual-write', () => {
       backend: 'test',
     });
     recordedCalls = [];
+    const before = Date.now();
     await rpc(socketPath, 'files.reserve', {
       actorAgentId: 'file-reserver',
       paths: ['src/a.ts', 'src/b.ts'],
@@ -442,6 +454,16 @@ describe('GAP-154 Phase 3: files.* dual-write', () => {
     expect(allValues).toContain('src/a.ts');
     expect(allValues).toContain('src/b.ts');
     expect(allValues).toContain('file-reserver');
+    // GAP-175: each INSERT carries expires_at (~ now + ttlSeconds)
+    const sql = inserts[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/expires_at/i);
+    const isoExpiry = allValues.find(
+      (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v),
+    ) as string | undefined;
+    expect(isoExpiry).toBeTruthy();
+    const expMs = Date.parse(isoExpiry ?? '');
+    expect(expMs).toBeGreaterThanOrEqual(before + 590_000);
+    expect(expMs).toBeLessThanOrEqual(Date.now() + 610_000);
   });
 
   it('files.release with paths DELETEs scoped to (sessionId, paths)', async () => {
@@ -490,6 +512,20 @@ describe('GAP-154 Phase 3: files.* dual-write', () => {
     const sql = deletes[0]?.strings.join('') ?? '';
     expect(sql).not.toMatch(/file_path/i); // no path filter
     expect(deletes[0]?.values).toEqual(['file-releaser-all']);
+  });
+
+  it('sweepExpiredFileClaims DELETEs Neon rows past expires_at (GAP-175)', async () => {
+    recordedCalls = [];
+    nextResult = [{ file_path: 'src/expired.ts' }];
+    const r = await sweepExpiredFileClaims();
+    expect(r.deleted).toBe(1);
+    const deletes = recordedCalls.filter((c) =>
+      /DELETE\s+FROM\s+coordination_file_claims/i.test(c.strings.join('')),
+    );
+    expect(deletes.length).toBe(1);
+    const sql = deletes[0]?.strings.join('') ?? '';
+    expect(sql).toMatch(/expires_at\s+IS\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/expires_at\s*<\s*NOW\(\)/i);
   });
 });
 

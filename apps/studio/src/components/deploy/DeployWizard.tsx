@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useConfig } from '../../hooks/use-config';
 import { useDeployWizard } from '../../hooks/use-deploy-wizard';
 import type { WizardData } from '../../types';
-import Button from '../ui/Button';
+import Button from '../adapters/Button';
 import StepBlob from './StepBlob';
 import StepDatabase from './StepDatabase';
 import StepDeploy from './StepDeploy';

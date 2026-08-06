@@ -466,6 +466,136 @@ server.tool(
   },
 );
 
+// -- Permission modes (GAP-294) ---------------------------------------------
+// Headless decision surface (design: permission.pending / decide / setMode).
+// decide + setMode are signature-required; operator must use a trusted signed
+// identity (not the requester session). Studio has the same RPCs via Tauri.
+
+server.tool(
+  'permission_pending',
+  'List pending permission approvals (GAP-294). Optional agentId filter.',
+  {
+    agentId: z
+      .string()
+      .optional()
+      .describe('When set, only list pending approvals for this agent session'),
+  },
+  async ({ agentId }) => {
+    const result = await daemon.call(RPC_METHODS['permission.pending'], agentId ? { agentId } : {});
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_decide',
+  'Approve or deny a pending permission approval (signed operator only; self-approval rejected)',
+  {
+    approvalId: z.string().describe('Pending approval id from permission_pending'),
+    verdict: z.enum(['approved', 'denied']).describe('Decision for the requester'),
+  },
+  async ({ approvalId, verdict }) => {
+    daemon.requireSigned('permission.decide');
+    const result = await daemon.call(RPC_METHODS['permission.decide'], {
+      approvalId,
+      verdict,
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_set_mode',
+  'Set per-session permission mode override for another agent (signed operator only)',
+  {
+    agentId: z.string().describe('Target agent session id (cannot be the operator itself)'),
+    mode: z
+      .enum(['manual', 'auto', 'agent-scoped', 'shadow', 'default'])
+      .describe("Mode override, or 'default' to clear and use daemon REVDEV_PERMISSION_MODE"),
+  },
+  async ({ agentId, mode }) => {
+    daemon.requireSigned('permission.setMode');
+    const result = await daemon.call(RPC_METHODS['permission.setMode'], {
+      agentId,
+      mode: mode === 'default' ? null : mode,
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_list_grants',
+  'List agent-scope permission grants (GAP-294 §9). Optional grantee filter.',
+  {
+    granteeAgentId: z
+      .string()
+      .optional()
+      .describe('When set, only list grants for this grantee agent'),
+    includeInactive: z
+      .boolean()
+      .optional()
+      .describe('Include revoked/expired/exhausted grants (default false)'),
+  },
+  async ({ granteeAgentId, includeInactive }) => {
+    const result = await daemon.call(RPC_METHODS['permission.listGrants'], {
+      ...(granteeAgentId ? { granteeAgentId } : {}),
+      ...(includeInactive ? { includeInactive: true } : {}),
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_grant',
+  'Issue an agent-scope grant (signed operator only; cannot self-grant). Critical methods must be named explicitly.',
+  {
+    granteeAgentId: z.string().describe('Agent session that receives the grant'),
+    classes: z
+      .array(z.enum(['consequential']))
+      .optional()
+      .describe('Action classes covered (critical is never by class)'),
+    methods: z
+      .array(z.string())
+      .optional()
+      .describe('Explicit RPC method names (required to cover critical)'),
+    rootScope: z
+      .string()
+      .optional()
+      .describe('Optional filesystem root prefix the grant is limited to'),
+    expiresAt: z.string().optional().describe('ISO expiry; default 24h from issue'),
+    maxUses: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('Optional use cap; omit for unlimited within TTL'),
+  },
+  async ({ granteeAgentId, classes, methods, rootScope, expiresAt, maxUses }) => {
+    daemon.requireSigned('permission.grant');
+    const result = await daemon.call(RPC_METHODS['permission.grant'], {
+      granteeAgentId,
+      ...(classes ? { classes } : {}),
+      ...(methods ? { methods } : {}),
+      ...(rootScope ? { rootScope } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      ...(maxUses !== undefined ? { maxUses } : {}),
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'permission_revoke_grant',
+  'Revoke an active agent-scope grant (signed operator only)',
+  {
+    grantId: z.string().describe('Grant id from permission_list_grants or permission_grant'),
+  },
+  async ({ grantId }) => {
+    daemon.requireSigned('permission.revokeGrant');
+    const result = await daemon.call(RPC_METHODS['permission.revokeGrant'], { grantId });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------

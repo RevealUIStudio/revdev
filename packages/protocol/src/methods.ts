@@ -52,6 +52,9 @@ export const RPC_METHODS = {
   'events.log': 'events.log',
   'events.query': 'events.query',
 
+  // Peer context composite (GAP-459 Phase 1)
+  'context.snapshot': 'context.snapshot',
+
   // Agent memory
   'memory.store': 'memory.store',
   'memory.query': 'memory.query',
@@ -115,10 +118,13 @@ export const RPC_METHODS = {
   'merge.list': 'merge.list',
   'merge.update': 'merge.update',
 
-  // Permission modes (GAP-294 Phase 1 pending/decide; Phase 2 setMode)
+  // Permission modes (GAP-294 Phase 1 pending/decide; Phase 2 setMode; §9 grants)
   'permission.pending': 'permission.pending',
   'permission.decide': 'permission.decide',
   'permission.setMode': 'permission.setMode',
+  'permission.listGrants': 'permission.listGrants',
+  'permission.grant': 'permission.grant',
+  'permission.revokeGrant': 'permission.revokeGrant',
 
   // HTTP gateway token management (GAP-421 guardrail-2 remediation S5)
   'gateway.revokeToken': 'gateway.revokeToken',

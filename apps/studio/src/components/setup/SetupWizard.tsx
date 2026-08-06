@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { markSetupComplete, useSetup } from '../../hooks/use-setup';
-import Button from '../ui/Button';
-import ConfirmDialog from '../ui/ConfirmDialog';
-import ErrorAlert from '../ui/ErrorAlert';
-import Modal from '../ui/Modal';
+import Button from '../adapters/Button';
+import ConfirmDialog from '../adapters/ConfirmDialog';
+import ErrorAlert from '../adapters/ErrorAlert';
+import Modal from '../adapters/Modal';
 import {
   DevPodRow,
   GitIdentityRow,

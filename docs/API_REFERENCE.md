@@ -35,7 +35,7 @@ Returns a pong response to verify daemon connectivity.
 ---
 
 ### `harness.health`
-**Tier**: Pro
+**Tier**: Free (GAP-337 — monitoring without a Pro license; `harness.prune` remains Pro)
 
 Returns daemon health status, active session/task counts, prune state, and client-identity anchor consistency. Takes no params (any passed are ignored).
 
@@ -313,8 +313,19 @@ Read a file inside a registered project root.
 
 Write (create/overwrite) a file inside a registered project root. Refuses `.git/` internals.
 
+**Format enforcement (GAP-309):** when the registered root declares a formatter
+(`biome.json` / `biome.jsonc` for JS/TS/JSON/CSS, or `Cargo.toml` for `.rs`), the
+daemon **check-and-rejects** unformatted content with `-32007` *before* writing.
+It does **not** rewrite the caller's bytes (rewrite would make agents believe
+they wrote what they sent). Fix by running the command named in
+`error.data.fixCommand` and re-sending. Repos with no formatter config, exempt
+paths (`node_modules`, `dist`, …), and non-formatter extensions are unchanged.
+CI remains the merge guarantee; this is harness-independent edit-time
+enforcement on the daemon path only.
+
 **Params**: `{ repoPath: string, filePath: string, content: string }` (content capped at 768 KiB)
 **Response**: `{ success: true, bytes: number }`
+**Errors**: `-32007` format rejected (`data.kind = "format-rejected"`, includes `fixCommand`)
 
 ---
 
@@ -646,6 +657,11 @@ PTY-backed process spawning under the daemon's sandbox. All five methods are **P
 
 Spawn a command as a PTY process inside a granted project root, with an allow-listed environment (`TERM`, `LANG`, `LC_*`, `CI`, `NO_COLOR`, `REVDEV_*` only).
 
+**GAP-269 identity:** every spawn mints a distinct key-derived child principal
+(`key_origin=spawned`) and returns a one-shot `privateKeyPem`. The child
+principal owns the process row; the calling parent remains a supervisor who may
+still drive stop/input/resize/output. Siblings cannot drive each other.
+
 **Params**:
 | Field | Type | Description |
 |-------|------|-------------|
@@ -656,7 +672,7 @@ Spawn a command as a PTY process inside a granted project root, with an allow-li
 | `cols` / `rows` | number? | PTY size (default 80×24) |
 | `env` | object? | Caller env overrides, filtered by the allow-list |
 
-**Response**: `{ processId: string, pid: number }`
+**Response**: `{ processId: string, pid: number, agentId: string, did: string, publicKeyPem: string, privateKeyPem: string, parentAgentId: string }`
 
 ---
 
@@ -664,7 +680,7 @@ Spawn a command as a PTY process inside a granted project root, with an allow-li
 **Tier**: Pro
 **Signature**: required
 
-Send SIGTERM to a live PTY process. Only the owning agent may stop it.
+Send SIGTERM to a live PTY process. Controllers: the child principal or the parent supervisor.
 
 **Params**: `{ processId: string }`
 **Response**: `{ stopped: string, status: string }`
@@ -791,6 +807,8 @@ Update merge request status (e.g., after PR creation or CI result).
 | -32002 | Identity required (call session.register or session.attach first) |
 | -32003 | Signature required (missing or invalid Ed25519 signature on a Signature-required method) |
 | -32004 | Untrusted client key (identity enrollment/rotation rejected; fingerprint not in the trust anchor) |
+| -32006 | Tool-guard denied (blocked command/path/content) |
+| -32007 | Format rejected (GAP-309: content not formatted per repo-declared biome/cargo; see `data.fixCommand`) |
 | -32099 | Server is shutting down |
 | -32000 | Internal error (handler threw) |
 

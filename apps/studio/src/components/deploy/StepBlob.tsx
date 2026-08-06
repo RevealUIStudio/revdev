@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { vercelValidateBlobToken } from '../../lib/deploy';
 import type { WizardData } from '../../types';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
+import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 import WizardStep from './WizardStep';
 
 interface StepBlobProps {

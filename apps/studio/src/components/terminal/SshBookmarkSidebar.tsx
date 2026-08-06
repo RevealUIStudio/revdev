@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { sshBookmarkDelete, sshBookmarkList, sshBookmarkSave } from '../../lib/invoke';
 import type { SshBookmark, SshConnectParams } from '../../types';
-import Badge from '../ui/Badge';
-import Button from '../ui/Button';
-import Card from '../ui/Card';
-import ConfirmDialog from '../ui/ConfirmDialog';
-import Input from '../ui/Input';
+import Badge from '../adapters/Badge';
+import Button from '../adapters/Button';
+import Card from '../adapters/Card';
+import ConfirmDialog from '../adapters/ConfirmDialog';
+import Input from '../adapters/Input';
 
 interface SshBookmarkSidebarProps {
   onSelect: (params: SshConnectParams) => void;

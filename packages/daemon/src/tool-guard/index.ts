@@ -18,6 +18,11 @@ import { homedir } from 'node:os';
 import type { PGlite } from '@electric-sql/pglite';
 import { createLogger } from '@revealui/utils/logger';
 import {
+  evaluateGovernanceCommand,
+  evaluateGovernanceCommandAsync,
+  type FetchPrStatusRollup,
+} from './governance-gates.js';
+import {
   evaluateCommand,
   evaluateContentSecrets,
   isBlockedWritePath,
@@ -99,7 +104,13 @@ export function evaluateToolAction(action: ToolAction): GuardVerdict {
     case 'command': {
       const command = action.command ?? '';
       const hit = evaluateCommand(command, manifest);
-      return hit ? deny('dangerous-command', hit.reason) : ALLOW;
+      if (hit) return deny('dangerous-command', hit.reason);
+      // GAP-375: provider-agnostic disposition + sec-review label withhold (sync fail-closed)
+      const gov = evaluateGovernanceCommand(command);
+      if (!gov.allowed) {
+        return deny(gov.rule ?? 'governance', gov.reason ?? 'blocked by governance gate');
+      }
+      return ALLOW;
     }
     case 'read': {
       const normPath = normalizePath(action.path ?? '');
@@ -127,6 +138,33 @@ export function evaluateToolAction(action: ToolAction): GuardVerdict {
     default:
       return ALLOW;
   }
+}
+
+/**
+ * Async tool-action evaluation (GAP-375 residual). For commands, re-checks
+ * governance with optional live `gh` statusCheckRollup so a green audit can
+ * allow `sec-review:approved` without SEC_REVIEW_AUDIT_OVERRIDE.
+ */
+export async function evaluateToolActionAsync(
+  action: ToolAction,
+  options: { fetchRollup?: FetchPrStatusRollup } = {},
+): Promise<GuardVerdict> {
+  // Non-command paths stay pure sync
+  if (action.kind !== 'command') {
+    return evaluateToolAction(action);
+  }
+  const command = action.command ?? '';
+  const { manifest } = loadPatterns();
+  const hit = evaluateCommand(command, manifest);
+  if (hit) return deny('dangerous-command', hit.reason);
+
+  const gov = await evaluateGovernanceCommandAsync(command, {
+    fetchRollup: options.fetchRollup,
+  });
+  if (!gov.allowed) {
+    return deny(gov.rule ?? 'governance', gov.reason ?? 'blocked by governance gate');
+  }
+  return ALLOW;
 }
 
 /** Error thrown by a handler when the guard denies an action. */

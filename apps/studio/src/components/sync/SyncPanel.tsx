@@ -1,7 +1,7 @@
 import { useSync } from '../../hooks/use-sync';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
-import PanelHeader from '../ui/PanelHeader';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
+import PanelHeader from '../adapters/PanelHeader';
 import RepoCard from './RepoCard';
 import SyncLog from './SyncLog';
 

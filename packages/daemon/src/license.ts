@@ -109,12 +109,19 @@ const EXEMPT_METHODS = new Set([
   'inference.status',
   'inference.chat',
   'inference.generate',
-  // GAP-294 permission queue: free so FREE-tier daily-driver file/git still
-  // has a path to list/decide approvals when REVDEV_PERMISSION_MODE=manual.
-  // (Decide is still signature-gated; self-approval is rejected.)
+  // GAP-294 permission queue + agent-scope grants: free so FREE-tier
+  // daily-driver file/git still has a path to list/decide approvals and
+  // manage grants when REVDEV_PERMISSION_MODE is enforce.
+  // (Decide/grant/revoke are still signature-gated; self-issue rejected.)
   'permission.pending',
   'permission.decide',
   'permission.setMode',
+  'permission.listGrants',
+  'permission.grant',
+  'permission.revokeGrant',
+  // GAP-337: health/monitoring must answer without a Pro license (same class
+  // as ping). Multi-agent harness.prune stays Pro.
+  'harness.health',
 ]);
 
 /**
@@ -151,7 +158,7 @@ export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
  * free-file/git claims so help cannot re-drift (INIT-002 Phase 0).
  */
 export const LICENSE_TIER_HELP = `License tiers (method gate; source: EXEMPT_METHODS + METHOD_MIN_TIER):
-  free         Sessions, single-repo file/git, local inference run (status/chat/generate)
+  free         Sessions, single-repo file/git, local inference run, harness.health
   pro          Multi-agent coordination (mail, tasks, files.*, agent.*, merge.*, worktree, events, harness.prune, …)
   max          + full AI memory (memory.*) and local-model management (inference.pull/delete/start/stop)
   enterprise   Same method surface as max today; commercial terms differ`;

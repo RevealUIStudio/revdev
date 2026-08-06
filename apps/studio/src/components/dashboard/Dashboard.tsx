@@ -1,7 +1,7 @@
 import { useStatusContext } from '../../hooks/use-status';
-import Button from '../ui/Button';
-import ErrorAlert from '../ui/ErrorAlert';
-import PanelHeader from '../ui/PanelHeader';
+import Button from '../adapters/Button';
+import ErrorAlert from '../adapters/ErrorAlert';
+import PanelHeader from '../adapters/PanelHeader';
 import HealthCard from './HealthCard';
 import ServiceCard from './ServiceCard';
 import SubscriptionCard from './SubscriptionCard';

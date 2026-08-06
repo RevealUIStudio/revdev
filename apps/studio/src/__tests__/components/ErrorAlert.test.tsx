@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import ErrorAlert from '../../components/ui/ErrorAlert';
+import ErrorAlert from '../../components/adapters/ErrorAlert';
 
 describe('ErrorAlert', () => {
   it('renders nothing when message is null', () => {
@@ -18,7 +18,7 @@ describe('ErrorAlert', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders error message', () => {
+  it('renders error message with role=alert', () => {
     render(<ErrorAlert message="Something went wrong" />);
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
   });

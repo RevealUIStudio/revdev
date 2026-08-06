@@ -1,4 +1,4 @@
-import StatusDot from '../ui/StatusDot';
+import StatusDot from '../adapters/StatusDot';
 
 interface ServiceCardProps {
   title: string;
