@@ -8,12 +8,7 @@ import {
   licenseErrorResponse,
   refreshLicense,
 } from '../guard.js';
-import {
-  isExemptMethod,
-  LICENSE_TIER_HELP,
-  METHOD_MIN_TIER,
-  requiredTier,
-} from '../license.js';
+import { isExemptMethod, LICENSE_TIER_HELP, METHOD_MIN_TIER, requiredTier } from '../license.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
