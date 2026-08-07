@@ -51,6 +51,14 @@ export const RPC_METHODS = {
   // Event log
   'events.log': 'events.log',
   'events.query': 'events.query',
+  'events.wait': 'events.wait',
+  // GAP-362 token-economy loop guard
+  'loop.arm': 'loop.arm',
+  'loop.tick': 'loop.tick',
+  'loop.status': 'loop.status',
+  'loop.pause': 'loop.pause',
+  'loop.resume': 'loop.resume',
+  'loop.stop': 'loop.stop',
 
   // Peer context composite (GAP-459 Phase 1)
   'context.snapshot': 'context.snapshot',

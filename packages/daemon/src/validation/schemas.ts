@@ -309,6 +309,63 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       limit: z.number().int().min(1).max(MAX_QUERY_LIMIT).optional(),
       since: z.string().max(64).optional(),
+      // GAP-362: filter by event type (e.g. work.completed)
+      eventType: z.string().max(64).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  // GAP-362: long-poll for a completion (or other) event — auto-notify over client poll
+  'events.wait': z
+    .object({
+      eventType: z.string().min(1).max(64),
+      sinceId: z.number().int().min(0).optional(),
+      timeoutMs: z.number().int().min(100).max(120_000).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.arm': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      intervalMs: z.number().int().min(1).max(86_400_000),
+      noopLimit: z.number().int().min(1).max(100).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.tick': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      advanced: z.boolean(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.status': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.pause': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.resume': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.stop': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
       actorAgentId,
     })
     .passthrough(),

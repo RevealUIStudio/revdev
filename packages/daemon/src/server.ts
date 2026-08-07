@@ -32,6 +32,8 @@ import {
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { readRootOwnedFile } from './confinement.js';
 import { notifyAgentEnded, notifyDaemonStarted } from './eviction.js';
+import { loopGuards } from './loop-guard.js';
+import { WORK_COMPLETED_EVENT, workEvents } from './work-events.js';
 import {
   guardRpcMethod,
   initLicenseGuard,
@@ -1797,6 +1799,35 @@ registerHandler('tasks.complete', async (params, db, ctx) => {
   // Translates daemon 'completed' → Neon 'done' inside the helper.
   if (ok) {
     await syncTaskComplete({ taskId, ownerAgent: agentId, summary });
+    // GAP-362: durable work.completed + in-process notify (auto-notify over poll)
+    let eventId: number | null = null;
+    try {
+      const ins = await db.query<{ id: number }>(
+        `INSERT INTO events (agent_id, event_type, payload)
+         VALUES ($1, $2, $3::jsonb)
+         RETURNING id`,
+        [
+          agentId,
+          WORK_COMPLETED_EVENT,
+          JSON.stringify({ taskId, summary: summary ?? null }),
+        ],
+      );
+      eventId = typeof ins.rows[0]?.id === 'number' ? ins.rows[0].id : Number(ins.rows[0]?.id ?? 0) || null;
+      await syncEventLog({
+        agentId,
+        type: WORK_COMPLETED_EVENT,
+        payload: { taskId, summary: summary ?? null },
+      });
+    } catch {
+      /* event dual-write is best-effort */
+    }
+    workEvents.emitCompleted({
+      taskId,
+      agentId,
+      summary: summary ?? null,
+      eventId,
+      at: new Date().toISOString(),
+    });
   }
   return { ok, completed: ok ? taskId : null };
 });
@@ -1864,11 +1895,167 @@ registerHandler('events.log', async (params, db, ctx) => {
 registerHandler('events.query', async (params, db) => {
   const limit = Math.min(num(params.limit, 20), 500);
   const since = strOrNull(params.since);
-  const sql = since
-    ? `SELECT * FROM events WHERE created_at > $1::timestamp ORDER BY created_at DESC LIMIT $2`
-    : `SELECT * FROM events ORDER BY created_at DESC LIMIT $1`;
-  const result = await db.query<Record<string, unknown>>(sql, since ? [since, limit] : [limit]);
+  const eventType = strOrNull(params.eventType);
+  const where: string[] = [];
+  const args: unknown[] = [];
+  let p = 1;
+  if (since) {
+    where.push(`created_at > $${p++}::timestamp`);
+    args.push(since);
+  }
+  if (eventType) {
+    where.push(`event_type = $${p++}`);
+    args.push(eventType);
+  }
+  args.push(limit);
+  const sql =
+    where.length > 0
+      ? `SELECT * FROM events WHERE ${where.join(' AND ')} ORDER BY created_at DESC LIMIT $${p}`
+      : `SELECT * FROM events ORDER BY created_at DESC LIMIT $1`;
+  const result = await db.query<Record<string, unknown>>(sql, args);
   return { events: result.rows };
+});
+
+// GAP-362: long-poll for an event type (e.g. work.completed) — prefer this over
+// client-side sub-minute polling of events.query.
+registerHandler('events.wait', async (params, db, ctx) => {
+  await requireVerifiedAgent(ctx, db, params);
+  const eventType = str(params.eventType);
+  const sinceId = num(params.sinceId, 0);
+  const timeoutMs = Math.min(Math.max(num(params.timeoutMs, 30_000), 100), 120_000);
+  const deadline = Date.now() + timeoutMs;
+
+  const pollOnce = async () => {
+    const result = await db.query<Record<string, unknown>>(
+      `SELECT * FROM events
+        WHERE event_type = $1 AND id > $2
+        ORDER BY id ASC
+        LIMIT 1`,
+      [eventType, sinceId],
+    );
+    return result.rows[0] ?? null;
+  };
+
+  let row = await pollOnce();
+  if (row) return { event: row, timedOut: false };
+
+  // Also race the in-process bus for work.completed to avoid missing the row
+  // under test/driver lag (still falls back to DB poll).
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearInterval(timer);
+      workEvents.off(WORK_COMPLETED_EVENT, onBus);
+      resolve();
+    };
+    const onBus = () => {
+      void pollOnce().then((r) => {
+        if (r) {
+          row = r;
+          finish();
+        }
+      });
+    };
+    if (eventType === WORK_COMPLETED_EVENT) {
+      workEvents.on(WORK_COMPLETED_EVENT, onBus);
+    }
+    const timer = setInterval(() => {
+      if (Date.now() >= deadline) {
+        finish();
+        return;
+      }
+      void pollOnce().then((r) => {
+        if (r) {
+          row = r;
+          finish();
+        }
+      });
+    }, 100);
+  });
+
+  if (row) return { event: row, timedOut: false };
+  return { event: null, timedOut: true };
+});
+
+// -- Loop guard (GAP-362 token-economy) --------------------------------------
+
+registerHandler('loop.arm', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const intervalMs = num(params.intervalMs, 0);
+  const noopLimit = params.noopLimit === undefined ? undefined : num(params.noopLimit, 3);
+  const state = loopGuards.arm({
+    loopId,
+    agentId,
+    intervalMs,
+    noopLimit,
+  });
+  return { loop: state };
+});
+
+registerHandler('loop.tick', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const advanced = params.advanced === true;
+  const existing = loopGuards.get(loopId);
+  if (existing && existing.agentId !== agentId) {
+    throw new Error(`loop ${loopId} is owned by another agent`);
+  }
+  const state = loopGuards.tick({ loopId, advanced });
+  if (state.status === 'not_advancing') {
+    await db.query(
+      `INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`,
+      [
+        agentId,
+        'loop.not_advancing',
+        JSON.stringify({
+          loopId,
+          consecutiveNoOps: state.consecutiveNoOps,
+          noopLimit: state.noopLimit,
+          signal: state.lastSignal,
+        }),
+      ],
+    );
+  }
+  return { loop: state };
+});
+
+registerHandler('loop.status', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const state = loopGuards.get(loopId);
+  if (!state) return { loop: null };
+  if (state.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
+  return { loop: state };
+});
+
+registerHandler('loop.pause', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const existing = loopGuards.get(loopId);
+  if (!existing) throw new Error(`unknown loopId: ${loopId}`);
+  if (existing.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
+  return { loop: loopGuards.pause(loopId) };
+});
+
+registerHandler('loop.resume', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const existing = loopGuards.get(loopId);
+  if (!existing) throw new Error(`unknown loopId: ${loopId}`);
+  if (existing.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
+  return { loop: loopGuards.resume(loopId) };
+});
+
+registerHandler('loop.stop', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const existing = loopGuards.get(loopId);
+  if (!existing) throw new Error(`unknown loopId: ${loopId}`);
+  if (existing.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
+  return { loop: loopGuards.stop(loopId) };
 });
 
 // -- Peer context (GAP-459 Phase 1) -----------------------------------------
