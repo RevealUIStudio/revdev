@@ -25,6 +25,10 @@ export const RPC_METHODS = {
   'session.update': 'session.update',
   'session.end': 'session.end',
   'session.list': 'session.list',
+  // GAP-342 — five-section fidelity snapshot (id-match store/serve)
+  'session.snapshot.write': 'session.snapshot.write',
+  'session.snapshot.get': 'session.snapshot.get',
+  'session.snapshot.prune': 'session.snapshot.prune',
 
   // Agent identity
   'identity.rotate': 'identity.rotate',
