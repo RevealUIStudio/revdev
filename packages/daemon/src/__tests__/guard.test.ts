@@ -406,7 +406,7 @@ describe('handler tier-classification coverage', () => {
     const self = readFileSync(fileURLToPath(import.meta.url), 'utf-8');
     // Ban the old conflict-factory pattern without embedding the banned token
     // in a way that would match this assertion itself.
-    const banned = ['KNOWN', 'PRO', 'METHODS'].join('_') + ' = new Set';
+    const banned = `${['KNOWN', 'PRO', 'METHODS'].join('_')} = new Set`;
     expect(self.includes(banned)).toBe(false);
   });
 });
