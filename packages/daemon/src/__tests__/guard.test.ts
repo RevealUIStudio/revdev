@@ -8,7 +8,7 @@ import {
   licenseErrorResponse,
   refreshLicense,
 } from '../guard.js';
-import { LICENSE_TIER_HELP, METHOD_MIN_TIER } from '../license.js';
+import { isExemptMethod, LICENSE_TIER_HELP, METHOD_MIN_TIER, requiredTier } from '../license.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
@@ -316,11 +316,13 @@ describe('guardRpcMethod', () => {
   });
 });
 
-// CI enumeration guard (GAP-267): every RPC method the daemon actually
-// registers must be classified into exactly one tier bucket — EXEMPT (free),
-// METHOD_MIN_TIER (max), or KNOWN_PRO_METHODS (the pro default). A new handler
-// with no classification fails this test loudly, so tier coverage can never
-// silently regress.
+// CI enumeration guard (GAP-267 + durable Pro default):
+// Every registered RPC is classified from license.ts SSOT only:
+//   free  = isExemptMethod (EXEMPT_METHODS)
+//   max   = METHOD_MIN_TIER
+//   pro   = everything else (requiredTier default)
+// No hand-maintained KNOWN_PRO_METHODS list — concurrent feature PRs used to
+// conflict editing that set when each added methods (GAP-342 / GAP-362).
 describe('handler tier-classification coverage', () => {
   const SRC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -364,89 +366,48 @@ describe('handler tier-classification coverage', () => {
     return methods;
   }
 
-  // Every non-exempt, non-Max method the daemon registers. Hand-maintained:
-  // adding a handler without adding it here (or to EXEMPT/METHOD_MIN_TIER)
-  // fails the coverage test below — the intended failure mode.
-  const KNOWN_PRO_METHODS = new Set([
-    // agent PTY + lifecycle
-    'agent.spawn',
-    'agent.stop',
-    'agent.list',
-    'agent.remove',
-    'agent.input',
-    'agent.output',
-    'agent.streamTicket',
-    'agent.resize',
-    // HTTP gateway token management (GAP-421 guardrail-2 remediation S5)
-    'gateway.revokeToken',
-    // merge pipeline
-    'merge.request',
-    'merge.status',
-    'merge.list',
-    'merge.update',
-    // mailbox
-    'mail.send',
-    'mail.broadcast',
-    'mail.inbox',
-    'mail.markRead',
-    // task board
-    'tasks.create',
-    'tasks.claim',
-    'tasks.complete',
-    'tasks.list',
-    'tasks.release',
-    // file reservations
-    'files.reserve',
-    'files.release',
-    'files.check',
-    'files.list',
-    // event log
-    'events.log',
-    'events.query',
-    // GAP-459 peer context composite
-    'context.snapshot',
-    // harness.prune stays Pro; harness.health is FREE (GAP-337 / EXEMPT_METHODS)
-    'harness.prune',
-    // worktrees
-    'worktree.create',
-    'worktree.list',
-    'worktree.remove',
-    // project grant surface (project.open is FREE/exempt)
-    'project.grant',
-    'project.revoke',
-    // agent identity rotation
-    // GAP-362 token-economy + long-poll events
-    'events.wait',
-    'loop.arm',
-    'loop.tick',
-    'loop.status',
-    'loop.pause',
-    'loop.resume',
-    'loop.stop',
-    // GAP-342 session fidelity snapshots
-    'session.snapshot.write',
-    'session.snapshot.get',
-    'session.snapshot.prune',
-    'identity.rotate',
-  ]);
-
   it('scans a plausible number of registered handlers', () => {
     // Sanity floor so a broken scanner (finding nothing) can't pass silently.
     expect(registeredMethods().size).toBeGreaterThanOrEqual(50);
   });
 
-  it('classifies every registered handler into exactly one tier bucket', () => {
+  it('classifies every registered handler from license SSOT (exactly one tier)', () => {
     const unclassified: string[] = [];
     for (const method of registeredMethods()) {
-      const exempt = guardRpcMethod(method).allowed; // free-tier pass ⇒ exempt
+      const freePass = guardRpcMethod(method).allowed; // free tier: true iff exempt
+      const exempt = isExemptMethod(method);
       const isMax = METHOD_MIN_TIER.has(method);
-      const isPro = KNOWN_PRO_METHODS.has(method);
-      // Exactly one bucket. (Exempt short-circuits before tier logic; Max/Pro
-      // are mutually exclusive sets.)
-      const buckets = [exempt, isMax, isPro].filter(Boolean).length;
-      if (buckets !== 1) unclassified.push(`${method} (buckets=${buckets})`);
+      const tier = requiredTier(method);
+
+      // Free-tier runtime guard must match EXEMPT_METHODS.
+      if (freePass !== exempt) {
+        unclassified.push(`${method} (freePass=${freePass} exempt=${exempt})`);
+        continue;
+      }
+
+      // Exactly one of free / max / pro (Pro = default, no hand list).
+      if (exempt) {
+        if (isMax) unclassified.push(`${method} (both free-exempt and max)`);
+        continue;
+      }
+      if (isMax) {
+        if (tier !== 'max') unclassified.push(`${method} (max map but requiredTier=${tier})`);
+        continue;
+      }
+      // Non-exempt, non-Max ⇒ Pro default from license.ts.
+      if (tier !== 'pro') {
+        unclassified.push(`${method} (expected pro default; requiredTier=${tier})`);
+      }
     }
     expect(unclassified).toEqual([]);
+  });
+
+  it('does not reintroduce a hand-maintained Pro method list in this file', () => {
+    const self = readFileSync(fileURLToPath(import.meta.url), 'utf-8');
+    // Ban the old conflict-factory pattern without embedding the banned token
+    // in a way that would match this assertion itself.
+    const banned = `${['KNOWN', 'PRO', 'METHODS'].join('_')} = new Set`;
+    expect(self.includes(banned)).toBe(false);
   });
 });
 
