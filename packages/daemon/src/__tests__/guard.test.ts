@@ -423,6 +423,10 @@ describe('handler tier-classification coverage', () => {
     'loop.pause',
     'loop.resume',
     'loop.stop',
+    // GAP-342 session fidelity snapshots
+    'session.snapshot.write',
+    'session.snapshot.get',
+    'session.snapshot.prune',
     'identity.rotate',
   ]);
 

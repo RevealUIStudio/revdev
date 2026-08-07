@@ -79,6 +79,11 @@ import {
   tryConsumeGrant,
 } from './permission.js';
 import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
+import {
+  normalizeFidelitySections,
+  retentionCutoffIso,
+  SNAPSHOT_RETENTION_DAYS,
+} from './session-fidelity-snapshot.js';
 import { migrate } from './storage/migrate.js';
 import { initToolGuard } from './tool-guard/index.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
@@ -2368,6 +2373,79 @@ registerHandler('permission.revokeGrant', async (params, db, ctx) => {
   const operator = await requireVerifiedAgent(ctx, db, params);
   const grantId = str(params.grantId);
   return revokeGrant(db, grantId, operator);
+});
+
+// -- Session fidelity snapshots (GAP-342) ------------------------------------
+// Five-section record keyed by daemon session id. get is id-match only
+// (never "most recent by mtime"). write upserts; prune removes older than N days.
+
+registerHandler('session.snapshot.write', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const sessionId = str(params.sessionId);
+  const sections = normalizeFidelitySections(params.sections);
+  const mechanical =
+    params.mechanical && typeof params.mechanical === 'object' && !Array.isArray(params.mechanical)
+      ? (params.mechanical as Record<string, unknown>)
+      : {};
+
+  await db.query(
+    `INSERT INTO session_fidelity_snapshots (session_id, agent_id, sections, mechanical, created_at, updated_at)
+     VALUES ($1, $2, $3::jsonb, $4::jsonb, NOW(), NOW())
+     ON CONFLICT (session_id) DO UPDATE SET
+       agent_id = EXCLUDED.agent_id,
+       sections = EXCLUDED.sections,
+       mechanical = EXCLUDED.mechanical,
+       updated_at = NOW()`,
+    [sessionId, agentId, JSON.stringify(sections), JSON.stringify(mechanical)],
+  );
+
+  // Best-effort retention sweep (GAP-317 7-day archive parity)
+  try {
+    const cutoff = retentionCutoffIso(new Date(), SNAPSHOT_RETENTION_DAYS);
+    await db.query(`DELETE FROM session_fidelity_snapshots WHERE updated_at < $1::timestamptz`, [
+      cutoff,
+    ]);
+  } catch {
+    // prune failure must not fail the write
+  }
+
+  return { sessionId, written: true, updatedAt: new Date().toISOString() };
+});
+
+registerHandler('session.snapshot.get', async (params, db, ctx) => {
+  await requireVerifiedAgent(ctx, db, params);
+  const sessionId = str(params.sessionId);
+  const result = await db.query<Record<string, unknown>>(
+    `SELECT session_id, agent_id, sections, mechanical, created_at, updated_at
+     FROM session_fidelity_snapshots
+     WHERE session_id = $1`,
+    [sessionId],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    return { snapshot: null };
+  }
+  return {
+    snapshot: {
+      sessionId: row.session_id,
+      agentId: row.agent_id,
+      sections: row.sections,
+      mechanical: row.mechanical,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    },
+  };
+});
+
+registerHandler('session.snapshot.prune', async (params, db, ctx) => {
+  await requireVerifiedAgent(ctx, db, params);
+  const maxAgeDays = num(params.maxAgeDays, SNAPSHOT_RETENTION_DAYS);
+  const cutoff = retentionCutoffIso(new Date(), maxAgeDays);
+  const result = await db.query(
+    `DELETE FROM session_fidelity_snapshots WHERE updated_at < $1::timestamptz RETURNING session_id`,
+    [cutoff],
+  );
+  return { pruned: true, maxAgeDays, cutoff, deleted: result.rows.length };
 });
 
 // -- Memory -----------------------------------------------------------------
