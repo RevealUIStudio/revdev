@@ -415,6 +415,14 @@ describe('handler tier-classification coverage', () => {
     'project.grant',
     'project.revoke',
     // agent identity rotation
+    // GAP-362 token-economy + long-poll events
+    'events.wait',
+    'loop.arm',
+    'loop.tick',
+    'loop.status',
+    'loop.pause',
+    'loop.resume',
+    'loop.stop',
     'identity.rotate',
   ]);
 
