@@ -32,8 +32,6 @@ import {
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { readRootOwnedFile } from './confinement.js';
 import { notifyAgentEnded, notifyDaemonStarted } from './eviction.js';
-import { loopGuards } from './loop-guard.js';
-import { WORK_COMPLETED_EVENT, workEvents } from './work-events.js';
 import {
   guardRpcMethod,
   initLicenseGuard,
@@ -41,6 +39,7 @@ import {
   runtimeLicenseRecheck,
 } from './guard.js';
 import { HttpGateway } from './http-gateway.js';
+import { loopGuards } from './loop-guard.js';
 import {
   initNeonSync,
   isNeonSyncActive,
@@ -83,6 +82,7 @@ import { initSessionChecks, runSessionChecks } from './session-checks/index.js';
 import { migrate } from './storage/migrate.js';
 import { initToolGuard } from './tool-guard/index.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
+import { WORK_COMPLETED_EVENT, workEvents } from './work-events.js';
 
 const log = createLogger({ service: 'revdev-daemon' });
 
@@ -1806,13 +1806,10 @@ registerHandler('tasks.complete', async (params, db, ctx) => {
         `INSERT INTO events (agent_id, event_type, payload)
          VALUES ($1, $2, $3::jsonb)
          RETURNING id`,
-        [
-          agentId,
-          WORK_COMPLETED_EVENT,
-          JSON.stringify({ taskId, summary: summary ?? null }),
-        ],
+        [agentId, WORK_COMPLETED_EVENT, JSON.stringify({ taskId, summary: summary ?? null })],
       );
-      eventId = typeof ins.rows[0]?.id === 'number' ? ins.rows[0].id : Number(ins.rows[0]?.id ?? 0) || null;
+      eventId =
+        typeof ins.rows[0]?.id === 'number' ? ins.rows[0].id : Number(ins.rows[0]?.id ?? 0) || null;
       await syncEventLog({
         agentId,
         type: WORK_COMPLETED_EVENT,

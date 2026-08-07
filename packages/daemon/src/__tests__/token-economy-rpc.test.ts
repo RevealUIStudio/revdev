@@ -12,8 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startDaemon } from '../server.js';
-import { WORK_COMPLETED_EVENT } from '../work-events.js';
 import { validateParams } from '../validation/index.js';
+import { WORK_COMPLETED_EVENT } from '../work-events.js';
 
 function rpc(
   socketPath: string,
@@ -82,9 +82,7 @@ afterAll(async () => {
 
 describe('GAP-362 schemas', () => {
   it('accepts loop.arm and events.wait shapes', () => {
-    expect(
-      validateParams('loop.arm', { loopId: 'L', intervalMs: 120_000 }).valid,
-    ).toBe(true);
+    expect(validateParams('loop.arm', { loopId: 'L', intervalMs: 120_000 }).valid).toBe(true);
     expect(
       validateParams('events.wait', { eventType: WORK_COMPLETED_EVENT, timeoutMs: 500 }).valid,
     ).toBe(true);
