@@ -415,6 +415,10 @@ describe('handler tier-classification coverage', () => {
     'project.grant',
     'project.revoke',
     // agent identity rotation
+    // GAP-342 session fidelity snapshots
+    'session.snapshot.write',
+    'session.snapshot.get',
+    'session.snapshot.prune',
     'identity.rotate',
   ]);
 

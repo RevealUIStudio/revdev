@@ -328,6 +328,38 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  // GAP-342 — five-section fidelity snapshot (id-match; never mtime)
+  'session.snapshot.write': z
+    .object({
+      sessionId: z.string().min(1).max(MAX_NAME_LENGTH),
+      sections: z
+        .object({
+          resumeFromHere: z.string().max(50_000).optional(),
+          whatShipped: z.string().max(50_000).optional(),
+          activeConstraints: z.string().max(50_000).optional(),
+          doNotRepeat: z.string().max(50_000).optional(),
+          openLooseEnds: z.string().max(50_000).optional(),
+        })
+        .passthrough(),
+      mechanical: z.record(z.string(), z.unknown()).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'session.snapshot.get': z
+    .object({
+      sessionId: z.string().min(1).max(MAX_NAME_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'session.snapshot.prune': z
+    .object({
+      maxAgeDays: z.number().int().min(1).max(365).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
   // -- Memory -----------------------------------------------------------------
   // Field names match DB columns (`agent_memory.memory_type`, `.content`,
   // `.metadata`) and the RevealUI fleet's typed-record framing

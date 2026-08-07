@@ -41,7 +41,10 @@ interface FleetSessionRow {
  * rows so dual-write from daemon A is visible to fleet SELECT from daemon B.
  */
 function createSharedNeonStore(): {
-  mock: (strings: TemplateStringsArray | readonly string[], ...values: unknown[]) => Promise<unknown>;
+  mock: (
+    strings: TemplateStringsArray | readonly string[],
+    ...values: unknown[]
+  ) => Promise<unknown>;
   sessions: Map<string, FleetSessionRow>;
 } {
   const sessions = new Map<string, FleetSessionRow>();
@@ -111,7 +114,11 @@ function createSharedNeonStore(): {
   };
 }
 
-function rpc(socketPath: string, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+function rpc(
+  socketPath: string,
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const sock: Socket = connect(socketPath);
     let buf = '';
@@ -189,7 +196,7 @@ describe('GAP-154: two-daemon fleet visibility (shared Neon mock)', () => {
     closeA = a.close;
     closeB = b.close;
 
-    setNeonClientForTesting(store.mock);
+    setNeonClientForTesting(store.mock as never);
   });
 
   afterAll(async () => {
