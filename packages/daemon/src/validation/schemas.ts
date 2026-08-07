@@ -328,7 +328,6 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
-
   // GAP-342 — five-section fidelity snapshot (id-match; never mtime)
   'session.snapshot.write': z
     .object({

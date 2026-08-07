@@ -2191,7 +2191,6 @@ registerHandler('permission.revokeGrant', async (params, db, ctx) => {
   return revokeGrant(db, grantId, operator);
 });
 
-
 // -- Session fidelity snapshots (GAP-342) ------------------------------------
 // Five-section record keyed by daemon session id. get is id-match only
 // (never "most recent by mtime"). write upserts; prune removes older than N days.
@@ -2238,10 +2237,10 @@ registerHandler('session.snapshot.get', async (params, db, ctx) => {
      WHERE session_id = $1`,
     [sessionId],
   );
-  if (!result.rows.length) {
+  const row = result.rows[0];
+  if (!row) {
     return { snapshot: null };
   }
-  const row = result.rows[0];
   return {
     snapshot: {
       sessionId: row.session_id,

@@ -36,9 +36,9 @@ describe('normalizeFidelitySections', () => {
   });
 
   it('rejects non-string section values', () => {
-    expect(() =>
-      normalizeFidelitySections({ resumeFromHere: 12 as unknown as string }),
-    ).toThrow(/string/);
+    expect(() => normalizeFidelitySections({ resumeFromHere: 12 as unknown as string })).toThrow(
+      /string/,
+    );
   });
 });
 

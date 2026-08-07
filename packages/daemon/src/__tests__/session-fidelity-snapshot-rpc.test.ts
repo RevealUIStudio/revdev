@@ -113,7 +113,11 @@ describe('session.snapshot RPC', () => {
     expect(written.sessionId).toBe(sessionId);
 
     const hit = (await rpcWithAgent(socketPath, 'session.snapshot.get', { sessionId })) as {
-      snapshot: { sessionId: string; sections: { resumeFromHere: string }; mechanical: { branch: string } } | null;
+      snapshot: {
+        sessionId: string;
+        sections: { resumeFromHere: string };
+        mechanical: { branch: string };
+      } | null;
     };
     expect(hit.snapshot).not.toBeNull();
     expect(hit.snapshot?.sessionId).toBe(sessionId);
@@ -146,7 +150,9 @@ describe('session.snapshot RPC', () => {
       ],
     );
 
-    const pruned = (await rpcWithAgent(socketPath, 'session.snapshot.prune', { maxAgeDays: 7 })) as {
+    const pruned = (await rpcWithAgent(socketPath, 'session.snapshot.prune', {
+      maxAgeDays: 7,
+    })) as {
       deleted: number;
     };
     expect(pruned.deleted).toBeGreaterThanOrEqual(1);
