@@ -1,4 +1,4 @@
-import { invoke } from './invoke';
+import { readFleetMap as invokeReadFleetMap } from './invoke';
 
 /** tracker-snapshot-v1 + optional STATE.json payload from Tauri. */
 export interface FleetMapPayload {
@@ -29,5 +29,5 @@ export interface FleetMapPayload {
 }
 
 export function readFleetMap(): Promise<FleetMapPayload> {
-  return invoke<FleetMapPayload>('read_fleet_map');
+  return invokeReadFleetMap() as Promise<FleetMapPayload>;
 }

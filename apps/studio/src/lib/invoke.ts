@@ -58,8 +58,8 @@ const MOCK_DATA: Record<string, unknown> = {
     systemd_status: 'running',
   } satisfies SystemStatus,
   read_fleet_map: {
-    jvRoot: '/home/mock/revfleet/.jv',
-    snapshotPath: '/home/mock/revfleet/.jv/docs/tracker-snapshot.json',
+    jvRoot: 'mock-planning-root',
+    snapshotPath: 'mock-planning-root/docs/tracker-snapshot.json',
     statePath: null,
     snapshot: {
       schema: 'tracker-snapshot-v1',
@@ -952,6 +952,11 @@ export function getSystemStatus(): Promise<SystemStatus> {
 
 export function getMountStatus(): Promise<MountStatus> {
   return invoke<MountStatus>('get_mount_status');
+}
+
+/** Planning-board snapshot for Studio Fleet map (no private path strings in types). */
+export function readFleetMap(): Promise<Record<string, unknown>> {
+  return invoke<Record<string, unknown>>('read_fleet_map');
 }
 
 export function mountDevbox(): Promise<string> {

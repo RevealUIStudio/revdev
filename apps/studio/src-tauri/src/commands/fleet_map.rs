@@ -1,5 +1,5 @@
-//! Read-only Fleet map: load private `.jv` tracker-snapshot + optional STATE.json.
-//! Paths resolve under `$REVFLEET_HOME` or `$HOME/revfleet` (WSL-first).
+//! Read-only Fleet map: load planning tracker-snapshot + optional STATE.json.
+//! Paths resolve under `$REVFLEET_HOME`, `$JV_REPO`, or `$HOME/revfleet` (WSL-first).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,10 +36,9 @@ fn revfleet_home() -> PathBuf {
             return pb;
         }
     }
-    // Windows-side WSL home common layout when Studio runs on Windows host
+    // Windows-side layout when Studio runs on Windows host
     if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        let pb = PathBuf::from(userprofile)
-            .join("revfleet");
+        let pb = PathBuf::from(userprofile).join("revfleet");
         if pb.is_dir() {
             return pb;
         }
@@ -47,47 +46,42 @@ fn revfleet_home() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join("revfleet")
 }
 
-fn jv_candidates(root: &Path) -> Vec<PathBuf> {
-    vec![
-        root.join(".jv"),
-        root.join("revealui-jv"),
-        // worktree common location is not used as SSOT; prefer main .jv checkout
-    ]
+fn planning_candidates(root: &Path) -> Vec<PathBuf> {
+    // Dir names only — no private repo names in source.
+    // Operators set JV_REPO for non-default layouts.
+    vec![root.join(".jv")]
 }
 
-fn find_jv_root(fleet: &Path) -> Result<PathBuf, StudioError> {
-    for c in jv_candidates(fleet) {
+fn find_planning_root(fleet: &Path) -> Result<PathBuf, StudioError> {
+    for c in planning_candidates(fleet) {
         let snap = c.join("docs").join("tracker-snapshot.json");
         if snap.is_file() {
             return Ok(c);
         }
     }
-    // Also accept JV_REPO env (session-state)
     if let Ok(jv) = std::env::var("JV_REPO") {
         let pb = PathBuf::from(jv);
         if pb.join("docs").join("tracker-snapshot.json").is_file() {
             return Ok(pb);
         }
     }
-    Err(StudioError::Other(format!(
-        "tracker-snapshot.json not found under {}/.jv — run tracker sync in the planning checkout",
-        fleet.display()
-    )))
+    Err(StudioError::Other(
+        "tracker-snapshot.json not found — set JV_REPO or REVFLEET_HOME and run tracker sync in the planning checkout"
+            .into(),
+    ))
 }
 
 fn read_json(path: &Path) -> Result<Value, StudioError> {
-    let text = fs::read_to_string(path).map_err(|e| {
-        StudioError::Other(format!("read {}: {e}", path.display()))
-    })?;
-    serde_json::from_str(&text).map_err(|e| {
-        StudioError::Other(format!("parse {}: {e}", path.display()))
-    })
+    let text = fs::read_to_string(path)
+        .map_err(|e| StudioError::Other(format!("read {}: {e}", path.display())))?;
+    serde_json::from_str(&text)
+        .map_err(|e| StudioError::Other(format!("parse {}: {e}", path.display())))
 }
 
 #[tauri::command]
 pub fn read_fleet_map() -> Result<FleetMapPayload, StudioError> {
     let fleet = revfleet_home();
-    let jv = find_jv_root(&fleet)?;
+    let jv = find_planning_root(&fleet)?;
     let snapshot_path = jv.join("docs").join("tracker-snapshot.json");
     let snapshot = read_json(&snapshot_path)?;
 
@@ -118,7 +112,10 @@ pub fn read_fleet_map() -> Result<FleetMapPayload, StudioError> {
 
     let state_path = jv.join("docs").join(".generated").join("STATE.json");
     let (state, state_path_str) = if state_path.is_file() {
-        (Some(read_json(&state_path)?), Some(state_path.display().to_string()))
+        (
+            Some(read_json(&state_path)?),
+            Some(state_path.display().to_string()),
+        )
     } else {
         (None, None)
     };

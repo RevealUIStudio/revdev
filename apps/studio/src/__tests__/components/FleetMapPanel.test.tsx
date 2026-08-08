@@ -1,10 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import FleetMapPanel from '../../components/fleet/FleetMapPanel';
 
 const mockPayload = {
-  jvRoot: '/home/user/revfleet/.jv',
-  snapshotPath: '/home/user/revfleet/.jv/docs/tracker-snapshot.json',
+  jvRoot: 'mock-planning-root',
+  snapshotPath: 'mock-planning-root/docs/tracker-snapshot.json',
   statePath: null,
   snapshot: {
     schema: 'tracker-snapshot-v1',

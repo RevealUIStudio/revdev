@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { readFleetMap, type FleetMapPayload } from '../../lib/fleet-map';
+import { type FleetMapPayload, readFleetMap } from '../../lib/fleet-map';
 import Button from '../adapters/Button';
 import ErrorAlert from '../adapters/ErrorAlert';
 import PanelHeader from '../adapters/PanelHeader';
@@ -84,8 +84,8 @@ export default function FleetMapPanel() {
       />
 
       <p className="text-sm text-fg-muted">
-        Read-only view of the private TRACKER snapshot (initiatives, free surfaces, graph
-        counts). Agents keep YAML SSOT; this panel never writes the board.
+        Read-only view of the private TRACKER snapshot (initiatives, free surfaces, graph counts).
+        Agents keep YAML SSOT; this panel never writes the board.
       </p>
 
       <ErrorAlert message={error} />
