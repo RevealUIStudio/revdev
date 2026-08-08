@@ -159,9 +159,9 @@ export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
  */
 export const LICENSE_TIER_HELP = `License tiers (method gate; source: EXEMPT_METHODS + METHOD_MIN_TIER):
   free         Sessions, single-repo file/git, local inference run, harness.health
-  pro          Multi-agent coordination (mail, tasks, files.*, agent.*, merge.*, worktree, events, harness.prune, …)
+  pro          Multi-agent coordination (mail, tasks, files.*, goal.*, agent.*, merge.*, worktree, events, harness.prune, …)
   max          + full AI memory (memory.*) and local-model management (inference.pull/delete/start/stop)
-  enterprise   Same method surface as max today; commercial terms differ`;
+  enterprise   Same method surface as max; commercial terms differ (founder daily-driver JWT for goal spine)`;
 
 /**
  * Ordinal rank of a tier within LICENSE_TIERS (free=0 < pro=1 < max=2 <

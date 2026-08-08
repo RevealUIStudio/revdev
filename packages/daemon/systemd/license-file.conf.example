@@ -11,6 +11,12 @@
 #     1. REVEALUI_LICENSE_KEY        (inline — must be UNSET to use the file)
 #     2. REVEALUI_LICENSE_KEY_FILE   (this pattern)
 #
+# Studio daily-driver / goal spine: mint an enterprise (or pro+)
+# Ed25519 JWT into revvault path revealui/dev/founder-license-key
+# via revdev/scripts/issue-license.ts --tier enterprise --customer founder
+# --perpetual, then systemctl --user restart revdev-daemon.
+# Legacy RVUI-* keys are rejected (daemon runs FREE silently).
+#
 # Install:
 #     mkdir -p ~/.config/systemd/user/revdev-daemon.service.d
 #     cp packages/daemon/systemd/license-file.conf.example \
