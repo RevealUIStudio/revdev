@@ -52,6 +52,18 @@ export const RPC_METHODS = {
   'tasks.release': 'tasks.release',
   'tasks.list': 'tasks.list',
 
+  // Goals (roadmap-goal-spine PR0 — propose-only GoalHarness)
+  'goal.create': 'goal.create',
+  'goal.get': 'goal.get',
+  'goal.list': 'goal.list',
+  'goal.setStatus': 'goal.setStatus',
+  'goal.addCriterion': 'goal.addCriterion',
+  'goal.recordCriterion': 'goal.recordCriterion',
+  'goal.listCriteria': 'goal.listCriteria',
+  'goal.progress': 'goal.progress',
+  'goal.nextActions': 'goal.nextActions',
+  'goal.proposeTask': 'goal.proposeTask',
+
   // Event log
   'events.log': 'events.log',
   'events.query': 'events.query',

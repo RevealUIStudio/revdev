@@ -28,6 +28,7 @@ import { MIGRATION_0009 } from './0009-permission-grants.js';
 import { MIGRATION_0010 } from './0010-agent-messages-uuid.js';
 import { MIGRATION_0011 } from './0011-spawned-agent-identity.js';
 import { MIGRATION_0012 } from './0012-session-fidelity-snapshots.js';
+import { MIGRATION_0013 } from './0013-goals.js';
 
 export const MIGRATIONS: readonly Migration[] = [
   MIGRATION_0001,
@@ -42,4 +43,5 @@ export const MIGRATIONS: readonly Migration[] = [
   MIGRATION_0010,
   MIGRATION_0011,
   MIGRATION_0012,
+  MIGRATION_0013,
 ];

@@ -32,6 +32,7 @@ import {
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { readRootOwnedFile } from './confinement.js';
 import { notifyAgentEnded, notifyDaemonStarted } from './eviction.js';
+import { GoalHarness, GoalStore } from './goals/index.js';
 import {
   guardRpcMethod,
   initLicenseGuard,
@@ -1850,6 +1851,115 @@ registerHandler('tasks.release', async (params, db, ctx) => {
     await syncTaskRelease({ taskId, ownerAgent: agentId });
   }
   return { ok, released: ok ? taskId : null };
+});
+
+// -- Goals (roadmap-goal-spine PR0) ------------------------------------------
+
+function goalHarness(db: PGlite, agentId: string): GoalHarness {
+  return new GoalHarness({ store: new GoalStore(db), agentId });
+}
+
+registerHandler('goal.create', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const harness = goalHarness(db, agentId);
+  const result = await harness.createGoal({
+    id: strOrNull(params.id) ?? undefined,
+    title: str(params.title),
+    description: str(params.description, ''),
+    priority: (strOrNull(params.priority) as 'blocker' | 'high' | 'medium' | 'low' | null) ?? undefined,
+    owner: (strOrNull(params.owner) as 'agent' | 'human' | null) ?? undefined,
+    parentGoalId: strOrNull(params.parentGoalId) ?? undefined,
+    blockedBy: Array.isArray(params.blockedBy)
+      ? (params.blockedBy as unknown[]).map((v) => String(v))
+      : [],
+    criteria: Array.isArray(params.criteria)
+      ? (params.criteria as unknown[]).map((v) => String(v))
+      : [],
+  });
+  return result;
+});
+
+registerHandler('goal.get', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const goalId = strOrNull(params.goalId) ?? strOrNull(params.id);
+  if (!goalId) throw new Error('goal.get: missing goalId');
+  const result = await goalHarness(db, agentId).getGoal(goalId);
+  return { goal: result };
+});
+
+registerHandler('goal.list', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const goals = await goalHarness(db, agentId).listGoals({
+    status: (strOrNull(params.status) as 'open' | 'active' | 'blocked' | 'done' | 'abandoned' | null) ?? undefined,
+    priority: (strOrNull(params.priority) as 'blocker' | 'high' | 'medium' | 'low' | null) ?? undefined,
+    owner: (strOrNull(params.owner) as 'agent' | 'human' | null) ?? undefined,
+    parentGoalId: strOrNull(params.parentGoalId) ?? undefined,
+  });
+  return { goals };
+});
+
+registerHandler('goal.setStatus', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const goalId = strOrNull(params.goalId) ?? strOrNull(params.id);
+  if (!goalId) throw new Error('goal.setStatus: missing goalId');
+  const status = str(params.status);
+  const reason = str(params.reason, '');
+  const harness = goalHarness(db, agentId);
+  if (status === 'active') return harness.activateGoal(goalId);
+  if (status === 'blocked') return harness.blockGoal(goalId, reason || 'blocked');
+  if (status === 'abandoned') return harness.abandonGoal(goalId, reason || 'abandoned');
+  if (status === 'done') return harness.completeGoal(goalId);
+  throw new Error(`goal.setStatus: unsupported status '${status}'`);
+});
+
+registerHandler('goal.addCriterion', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const goalId = strOrNull(params.goalId);
+  if (!goalId) throw new Error('goal.addCriterion: missing goalId');
+  const description = str(params.description);
+  return goalHarness(db, agentId).addCriterion(goalId, description);
+});
+
+registerHandler('goal.recordCriterion', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const criterionId = strOrNull(params.criterionId) ?? strOrNull(params.id);
+  if (!criterionId) throw new Error('goal.recordCriterion: missing criterionId');
+  const verdictRaw = str(params.verdict, 'met');
+  if (verdictRaw !== 'met' && verdictRaw !== 'failed') {
+    throw new Error("goal.recordCriterion: verdict must be 'met' or 'failed'");
+  }
+  const evidence = str(params.evidence, '');
+  return goalHarness(db, agentId).recordCriterion(criterionId, verdictRaw, evidence);
+});
+
+registerHandler('goal.listCriteria', async (params, db) => {
+  const goalId = strOrNull(params.goalId);
+  if (!goalId) throw new Error('goal.listCriteria: missing goalId');
+  const criteria = await new GoalStore(db).listGoalCriteria(goalId);
+  return { criteria };
+});
+
+registerHandler('goal.progress', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const goalId = strOrNull(params.goalId) ?? strOrNull(params.id);
+  if (!goalId) throw new Error('goal.progress: missing goalId');
+  const progress = await goalHarness(db, agentId).progress(goalId);
+  return { progress };
+});
+
+registerHandler('goal.nextActions', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const goalId = strOrNull(params.goalId) ?? strOrNull(params.id);
+  if (!goalId) throw new Error('goal.nextActions: missing goalId');
+  const actions = await goalHarness(db, agentId).nextActions(goalId);
+  return { actions };
+});
+
+registerHandler('goal.proposeTask', async (params, db, ctx) => {
+  const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
+  const criterionId = strOrNull(params.criterionId);
+  if (!criterionId) throw new Error('goal.proposeTask: missing criterionId');
+  return goalHarness(db, agentId).proposeTaskForCriterion(criterionId);
 });
 
 // -- Events -----------------------------------------------------------------
