@@ -954,9 +954,9 @@ export function getMountStatus(): Promise<MountStatus> {
   return invoke<MountStatus>('get_mount_status');
 }
 
-/** Planning-board snapshot for Studio Fleet map (no private path strings in types). */
-export function readFleetMap(): Promise<Record<string, unknown>> {
-  return invoke<Record<string, unknown>>('read_fleet_map');
+/** Planning-board snapshot for Studio Fleet map (typed by caller / fleet-map.ts). */
+export function readFleetMapPayload<T>(): Promise<T> {
+  return invoke<T>('read_fleet_map');
 }
 
 export function mountDevbox(): Promise<string> {
