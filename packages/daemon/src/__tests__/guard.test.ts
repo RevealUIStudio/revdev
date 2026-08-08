@@ -53,6 +53,7 @@ describe('guardRpcMethod', () => {
       'inference.generate',
       // GAP-337: monitoring without a Pro license
       'harness.health',
+      'daemon.peers',
     ];
 
     for (const method of exemptMethods) {
@@ -172,6 +173,10 @@ describe('guardRpcMethod', () => {
 
     it('allows harness.health on free and pro (GAP-337)', () => {
       expect(guardRpcMethod('harness.health').allowed).toBe(true);
+    });
+
+    it('allows daemon.peers on free (GAP-154 Phase 5 discovery)', () => {
+      expect(guardRpcMethod('daemon.peers').allowed).toBe(true);
     });
   });
 

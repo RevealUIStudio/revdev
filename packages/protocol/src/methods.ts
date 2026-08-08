@@ -19,6 +19,9 @@ export const RPC_METHODS = {
   'harness.health': 'harness.health',
   'harness.prune': 'harness.prune',
 
+  // GAP-154 Phase 5 — daemon peer registry (Neon role=daemon)
+  'daemon.peers': 'daemon.peers',
+
   // Agent sessions
   'session.register': 'session.register',
   'session.attach': 'session.attach',

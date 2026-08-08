@@ -8,7 +8,7 @@ Manages AI agent sessions, PTY processes, tool routing, inter-agent messaging, t
 
 - **Local**: Unix socket (`~/.local/share/revealui/harness.sock`)
 - **Remote**: HTTP gateway with pairing-code auth (**shipped**, GAP-421 port of the
-  harness gateway; GAP-154 Phase 5 transport). Off by default (`httpPort: 0`).
+  harness gateway; GAP-154 Phase 5 transport + `daemon.peers` Neon registry). Off by default (`httpPort: 0`).
   When enabled: `GET/POST /api/pair` (HMAC challenge, secret never on the wire),
   `POST /rpc` (same `dispatchRpc` path as the Unix socket — one authorization
   plane), `GET /api/status`, `GET /api/stream/:processId` (ticket-bound SSE).
