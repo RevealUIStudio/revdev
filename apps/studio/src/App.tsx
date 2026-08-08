@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import AgentPanel from './components/agent/AgentPanel';
 import LoginScreen from './components/auth/LoginScreen';
 import Dashboard from './components/dashboard/Dashboard';
+import FleetMapPanel from './components/fleet/FleetMapPanel';
 import DeployDashboard from './components/dashboard/DeployDashboard';
 import DeployWizard from './components/deploy/DeployWizard';
 import CodeEditor from './components/editor/CodeEditor';
@@ -129,6 +130,7 @@ function MainApp() {
           padless={page === 'git' || page === 'editor'}
         >
           {page === 'dashboard' ? <Dashboard /> : null}
+          {page === 'fleet' ? <FleetMapPanel /> : null}
           {page === 'gallery' ? <TileGallery /> : null}
           {page === 'vault' ? <VaultPanel /> : null}
           {page === 'infrastructure' ? <InfrastructurePanel /> : null}
@@ -178,6 +180,7 @@ function MainApp() {
   return (
     <AppShell currentPage={page} onNavigate={setPage} padless={page === 'git' || page === 'editor'}>
       {page === 'dashboard' ? <Dashboard /> : null}
+      {page === 'fleet' ? <FleetMapPanel /> : null}
       {page === 'gallery' ? <TileGallery /> : null}
       {page === 'vault' ? <VaultPanel /> : null}
       {page === 'infrastructure' ? <InfrastructurePanel /> : null}

@@ -16,7 +16,7 @@ interface NavGroup {
 }
 
 /**
- * Frontend-excellence Phase 2 hard rule: 12 destinations → 3 progressive-
+ * Frontend-excellence Phase 2 hard rule: destinations → 3 progressive-
  * disclosure groups (Operate / Build / Configure). Group containing the
  * current page starts open; others start collapsed.
  */
@@ -26,6 +26,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Operate',
     items: [
       { page: 'dashboard', label: 'Dashboard', icon: 'grid' },
+      { page: 'fleet', label: 'Fleet map', icon: 'map' },
       { page: 'gallery', label: 'Launcher', icon: 'rocket' },
       { page: 'agent', label: 'Agent', icon: 'agent' },
       { page: 'terminal', label: 'Terminal', icon: 'terminal' },
@@ -313,6 +314,21 @@ function NavIcon({ name }: { name: string }) {
           strokeWidth={2}
         >
           <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" />
+        </svg>
+      );
+    case 'map':
+      return (
+        <svg
+          className="size-4"
+          aria-hidden="true"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
+          <line x1="9" x2="9" y1="3" y2="18" />
+          <line x1="15" x2="15" y1="6" y2="21" />
         </svg>
       );
     default:

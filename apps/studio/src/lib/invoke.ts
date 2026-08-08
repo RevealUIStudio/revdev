@@ -57,6 +57,33 @@ const MOCK_DATA: Record<string, unknown> = {
     tier: 'pro',
     systemd_status: 'running',
   } satisfies SystemStatus,
+  read_fleet_map: {
+    jvRoot: '/home/mock/revfleet/.jv',
+    snapshotPath: '/home/mock/revfleet/.jv/docs/tracker-snapshot.json',
+    statePath: null,
+    snapshot: {
+      schema: 'tracker-snapshot-v1',
+      generatedAt: '2026-08-08T00:00:00.000Z',
+      initiatives: [
+        {
+          id: 'INIT-002',
+          name: 'RevDev daily driver + agent runtime',
+          priority: 'P0',
+          state: 'active',
+          progress: { gapsOpen: 19, gapsClosed: 0, gapsListed: 19, lanesActive: 4, lanesPaused: 0 },
+        },
+      ],
+      freeSurfaces: [{ id: 'GAP-154', priority: 'high', initiativeId: 'INIT-002' }],
+      nodes: [{ id: 'INIT-002' }, { id: 'GAP-154' }],
+      edges: [{ from: 'INIT-002', to: 'GAP-154', relation: 'member' }],
+    },
+    state: null,
+    generatedAt: '2026-08-08T00:00:00.000Z',
+    freeSurfaceCount: 1,
+    initiativeCount: 1,
+    nodeCount: 2,
+    edgeCount: 1,
+  },
   get_mount_status: {
     mounted: false,
     mount_point: '/mnt/wsl-dev',
