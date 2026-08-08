@@ -1,28 +1,28 @@
-export { GoalHarness } from './goal-harness.js';
 export type {
   CriterionRecordResult,
   GoalHarnessOptions,
   GoalTransitionResult,
   ProposeTaskResult,
 } from './goal-harness.js';
+export { GoalHarness } from './goal-harness.js';
 export { GoalStore } from './goal-store.js';
 export {
-  type CreateGoalInput,
-  createGoalInputSchema,
   CRITERION_STATUSES,
+  type CreateGoalInput,
   type CriterionStatus,
+  createGoalInputSchema,
   GOAL_ACTIONS,
+  GOAL_OWNERS,
+  GOAL_PRIORITIES,
+  GOAL_STATUSES,
   type GoalAction,
   type GoalActionItem,
-  GOAL_OWNERS,
+  type GoalCriterionRow,
   type GoalOwner,
-  GOAL_PRIORITIES,
   type GoalPriority,
   type GoalProgress,
   type GoalRow,
-  GOAL_STATUSES,
   type GoalStatus,
   type GoalTaskRow,
   type GoalWithCriteria,
-  type GoalCriterionRow,
 } from './types.js';

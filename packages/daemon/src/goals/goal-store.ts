@@ -143,11 +143,7 @@ export class GoalStore {
     return result.rows.map(mapGoal);
   }
 
-  async setGoalStatus(
-    id: string,
-    status: GoalStatus,
-    reason: string,
-  ): Promise<GoalRow | null> {
+  async setGoalStatus(id: string, status: GoalStatus, reason: string): Promise<GoalRow | null> {
     const result = await this.db.query<Record<string, unknown>>(
       `UPDATE goals SET
          status = $2,

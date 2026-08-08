@@ -4,8 +4,8 @@
  * @vitest-environment node
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
+import { afterEach, describe, expect, it } from 'vitest';
 import { GoalHarness, GoalStore } from '../goals/index.js';
 import { MIGRATIONS } from '../migrations/index.js';
 import { migrate } from '../storage/migrate.js';
