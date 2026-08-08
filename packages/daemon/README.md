@@ -90,6 +90,7 @@ Environment variables (all optional):
 | `REVDEV_DAEMON_PID` | `~/.local/share/revealui/harness.pid` | PID file location |
 | `REVDEV_DAEMON_LOG` | `~/.local/share/revealui/daemon.log` | Log file for `--detach` mode |
 | `POSTGRES_URL` | (none → sync disabled) | Neon URL for cross-machine `coordination_*` sync (GAP-154) |
+| `POSTGRES_URL_FILE` | (none) | File path to Neon URL (stream-safe systemd; same effect as POSTGRES_URL) |
 
 ## License tiers
 

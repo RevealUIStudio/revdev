@@ -37,6 +37,7 @@
  *     reconcile across daemons. Until then they stay local-only by design.
  */
 
+import { readFileSync } from 'node:fs';
 import { type NeonQueryFunction, neon } from '@neondatabase/serverless';
 import { createLogger } from '@revealui/utils/logger';
 
@@ -45,12 +46,35 @@ const log = createLogger({ service: 'revdev-daemon-neon' });
 let client: NeonQueryFunction<false, false> | null = null;
 
 /**
- * Initialize the Neon client from `POSTGRES_URL` env var (or override).
- * Idempotent. When the URL is empty/unset, sync is disabled and all
- * helpers below are silent no-ops.
+ * Resolve Neon URL without putting secrets on argv.
+ * Priority: explicit arg → POSTGRES_URL → DATABASE_URL → POSTGRES_URL_FILE
+ * (file path is stream-safe for systemd PrivateTmp materialization).
+ */
+export function resolvePostgresUrl(databaseUrl?: string | undefined): string {
+  if (databaseUrl && databaseUrl.trim()) return databaseUrl.trim();
+  const inline = process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim();
+  if (inline) return inline;
+  const filePath = process.env.POSTGRES_URL_FILE?.trim();
+  if (!filePath) return '';
+  try {
+    const text = readFileSync(filePath, 'utf8').trim();
+    return text;
+  } catch (err) {
+    log.warn('POSTGRES_URL_FILE unreadable', {
+      path: filePath,
+      error: String(err),
+    });
+    return '';
+  }
+}
+
+/**
+ * Initialize the Neon client from `POSTGRES_URL` / `DATABASE_URL` /
+ * `POSTGRES_URL_FILE` (or override). Idempotent. When empty/unset, sync is
+ * disabled and all helpers below are silent no-ops.
  */
 export function initNeonSync(databaseUrl?: string | undefined): void {
-  const url = databaseUrl ?? process.env.POSTGRES_URL ?? process.env.DATABASE_URL ?? '';
+  const url = resolvePostgresUrl(databaseUrl);
   if (url) {
     client = neon(url);
     log.info('neon sync enabled', { hasUrl: true });
