@@ -16,3 +16,4 @@ pub mod status;
 pub mod sync;
 pub mod terminal;
 pub mod vault;
+pub mod fleet_map;

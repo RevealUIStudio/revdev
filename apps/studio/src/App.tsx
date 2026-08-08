@@ -6,6 +6,7 @@ import Dashboard from './components/dashboard/Dashboard';
 import DeployDashboard from './components/dashboard/DeployDashboard';
 import DeployWizard from './components/deploy/DeployWizard';
 import CodeEditor from './components/editor/CodeEditor';
+import FleetMapPanel from './components/fleet/FleetMapPanel';
 import TileGallery from './components/gallery/TileGallery';
 import GitPanel from './components/git/GitPanel';
 import InferencePanel from './components/inference/InferencePanel';
@@ -129,6 +130,7 @@ function MainApp() {
           padless={page === 'git' || page === 'editor'}
         >
           {page === 'dashboard' ? <Dashboard /> : null}
+          {page === 'fleet' ? <FleetMapPanel /> : null}
           {page === 'gallery' ? <TileGallery /> : null}
           {page === 'vault' ? <VaultPanel /> : null}
           {page === 'infrastructure' ? <InfrastructurePanel /> : null}
@@ -178,6 +180,7 @@ function MainApp() {
   return (
     <AppShell currentPage={page} onNavigate={setPage} padless={page === 'git' || page === 'editor'}>
       {page === 'dashboard' ? <Dashboard /> : null}
+      {page === 'fleet' ? <FleetMapPanel /> : null}
       {page === 'gallery' ? <TileGallery /> : null}
       {page === 'vault' ? <VaultPanel /> : null}
       {page === 'infrastructure' ? <InfrastructurePanel /> : null}

@@ -21,6 +21,15 @@
  */
 
 export {
+  type CreateGoalInput,
+  type GoalCriterionRow,
+  GoalHarness,
+  type GoalProgress,
+  type GoalRow,
+  GoalStore,
+  type GoalWithCriteria,
+} from './goals/index.js';
+export {
   getLicenseState,
   guardRpcMethod,
   initLicenseGuard,
@@ -52,15 +61,6 @@ export {
   ToolGuardError,
 } from './tool-guard/index.js';
 export { loadPatterns, manifestHash, type PatternManifest } from './tool-guard/patterns.js';
-export {
-  GoalHarness,
-  GoalStore,
-  type CreateGoalInput,
-  type GoalRow,
-  type GoalCriterionRow,
-  type GoalWithCriteria,
-  type GoalProgress,
-} from './goals/index.js';
 
 // Side-effect imports: register built-in handler groups.
 import './inference.js';

@@ -39,13 +39,8 @@ import {
   licenseErrorResponse,
   runtimeLicenseRecheck,
 } from './guard.js';
-import {
-  evaluateLicense,
-  LicenseConfigError,
-  tierRank,
-  type LicenseTier,
-} from './license.js';
 import { HttpGateway } from './http-gateway.js';
+import { evaluateLicense, LicenseConfigError, type LicenseTier, tierRank } from './license.js';
 import { loopGuards } from './loop-guard.js';
 import {
   initNeonSync,
@@ -1872,7 +1867,8 @@ registerHandler('goal.create', async (params, db, ctx) => {
     id: strOrNull(params.id) ?? undefined,
     title: str(params.title),
     description: str(params.description, ''),
-    priority: (strOrNull(params.priority) as 'blocker' | 'high' | 'medium' | 'low' | null) ?? undefined,
+    priority:
+      (strOrNull(params.priority) as 'blocker' | 'high' | 'medium' | 'low' | null) ?? undefined,
     owner: (strOrNull(params.owner) as 'agent' | 'human' | null) ?? undefined,
     parentGoalId: strOrNull(params.parentGoalId) ?? undefined,
     blockedBy: Array.isArray(params.blockedBy)
@@ -1896,8 +1892,11 @@ registerHandler('goal.get', async (params, db, ctx) => {
 registerHandler('goal.list', async (params, db, ctx) => {
   const agentId = strOrNull(params.agentId) ?? ctx.agentId ?? 'anonymous';
   const goals = await goalHarness(db, agentId).listGoals({
-    status: (strOrNull(params.status) as 'open' | 'active' | 'blocked' | 'done' | 'abandoned' | null) ?? undefined,
-    priority: (strOrNull(params.priority) as 'blocker' | 'high' | 'medium' | 'low' | null) ?? undefined,
+    status:
+      (strOrNull(params.status) as 'open' | 'active' | 'blocked' | 'done' | 'abandoned' | null) ??
+      undefined,
+    priority:
+      (strOrNull(params.priority) as 'blocker' | 'high' | 'medium' | 'low' | null) ?? undefined,
     owner: (strOrNull(params.owner) as 'agent' | 'human' | null) ?? undefined,
     parentGoalId: strOrNull(params.parentGoalId) ?? undefined,
   });
@@ -2317,7 +2316,6 @@ registerHandler('context.snapshot', async (params, db, ctx) => {
 });
 
 // -- Health -----------------------------------------------------------------
-
 
 function licenseHealthSummary(): {
   tier: LicenseTier;
