@@ -137,7 +137,7 @@ describe('GAP-154 Phase 5 daemon peer registry', () => {
 
   beforeEach(() => {
     store.agents.clear();
-    setNeonClientForTesting(store.mock);
+    setNeonClientForTesting(store.mock as never);
   });
 
   it('registerDaemonPeer upserts role=daemon agent', async () => {
@@ -172,7 +172,7 @@ describe('GAP-154 Phase 5 daemon peer registry', () => {
       trustedAnchorRequireRootOwned: false,
     });
     close = () => handle.close();
-    setNeonClientForTesting(store.mock);
+    setNeonClientForTesting(store.mock as never);
     await registerDaemonPeer({
       daemonId: 'daemon:rpc-host:xyz',
       env: 'rpc-host',
