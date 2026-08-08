@@ -15,8 +15,10 @@
  *   `session.register` are rejected with -32002.
  */
 
+import { createHash } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
+import { hostname as osHostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { formatDid, parseDid } from '@revdev/protocol/did';
@@ -43,9 +45,13 @@ import { HttpGateway } from './http-gateway.js';
 import { evaluateLicense, LicenseConfigError, type LicenseTier, tierRank } from './license.js';
 import { loopGuards } from './loop-guard.js';
 import {
+  getSelfDaemonId,
+  heartbeatDaemonPeer,
   initNeonSync,
   isNeonSyncActive,
+  listDaemonPeers,
   listFleetSessions,
+  registerDaemonPeer,
   sweepExpiredFileClaims,
   syncEventLog,
   syncFilesRelease,
@@ -155,6 +161,8 @@ const IDENTITY_EXEMPT = new Set([
   // content). Optional actorAgentId still labels isSelf when provided.
   'context.snapshot',
   'harness.health',
+  // GAP-154 Phase 5: peer discovery is read-only fleet metadata (no content).
+  'daemon.peers',
   // `harness.prune` was here. It reaches notifyAgentEnded for EVERY matched
   // session, so an identity-exempt, unsigned caller could evict every agent's
   // roots and kill every agent's PTY with one frame. See GAP-312 and the
@@ -2426,6 +2434,24 @@ registerHandler('harness.health', async (_params, db) => {
   };
 });
 
+/**
+ * GAP-154 Phase 5 — list daemon peers from Neon registry.
+ * Empty when POSTGRES_URL unset (no fleet visibility, not "no peers exist").
+ */
+registerHandler('daemon.peers', async (params) => {
+  const staleAfterSeconds = Math.max(30, Math.floor(num(params.staleAfterSeconds, 300)));
+  const peers = await listDaemonPeers({ staleAfterSeconds });
+  const selfId = getSelfDaemonId();
+  return {
+    neonSyncActive: isNeonSyncActive(),
+    selfId,
+    peers: peers.map((p) => ({
+      ...p,
+      isSelf: selfId !== null && p.id === selfId,
+    })),
+  };
+});
+
 registerHandler('harness.prune', async (params, db, ctx) => {
   // Allow ops to run a prune pass on demand. Defaults match DAEMON_DEFAULTS so
   // callers can invoke with no params.
@@ -3010,10 +3036,34 @@ export async function startDaemon(
         }
       }
 
+      // GAP-154 Phase 5: register this daemon in Neon peer registry (no-op without POSTGRES_URL).
+      const host = osHostname();
+      const dataHash = createHash('sha256').update(cfg.dataDir).digest('hex').slice(0, 12);
+      const daemonId = process.env.REVDEV_DAEMON_ID?.trim() || `daemon:${host}:${dataHash}`;
+      const gatewayPort = httpGateway?.getPort() ?? null;
+      const httpGatewayUrl =
+        gatewayPort && gatewayPort > 0
+          ? `http://${cfg.httpHost === '0.0.0.0' ? host : cfg.httpHost}:${gatewayPort}`
+          : null;
+      await registerDaemonPeer({
+        daemonId,
+        env: process.env.REVDEV_DAEMON_ENV?.trim() || host,
+        hostname: host,
+        httpGatewayUrl,
+        socketHint: cfg.socketPath,
+        pid: process.pid,
+      });
+      // Heartbeat so peers stay "fresh" while this process lives.
+      const peerHeartbeat = setInterval(() => {
+        void heartbeatDaemonPeer(daemonId);
+      }, 60_000);
+      peerHeartbeat.unref();
+
       resolve({
         _db: db,
         _httpGateway: httpGateway,
         close: async () => {
+          clearInterval(peerHeartbeat);
           // Sequence:
           //   1. Set _closing FIRST so any RPC arriving on an existing
           //      socket from this point onward bails out with -32099

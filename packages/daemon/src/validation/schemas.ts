@@ -474,6 +474,14 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  // GAP-154 Phase 5 — daemon peer registry (Neon coordination_agents role=daemon)
+  'daemon.peers': z
+    .object({
+      staleAfterSeconds: z.number().min(30).max(86_400).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
   'harness.prune': z
     .object({
       staleDays: z.number().min(1).optional(),
