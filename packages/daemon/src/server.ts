@@ -39,6 +39,12 @@ import {
   licenseErrorResponse,
   runtimeLicenseRecheck,
 } from './guard.js';
+import {
+  evaluateLicense,
+  LicenseConfigError,
+  tierRank,
+  type LicenseTier,
+} from './license.js';
 import { HttpGateway } from './http-gateway.js';
 import { loopGuards } from './loop-guard.js';
 import {
@@ -2312,6 +2318,56 @@ registerHandler('context.snapshot', async (params, db, ctx) => {
 
 // -- Health -----------------------------------------------------------------
 
+
+function licenseHealthSummary(): {
+  tier: LicenseTier;
+  valid: boolean;
+  present: boolean;
+  source: 'env' | 'file' | 'none';
+  status: string;
+  expiresAt: number | null;
+  secondsRemaining: number | null;
+  goalRpcMinTier: 'pro';
+  goalRpcReady: boolean;
+  reason?: string;
+} {
+  // Never include key material — agents/Studio diagnose FREE vs Pro+ only.
+  try {
+    const ev = evaluateLicense();
+    return {
+      tier: ev.tier,
+      valid: ev.valid,
+      present: ev.present,
+      source: ev.source,
+      status: ev.status,
+      expiresAt: ev.expiresAt,
+      secondsRemaining: ev.secondsRemaining,
+      goalRpcMinTier: 'pro',
+      goalRpcReady: ev.valid && tierRank(ev.tier) >= tierRank('pro'),
+      ...(ev.reason ? { reason: ev.reason } : {}),
+    };
+  } catch (err) {
+    const reason =
+      err instanceof LicenseConfigError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'license evaluation failed';
+    return {
+      tier: 'free',
+      valid: false,
+      present: true,
+      source: 'none',
+      status: 'invalid',
+      expiresAt: null,
+      secondsRemaining: null,
+      goalRpcMinTier: 'pro',
+      goalRpcReady: false,
+      reason,
+    };
+  }
+}
+
 registerHandler('harness.health', async (_params, db) => {
   const sessions = await db.query<{ count: string }>(
     `SELECT COUNT(*)::text as count FROM agent_sessions WHERE ended_at IS NULL`,
@@ -2366,6 +2422,9 @@ registerHandler('harness.health', async (_params, db) => {
     // from the trust anchor. Should be empty on a correctly provisioned
     // install; non-empty is a loud warning, not a daemon failure.
     anchorInconsistencies,
+    // License summary (no secrets): goal.* and other Pro-floor RPCs need
+    // valid Pro+ (enterprise daily-driver JWT satisfies this).
+    license: licenseHealthSummary(),
   };
 });
 
