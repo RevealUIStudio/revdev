@@ -3,8 +3,9 @@
  *
  * Uses `setNeonClientForTesting()` to inject a mock that records SQL calls,
  * so we can verify dual-write happens without needing a real Neon instance.
- * The full 2-daemon cross-machine test (which DOES need a Neon URL) lives
- * in `neon-sync.integration.test.ts` and is skipped by default.
+ * Two-daemon A→shared-Neon→B fleet visibility (process-local mock, no network
+ * Neon) lives in `neon-fleet-two-daemon.test.ts`. Live multi-host + real
+ * POSTGRES_URL dogfood remains operator residual.
  *
  * @vitest-environment node
  */

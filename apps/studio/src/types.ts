@@ -50,7 +50,8 @@ export type Page =
   | 'inference'
   | 'setup'
   | 'settings'
-  | 'deploy';
+  | 'deploy'
+  | 'fleet';
 
 /** SSH connection parameters */
 export interface SshConnectParams {

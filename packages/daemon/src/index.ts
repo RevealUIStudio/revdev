@@ -21,6 +21,15 @@
  */
 
 export {
+  type CreateGoalInput,
+  type GoalCriterionRow,
+  GoalHarness,
+  type GoalProgress,
+  type GoalRow,
+  GoalStore,
+  type GoalWithCriteria,
+} from './goals/index.js';
+export {
   getLicenseState,
   guardRpcMethod,
   initLicenseGuard,

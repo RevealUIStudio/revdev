@@ -19,7 +19,7 @@ mod updater;
 use commands::{
     agent as agent_cmds, apps, config as config_cmds, deploy, git as git_cmds,
     harness as harness_cmds, inference as inference_cmds, launcher, local_shell as shell_cmds,
-    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, vault,
+    fleet_map, mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, vault,
 };
 use config::ConfigState;
 use local_shell::LocalShellState;
@@ -72,6 +72,7 @@ pub fn run() {
             mount::unmount_devbox,
             sync::sync_all_repos,
             sync::sync_repo,
+            fleet_map::read_fleet_map,
             apps::list_apps,
             apps::start_app,
             apps::stop_app,

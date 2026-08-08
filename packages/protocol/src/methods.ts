@@ -25,6 +25,10 @@ export const RPC_METHODS = {
   'session.update': 'session.update',
   'session.end': 'session.end',
   'session.list': 'session.list',
+  // GAP-342 — five-section fidelity snapshot (id-match store/serve)
+  'session.snapshot.write': 'session.snapshot.write',
+  'session.snapshot.get': 'session.snapshot.get',
+  'session.snapshot.prune': 'session.snapshot.prune',
 
   // Agent identity
   'identity.rotate': 'identity.rotate',
@@ -48,9 +52,29 @@ export const RPC_METHODS = {
   'tasks.release': 'tasks.release',
   'tasks.list': 'tasks.list',
 
+  // Goals (roadmap-goal-spine PR0 — propose-only GoalHarness)
+  'goal.create': 'goal.create',
+  'goal.get': 'goal.get',
+  'goal.list': 'goal.list',
+  'goal.setStatus': 'goal.setStatus',
+  'goal.addCriterion': 'goal.addCriterion',
+  'goal.recordCriterion': 'goal.recordCriterion',
+  'goal.listCriteria': 'goal.listCriteria',
+  'goal.progress': 'goal.progress',
+  'goal.nextActions': 'goal.nextActions',
+  'goal.proposeTask': 'goal.proposeTask',
+
   // Event log
   'events.log': 'events.log',
   'events.query': 'events.query',
+  'events.wait': 'events.wait',
+  // GAP-362 token-economy loop guard
+  'loop.arm': 'loop.arm',
+  'loop.tick': 'loop.tick',
+  'loop.status': 'loop.status',
+  'loop.pause': 'loop.pause',
+  'loop.resume': 'loop.resume',
+  'loop.stop': 'loop.stop',
 
   // Peer context composite (GAP-459 Phase 1)
   'context.snapshot': 'context.snapshot',
