@@ -73,6 +73,8 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['loop.arm', 'routine'],
   ['loop.tick', 'routine'],
   ['loop.status', 'routine'],
+  ['loop.spend', 'routine'],
+  ['loop.record_spend', 'routine'],
   ['loop.pause', 'routine'],
   ['loop.resume', 'routine'],
   ['loop.stop', 'routine'],

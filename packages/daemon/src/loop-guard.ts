@@ -14,6 +14,16 @@ export const MIN_IDLE_INTERVAL_MS = 60_000;
 
 export type LoopStatus = 'armed' | 'paused' | 'stopped' | 'not_advancing';
 
+/** Cumulative spend for a loop (process-local; also mirrored on loop.tick events). */
+export interface LoopSpend {
+  /** Provider input tokens attributed to this loop. */
+  tokensIn: number;
+  /** Provider output tokens attributed to this loop. */
+  tokensOut: number;
+  /** Optional micro-USD cost (integer micros; 1 USD = 1_000_000). */
+  costMicros: number;
+}
+
 export interface LoopState {
   loopId: string;
   agentId: string;
@@ -27,6 +37,8 @@ export interface LoopState {
   createdAt: number;
   updatedAt: number;
   lastSignal: string | null;
+  /** Per-loop spend (GAP-362 residual — queryable via loop.status / loop.spend). */
+  spend: LoopSpend;
 }
 
 export interface ArmLoopInput {
@@ -41,7 +53,24 @@ export interface TickLoopInput {
   loopId: string;
   /** True when this iteration advanced work (new output, task progress, etc.). */
   advanced: boolean;
+  /** Optional spend delta for this tick (token-economy metering). */
+  tokensIn?: number;
+  tokensOut?: number;
+  costMicros?: number;
   now?: number;
+}
+
+export interface RecordSpendInput {
+  loopId: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  costMicros?: number;
+  now?: number;
+}
+
+function nonNegInt(n: number | undefined): number {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
 }
 
 export function cadenceWarningForInterval(intervalMs: number): string | null {
@@ -82,14 +111,32 @@ export class LoopGuardRegistry {
       createdAt: now,
       updatedAt: now,
       lastSignal: cadenceWarning,
+      spend: { tokensIn: 0, tokensOut: 0, costMicros: 0 },
     };
     this.loops.set(input.loopId, state);
-    return { ...state };
+    return this.clone(state);
   }
 
   get(loopId: string): LoopState | null {
     const s = this.loops.get(loopId);
-    return s ? { ...s } : null;
+    return s ? this.clone(s) : null;
+  }
+
+  /** Cumulative spend for a loop (null if unknown). */
+  spend(loopId: string): LoopSpend | null {
+    const s = this.loops.get(loopId);
+    return s ? { ...s.spend } : null;
+  }
+
+  recordSpend(input: RecordSpendInput): LoopState {
+    const s = this.require(input.loopId);
+    if (s.status === 'stopped') throw new Error(`loop ${input.loopId} is stopped`);
+    const now = input.now ?? Date.now();
+    s.spend.tokensIn += nonNegInt(input.tokensIn);
+    s.spend.tokensOut += nonNegInt(input.tokensOut);
+    s.spend.costMicros += nonNegInt(input.costMicros);
+    s.updatedAt = now;
+    return this.clone(s);
   }
 
   tick(input: TickLoopInput): LoopState {
@@ -101,6 +148,9 @@ export class LoopGuardRegistry {
     const now = input.now ?? Date.now();
     s.tickCount += 1;
     s.updatedAt = now;
+    s.spend.tokensIn += nonNegInt(input.tokensIn);
+    s.spend.tokensOut += nonNegInt(input.tokensOut);
+    s.spend.costMicros += nonNegInt(input.costMicros);
 
     if (input.advanced) {
       s.consecutiveNoOps = 0;
@@ -115,7 +165,7 @@ export class LoopGuardRegistry {
         s.lastSignal = null;
       }
     }
-    return { ...s };
+    return this.clone(s);
   }
 
   pause(loopId: string, now = Date.now()): LoopState {
@@ -124,7 +174,7 @@ export class LoopGuardRegistry {
     s.status = 'paused';
     s.updatedAt = now;
     s.lastSignal = 'paused';
-    return { ...s };
+    return this.clone(s);
   }
 
   resume(loopId: string, now = Date.now()): LoopState {
@@ -133,7 +183,7 @@ export class LoopGuardRegistry {
     s.status = 'armed';
     s.updatedAt = now;
     s.lastSignal = null;
-    return { ...s };
+    return this.clone(s);
   }
 
   stop(loopId: string, now = Date.now()): LoopState {
@@ -141,13 +191,17 @@ export class LoopGuardRegistry {
     s.status = 'stopped';
     s.updatedAt = now;
     s.lastSignal = 'stopped';
-    return { ...s };
+    return this.clone(s);
   }
 
   private require(loopId: string): LoopState {
     const s = this.loops.get(loopId);
     if (!s) throw new Error(`unknown loopId: ${loopId}`);
     return s;
+  }
+
+  private clone(s: LoopState): LoopState {
+    return { ...s, spend: { ...s.spend } };
   }
 }
 

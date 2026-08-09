@@ -28,6 +28,13 @@ export type {
   FileReservation,
   MergeRequest,
 } from './schema.js';
+export {
+  type DaemonRpc,
+  type WaitForWorkParams,
+  type WaitForWorkResult,
+  WORK_COMPLETED_EVENT,
+  waitForWorkCompleted,
+} from './wait-for-work.js';
 export type {
   ConflictResult,
   TaskPriority,
