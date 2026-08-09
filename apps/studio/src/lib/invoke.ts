@@ -381,6 +381,8 @@ const MOCK_DATA: Record<string, unknown> = {
   } satisfies HarnessTask,
   harness_claim_task: { success: true, owner: 'agent-ext-1' } satisfies HarnessClaimResult,
   harness_complete_task: true,
+  // GAP-362 mock: timeout with no event (browser demo has no live work bus)
+  harness_events_wait: { event: null, timedOut: true },
   harness_release_task: true,
   harness_reservations: [
     {
@@ -441,6 +443,8 @@ export const HARNESS_RPC_MAP: Record<string, string> = {
   harness_reservations: 'files.list',
   harness_reserve_file: 'files.reserve',
   harness_check_file: 'files.check',
+  // GAP-362: long-poll work.completed (prefer over client sub-minute task polls)
+  harness_events_wait: 'events.wait',
   // GAP-294 permission modes
   harness_permission_pending: 'permission.pending',
   harness_permission_decide: 'permission.decide',
@@ -1390,6 +1394,38 @@ export function harnessCompleteTask(taskId: string, agentId: string): Promise<bo
 
 export function harnessReleaseTask(taskId: string, agentId: string): Promise<boolean> {
   return invoke<boolean>('harness_release_task', { taskId, agentId });
+}
+
+/** GAP-362: long-poll until work.completed (or timeout). Prefer over polling tasks.list. */
+export function harnessEventsWait(params: {
+  eventType: string;
+  sinceId?: number;
+  timeoutMs?: number;
+}): Promise<{ event: Record<string, unknown> | null; timedOut: boolean }> {
+  return invoke<{ event: Record<string, unknown> | null; timedOut: boolean }>(
+    'harness_events_wait',
+    {
+      eventType: params.eventType,
+      sinceId: params.sinceId ?? 0,
+      timeoutMs: params.timeoutMs ?? 30_000,
+    },
+  );
+}
+
+/**
+ * GAP-362 adapter: wait for a coordination task completion via events.wait.
+ * Prefer this over polling tasks.list. Mirrors @revdev/protocol waitForWorkCompleted
+ * over the Studio invoke bridge (no runtime dep on protocol package).
+ */
+export function harnessWaitForWorkCompleted(params?: {
+  sinceId?: number;
+  timeoutMs?: number;
+}): Promise<{ event: Record<string, unknown> | null; timedOut: boolean }> {
+  return harnessEventsWait({
+    eventType: 'work.completed',
+    sinceId: params?.sinceId ?? 0,
+    timeoutMs: params?.timeoutMs ?? 30_000,
+  });
 }
 
 export function harnessReservations(agentId?: string): Promise<HarnessReservation[]> {
