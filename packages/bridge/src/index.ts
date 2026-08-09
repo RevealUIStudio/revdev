@@ -16,6 +16,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { RPC_METHODS } from '@revdev/protocol';
 import { z } from 'zod';
 import { DaemonClient } from './client.js';
+import { registerKgTools } from './kg-tools.js';
 
 // ---------------------------------------------------------------------------
 // MCP Server
@@ -595,6 +596,13 @@ server.tool(
     return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
   },
 );
+
+// ---------------------------------------------------------------------------
+// Fleet knowledge graph (GAP-349) — Neon via @revealui/knowledge-graph
+// Requires POSTGRES_URL / DATABASE_URL / POSTGRES_URL_FILE; soft-fails per tool.
+// ---------------------------------------------------------------------------
+
+registerKgTools(server);
 
 // ---------------------------------------------------------------------------
 // Start
