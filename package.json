@@ -2,7 +2,7 @@
   "name": "revdev",
   "version": "0.2.0",
   "private": true,
-  "description": "RevDev \u2014 Native developer tools for RevealUI",
+  "description": "RevDev — Native developer tools for RevealUI",
   "repository": {
     "type": "git",
     "url": "https://github.com/RevealUIStudio/revdev.git"
@@ -28,22 +28,23 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.1.10"
   },
   "pnpm": {
     "overrides": {
       "esbuild": ">=0.28.1",
-      "undici": ">=7.28.0 <8",
-      "vite": ">=8.0.16",
-      "fast-uri": ">=3.1.4 <4",
-      "hono": ">=4.12.27",
-      "ip-address": ">=10.1.1",
-      "postcss": ">=8.5.18",
+      "undici": ">=7.29.0 <8",
+      "vite": "8.2.0",
+      "fast-uri": ">=3.1.5 <4",
+      "hono": "4.12.34",
+      "ip-address": ">=10.3.1",
+      "postcss": "8.5.25",
       "qs": ">=6.15.2",
       "ws@8": ">=8.20.1",
       "@hono/node-server": ">=2.0.5",
-      "body-parser": ">=2.3.0"
+      "body-parser": ">=2.3.0",
+      "typescript": "7.0.2"
     },
     "onlyBuiltDependencies": [
       "node-pty"
