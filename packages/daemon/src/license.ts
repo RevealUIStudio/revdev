@@ -122,6 +122,12 @@ const EXEMPT_METHODS = new Set([
   // GAP-337: health/monitoring must answer without a Pro license (same class
   // as ping). Multi-agent harness.prune stays Pro.
   'harness.health',
+  // GAP-154 Phase 5: peer discovery is diagnostic (empty without Neon).
+  // Dual-write still requires Pro coordination RPCs; listing peers alone is free.
+  'daemon.peers',
+  // GAP-474: local operational workflows (same class as /ops; Studio daily driver)
+  'workflow.list',
+  'workflow.run',
 ]);
 
 /**

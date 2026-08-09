@@ -8,7 +8,7 @@ Manages AI agent sessions, PTY processes, tool routing, inter-agent messaging, t
 
 - **Local**: Unix socket (`~/.local/share/revealui/harness.sock`)
 - **Remote**: HTTP gateway with pairing-code auth (**shipped**, GAP-421 port of the
-  harness gateway; GAP-154 Phase 5 transport). Off by default (`httpPort: 0`).
+  harness gateway; GAP-154 Phase 5 transport + `daemon.peers` Neon registry). Off by default (`httpPort: 0`).
   When enabled: `GET/POST /api/pair` (HMAC challenge, secret never on the wire),
   `POST /rpc` (same `dispatchRpc` path as the Unix socket — one authorization
   plane), `GET /api/status`, `GET /api/stream/:processId` (ticket-bound SSE).
@@ -90,6 +90,7 @@ Environment variables (all optional):
 | `REVDEV_DAEMON_PID` | `~/.local/share/revealui/harness.pid` | PID file location |
 | `REVDEV_DAEMON_LOG` | `~/.local/share/revealui/daemon.log` | Log file for `--detach` mode |
 | `POSTGRES_URL` | (none → sync disabled) | Neon URL for cross-machine `coordination_*` sync (GAP-154) |
+| `POSTGRES_URL_FILE` | (none) | File path to Neon URL (stream-safe systemd; same effect as POSTGRES_URL) |
 
 ## License tiers
 

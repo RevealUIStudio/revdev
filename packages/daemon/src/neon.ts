@@ -37,6 +37,7 @@
  *     reconcile across daemons. Until then they stay local-only by design.
  */
 
+import { readFileSync } from 'node:fs';
 import { type NeonQueryFunction, neon } from '@neondatabase/serverless';
 import { createLogger } from '@revealui/utils/logger';
 
@@ -45,12 +46,35 @@ const log = createLogger({ service: 'revdev-daemon-neon' });
 let client: NeonQueryFunction<false, false> | null = null;
 
 /**
- * Initialize the Neon client from `POSTGRES_URL` env var (or override).
- * Idempotent. When the URL is empty/unset, sync is disabled and all
- * helpers below are silent no-ops.
+ * Resolve Neon URL without putting secrets on argv.
+ * Priority: explicit arg → POSTGRES_URL → DATABASE_URL → POSTGRES_URL_FILE
+ * (file path is stream-safe for systemd PrivateTmp materialization).
+ */
+export function resolvePostgresUrl(databaseUrl?: string | undefined): string {
+  if (databaseUrl && databaseUrl.trim()) return databaseUrl.trim();
+  const inline = process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim();
+  if (inline) return inline;
+  const filePath = process.env.POSTGRES_URL_FILE?.trim();
+  if (!filePath) return '';
+  try {
+    const text = readFileSync(filePath, 'utf8').trim();
+    return text;
+  } catch (err) {
+    log.warn('POSTGRES_URL_FILE unreadable', {
+      path: filePath,
+      error: String(err),
+    });
+    return '';
+  }
+}
+
+/**
+ * Initialize the Neon client from `POSTGRES_URL` / `DATABASE_URL` /
+ * `POSTGRES_URL_FILE` (or override). Idempotent. When empty/unset, sync is
+ * disabled and all helpers below are silent no-ops.
  */
 export function initNeonSync(databaseUrl?: string | undefined): void {
-  const url = databaseUrl ?? process.env.POSTGRES_URL ?? process.env.DATABASE_URL ?? '';
+  const url = resolvePostgresUrl(databaseUrl);
   if (url) {
     client = neon(url);
     log.info('neon sync enabled', { hasUrl: true });
@@ -532,7 +556,137 @@ export async function syncEventLog(params: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 5 — daemon peer registry (cross-machine discovery)
+//
+// Reuses coordination_agents with metadata.role = 'daemon' (no new table).
+// Each daemon upserts itself at startup (+ optional heartbeat). Peers list
+// returns daemons seen recently so fleet operators can discover HTTP
+// gateways / hosts without a separate registry product.
+// ---------------------------------------------------------------------------
+
+export interface DaemonPeerRow {
+  id: string;
+  env: string;
+  lastSeen: string;
+  hostname: string | null;
+  httpGatewayUrl: string | null;
+  socketHint: string | null;
+  pid: number | null;
+  role: 'daemon';
+}
+
+let selfDaemonId: string | null = null;
+
+/** Stable id for this daemon process (set by registerDaemonPeer). */
+export function getSelfDaemonId(): string | null {
+  return selfDaemonId;
+}
+
+/**
+ * Upsert this daemon into the Neon fleet registry.
+ * No-op when Neon sync is disabled.
+ */
+export async function registerDaemonPeer(params: {
+  daemonId: string;
+  env: string;
+  hostname: string;
+  httpGatewayUrl: string | null;
+  socketHint: string | null;
+  pid: number;
+}): Promise<void> {
+  selfDaemonId = params.daemonId;
+  if (!client) return;
+  try {
+    const c = client;
+    const metadata = {
+      role: 'daemon',
+      hostname: params.hostname,
+      httpGatewayUrl: params.httpGatewayUrl,
+      socketHint: params.socketHint,
+      pid: params.pid,
+      registeredAt: new Date().toISOString(),
+    };
+    await c`
+      INSERT INTO coordination_agents (id, env, last_seen, total_sessions, metadata)
+      VALUES (
+        ${params.daemonId},
+        ${params.env},
+        NOW(),
+        0,
+        ${JSON.stringify(metadata)}::jsonb
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        env = EXCLUDED.env,
+        last_seen = NOW(),
+        metadata = COALESCE(coordination_agents.metadata, '{}'::jsonb) || EXCLUDED.metadata
+    `;
+  } catch (err) {
+    log.warn('registerDaemonPeer failed', {
+      daemonId: params.daemonId,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Touch last_seen for this daemon (periodic heartbeat).
+ */
+export async function heartbeatDaemonPeer(daemonId: string): Promise<void> {
+  if (!client) return;
+  try {
+    const c = client;
+    await c`
+      UPDATE coordination_agents
+        SET last_seen = NOW()
+      WHERE id = ${daemonId}
+        AND metadata->>'role' = 'daemon'
+    `;
+  } catch (err) {
+    log.warn('heartbeatDaemonPeer failed', { daemonId, error: String(err) });
+  }
+}
+
+/**
+ * List recently-seen daemon peers from Neon.
+ * Returns [] when Neon sync is disabled.
+ */
+export async function listDaemonPeers(opts?: {
+  staleAfterSeconds?: number;
+}): Promise<DaemonPeerRow[]> {
+  if (!client) return [];
+  const staleAfter = opts?.staleAfterSeconds ?? 300;
+  try {
+    const c = client;
+    const rows = await c`
+      SELECT id, env, last_seen, metadata
+      FROM coordination_agents
+      WHERE metadata->>'role' = 'daemon'
+        AND last_seen > NOW() - make_interval(secs => ${staleAfter})
+      ORDER BY last_seen DESC
+    `;
+    return (rows as Array<Record<string, unknown>>).map((r) => {
+      const meta =
+        r.metadata && typeof r.metadata === 'object' ? (r.metadata as Record<string, unknown>) : {};
+      return {
+        id: String(r.id ?? ''),
+        env: String(r.env ?? ''),
+        lastSeen: String(r.last_seen ?? ''),
+        hostname: meta.hostname == null ? null : String(meta.hostname),
+        httpGatewayUrl: meta.httpGatewayUrl == null ? null : String(meta.httpGatewayUrl),
+        socketHint: meta.socketHint == null ? null : String(meta.socketHint),
+        pid: typeof meta.pid === 'number' ? meta.pid : null,
+        role: 'daemon' as const,
+      };
+    });
+  } catch (err) {
+    log.warn('listDaemonPeers failed', { error: String(err) });
+    return [];
+  }
+}
+
 /** Reset module state. Test-only. */
 export function _resetForTesting(): void {
   client = null;
+  selfDaemonId = null;
 }

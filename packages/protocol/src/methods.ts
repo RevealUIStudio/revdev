@@ -19,6 +19,9 @@ export const RPC_METHODS = {
   'harness.health': 'harness.health',
   'harness.prune': 'harness.prune',
 
+  // GAP-154 Phase 5 — daemon peer registry (Neon role=daemon)
+  'daemon.peers': 'daemon.peers',
+
   // Agent sessions
   'session.register': 'session.register',
   'session.attach': 'session.attach',
@@ -152,4 +155,8 @@ export const RPC_METHODS = {
 
   // HTTP gateway token management (GAP-421 guardrail-2 remediation S5)
   'gateway.revokeToken': 'gateway.revokeToken',
+
+  // GAP-474 — operational workflows (registry under REVDEV_JV_ROOT / workflows)
+  'workflow.list': 'workflow.list',
+  'workflow.run': 'workflow.run',
 } as const;
