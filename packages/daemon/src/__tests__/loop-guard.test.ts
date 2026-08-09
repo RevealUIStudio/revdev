@@ -63,4 +63,19 @@ describe('LoopGuardRegistry', () => {
     expect(reg.stop('L4').status).toBe('stopped');
     expect(() => reg.tick({ loopId: 'L4', advanced: true })).toThrow(/stopped/);
   });
+
+  it('accumulates spend on tick and recordSpend', () => {
+    const reg = new LoopGuardRegistry();
+    reg.arm({ loopId: 'L5', agentId: 'a1', intervalMs: 120_000 });
+    expect(reg.spend('L5')).toEqual({ tokensIn: 0, tokensOut: 0, costMicros: 0 });
+    reg.tick({ loopId: 'L5', advanced: true, tokensIn: 10, tokensOut: 20, costMicros: 500 });
+    expect(reg.spend('L5')).toEqual({ tokensIn: 10, tokensOut: 20, costMicros: 500 });
+    reg.recordSpend({ loopId: 'L5', tokensIn: 5, tokensOut: 0, costMicros: 100 });
+    expect(reg.spend('L5')).toEqual({ tokensIn: 15, tokensOut: 20, costMicros: 600 });
+    const snap = reg.get('L5');
+    expect(snap?.spend.tokensIn).toBe(15);
+    // clone isolation
+    snap!.spend.tokensIn = 999;
+    expect(reg.spend('L5')?.tokensIn).toBe(15);
+  });
 });

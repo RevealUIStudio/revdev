@@ -2124,11 +2124,41 @@ registerHandler('loop.tick', async (params, db, ctx) => {
   const agentId = await requireVerifiedAgent(ctx, db, params);
   const loopId = str(params.loopId);
   const advanced = params.advanced === true;
+  const tokensIn = params.tokensIn === undefined ? undefined : num(params.tokensIn, 0);
+  const tokensOut = params.tokensOut === undefined ? undefined : num(params.tokensOut, 0);
+  const costMicros = params.costMicros === undefined ? undefined : num(params.costMicros, 0);
   const existing = loopGuards.get(loopId);
   if (existing && existing.agentId !== agentId) {
     throw new Error(`loop ${loopId} is owned by another agent`);
   }
-  const state = loopGuards.tick({ loopId, advanced });
+  const state = loopGuards.tick({
+    loopId,
+    advanced,
+    tokensIn,
+    tokensOut,
+    costMicros,
+  });
+  // Durable spend sample on the event log (queryable; pairs with process-local spend)
+  if (tokensIn || tokensOut || costMicros) {
+    try {
+      await db.query(
+        `INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`,
+        [
+          agentId,
+          'loop.spend_delta',
+          JSON.stringify({
+            loopId,
+            tokensIn: tokensIn ?? 0,
+            tokensOut: tokensOut ?? 0,
+            costMicros: costMicros ?? 0,
+            cumulative: state.spend,
+          }),
+        ],
+      );
+    } catch {
+      /* best-effort */
+    }
+  }
   if (state.status === 'not_advancing') {
     await db.query(
       `INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`,
@@ -2140,6 +2170,7 @@ registerHandler('loop.tick', async (params, db, ctx) => {
           consecutiveNoOps: state.consecutiveNoOps,
           noopLimit: state.noopLimit,
           signal: state.lastSignal,
+          spend: state.spend,
         }),
       ],
     );
@@ -2153,6 +2184,46 @@ registerHandler('loop.status', async (params, db, ctx) => {
   const state = loopGuards.get(loopId);
   if (!state) return { loop: null };
   if (state.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
+  return { loop: state };
+});
+
+registerHandler('loop.spend', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const state = loopGuards.get(loopId);
+  if (!state) return { loopId, spend: null };
+  if (state.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
+  return { loopId, spend: state.spend, tickCount: state.tickCount, status: state.status };
+});
+
+registerHandler('loop.record_spend', async (params, db, ctx) => {
+  const agentId = await requireVerifiedAgent(ctx, db, params);
+  const loopId = str(params.loopId);
+  const existing = loopGuards.get(loopId);
+  if (!existing) throw new Error(`unknown loopId: ${loopId}`);
+  if (existing.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
+  const tokensIn = params.tokensIn === undefined ? undefined : num(params.tokensIn, 0);
+  const tokensOut = params.tokensOut === undefined ? undefined : num(params.tokensOut, 0);
+  const costMicros = params.costMicros === undefined ? undefined : num(params.costMicros, 0);
+  const state = loopGuards.recordSpend({ loopId, tokensIn, tokensOut, costMicros });
+  try {
+    await db.query(
+      `INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`,
+      [
+        agentId,
+        'loop.spend_delta',
+        JSON.stringify({
+          loopId,
+          tokensIn: tokensIn ?? 0,
+          tokensOut: tokensOut ?? 0,
+          costMicros: costMicros ?? 0,
+          cumulative: state.spend,
+        }),
+      ],
+    );
+  } catch {
+    /* best-effort */
+  }
   return { loop: state };
 });
 

@@ -75,6 +75,8 @@ export const RPC_METHODS = {
   'loop.arm': 'loop.arm',
   'loop.tick': 'loop.tick',
   'loop.status': 'loop.status',
+  'loop.spend': 'loop.spend',
+  'loop.record_spend': 'loop.record_spend',
   'loop.pause': 'loop.pause',
   'loop.resume': 'loop.resume',
   'loop.stop': 'loop.stop',

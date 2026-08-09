@@ -338,6 +338,10 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       loopId: z.string().min(1).max(MAX_NAME_LENGTH),
       advanced: z.boolean(),
+      // Optional spend delta (GAP-362 residual metering)
+      tokensIn: z.number().int().min(0).max(100_000_000).optional(),
+      tokensOut: z.number().int().min(0).max(100_000_000).optional(),
+      costMicros: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
       actorAgentId,
     })
     .passthrough(),
@@ -345,6 +349,23 @@ export const schemas: Record<string, z.ZodType> = {
   'loop.status': z
     .object({
       loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.spend': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'loop.record_spend': z
+    .object({
+      loopId: z.string().min(1).max(MAX_NAME_LENGTH),
+      tokensIn: z.number().int().min(0).max(100_000_000).optional(),
+      tokensOut: z.number().int().min(0).max(100_000_000).optional(),
+      costMicros: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
       actorAgentId,
     })
     .passthrough(),
