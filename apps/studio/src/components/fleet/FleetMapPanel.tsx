@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type FleetMapPayload, readFleetMap } from '../../lib/fleet-map';
+import {
+  buildFleetMermaid,
+  type SnapshotEdge,
+  type SnapshotNode,
+} from '../../lib/fleet-map-graph';
 import Button from '../adapters/Button';
 import ErrorAlert from '../adapters/ErrorAlert';
 import PanelHeader from '../adapters/PanelHeader';
@@ -71,6 +76,24 @@ export default function FleetMapPanel() {
 
   const inits = useMemo(() => (data ? asInits(data.snapshot) : []), [data]);
   const free = useMemo(() => (data ? asFree(data.snapshot) : []), [data]);
+  const graph = useMemo(() => {
+    if (!data) return null;
+    const nodes = Array.isArray(data.snapshot.nodes)
+      ? (data.snapshot.nodes as SnapshotNode[])
+      : [];
+    const edges = Array.isArray(data.snapshot.edges)
+      ? (data.snapshot.edges as SnapshotEdge[])
+      : [];
+    return buildFleetMermaid(nodes, edges);
+  }, [data]);
+
+  const copyId = useCallback(async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+    } catch {
+      // clipboard may be denied in some WebView contexts
+    }
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -84,8 +107,9 @@ export default function FleetMapPanel() {
       />
 
       <p className="text-sm text-fg-muted">
-        Read-only view of the private TRACKER snapshot (initiatives, free surfaces, graph counts).
-        Agents keep YAML SSOT; this panel never writes the board.
+        Read-only visual roadmap: TRACKER snapshot graph (mermaid), initiatives, free surfaces.
+        Agents keep YAML SSOT; this panel never writes the board. Goal % comes from initiative
+        progress in the snapshot (spine projector soft-overlay; no daemon spawn).
       </p>
 
       <ErrorAlert message={error} />
@@ -123,6 +147,24 @@ export default function FleetMapPanel() {
               <div className="mt-1">STATE.json not present (run tracker sync).</div>
             )}
           </div>
+
+          {graph ? (
+            <section className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">
+                Roadmap graph ({graph.nodeCount} nodes / {graph.edgeCount} edges
+                {graph.truncated ? ', truncated' : ''})
+              </h2>
+              <pre
+                className="max-h-72 overflow-auto rounded-lg border border-edge bg-surface-2 p-3 text-xs text-fg"
+                data-testid="fleet-map-mermaid"
+              >
+                {graph.mermaid}
+              </pre>
+              <p className="text-xs text-fg-muted">
+                Paste into any mermaid renderer, or view TRACKER.graph.md in .jv for the full DAG.
+              </p>
+            </section>
+          ) : null}
 
           <section className="space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">
@@ -177,7 +219,16 @@ export default function FleetMapPanel() {
                 <tbody>
                   {free.slice(0, 20).map((row) => (
                     <tr key={row.id} className="border-t border-edge">
-                      <td className="px-3 py-2 font-mono text-xs">{row.id}</td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        <button
+                          type="button"
+                          className="text-left hover:underline"
+                          title="Copy gap id"
+                          onClick={() => void copyId(row.id)}
+                        >
+                          {row.id}
+                        </button>
+                      </td>
                       <td className="px-3 py-2">{row.priority ?? '—'}</td>
                       <td className="px-3 py-2 font-mono text-xs">{row.initiativeId ?? '—'}</td>
                     </tr>
