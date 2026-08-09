@@ -125,6 +125,9 @@ const EXEMPT_METHODS = new Set([
   // GAP-154 Phase 5: peer discovery is diagnostic (empty without Neon).
   // Dual-write still requires Pro coordination RPCs; listing peers alone is free.
   'daemon.peers',
+  // GAP-473: local .jv operational workflows (same class as /ops; Studio daily driver)
+  'workflow.list',
+  'workflow.run',
 ]);
 
 /**
