@@ -2,7 +2,7 @@
  * @vitest-environment node
  */
 import { describe, expect, it, vi } from 'vitest';
-import { waitForWorkCompleted, WORK_COMPLETED_EVENT } from '../wait-for-work.js';
+import { WORK_COMPLETED_EVENT, waitForWorkCompleted } from '../wait-for-work.js';
 
 describe('waitForWorkCompleted', () => {
   it('calls events.wait with work.completed defaults', async () => {
