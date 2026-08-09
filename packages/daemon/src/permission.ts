@@ -100,8 +100,6 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['agent.resize', 'routine'],
   ['agent.stop', 'routine'],
   ['agent.list', 'routine'],
-  // GAP-154 Phase 5 — read-only peer discovery (Neon role=daemon)
-  ['daemon.peers', 'routine'],
   // consequential
   ['file.write', 'consequential'],
   ['file.delete', 'consequential'],
@@ -142,6 +140,11 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   // Revokes a bearer credential — reversible (a new one can be paired), so
   // consequential rather than critical (GAP-421 guardrail-2 remediation S5).
   ['gateway.revokeToken', 'consequential'],
+  // GAP-154 Phase 5 — peer discovery (diagnostic; empty without Neon)
+  ['daemon.peers', 'routine'],
+  // GAP-474 — list is routine; run may trigger gated cleanup with fix:true
+  ['workflow.list', 'routine'],
+  ['workflow.run', 'consequential'],
 ]);
 
 /** Fail closed: unmapped method is critical (spec §5 / I2). */

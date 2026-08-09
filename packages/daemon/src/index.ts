@@ -71,6 +71,8 @@ import './agent.js';
 // in agent.js with real implementations. Must follow agent.js in import order.
 import './spawn.js';
 import './gateway-rpc.js';
+// GAP-474 — workflow.list / workflow.run over operational-workflow registry
+import './workflow-rpc.js';
 
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 export { SCHEMA_SQL } from './storage/schema.js';
