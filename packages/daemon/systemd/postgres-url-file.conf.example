@@ -8,17 +8,19 @@
 #     mkdir -p ~/.config/systemd/user/revdev-daemon.service.d
 #     cp packages/daemon/systemd/postgres-url-file.conf.example \
 #        ~/.config/systemd/user/revdev-daemon.service.d/postgres-url-file.conf
-#     # set revvault path + absolute revvault binary, then:
+#     # REQUIRED: set absolute revvault to the same binary as license-file.conf
+#     #   command -v revvault
+#     # Do NOT use /usr/local/bin/revvault unless that path exists — missing
+#     # binary yields ExecStartPre exit 127 and the unit never starts.
 #     systemctl --user daemon-reload && systemctl --user restart revdev-daemon
 #
-# Prefer a non-production Neon when dogfooding; path below is production —
-# override to a staging/dev vault path if one exists.
+# Working vault path on founder machine (2026-08-08): revealui/prod/db/postgres-url
+# (revealui/prod/neon/postgres-url was password-auth-failing — fix vault if re-used)
 #
 # Stream-safe: only vault *paths* appear in this unit file, never the URL.
 
 [Service]
-# Working SSOT for this machine's Neon (2026-08-08): revealui/prod/db/postgres-url
-# (revealui/prod/neon/postgres-url was stale/auth-failing — fix vault if re-used)
-ExecStartPre=/bin/sh -c 'umask 077; /usr/local/bin/revvault get revealui/prod/db/postgres-url --full > /tmp/revdev-postgres.url'
+# Replace /ABS/PATH/TO/revvault with `command -v revvault` (match license-file.conf).
+ExecStartPre=/bin/sh -c 'umask 077; /ABS/PATH/TO/revvault get revealui/prod/db/postgres-url --full > /tmp/revdev-postgres.url'
 Environment=POSTGRES_URL_FILE=/tmp/revdev-postgres.url
 ExecStopPost=/bin/sh -c 'shred -u /tmp/revdev-postgres.url 2>/dev/null || rm -f /tmp/revdev-postgres.url'
