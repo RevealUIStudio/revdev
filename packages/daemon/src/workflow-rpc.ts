@@ -1,8 +1,9 @@
 /**
- * GAP-473 — workflow.list / workflow.run
+ * GAP-474 — workflow.list / workflow.run
  *
- * Thin daemon surface over the .jv operational-workflow registry
- * (`~/revfleet/.jv/workflows/*.yml` + `scripts/workflow-run.js`).
+ * Thin daemon surface over the Studio operational-workflow registry
+ * (`workflows/*.yml` + `scripts/workflow-run.js` under `REVDEV_JV_ROOT`,
+ * defaulting to the private planning checkout beside this monorepo).
  * No second schema: list/run shell the same runner Studio `/ops` uses.
  *
  * Safety classes stay enforced inside workflow-run.js:
@@ -33,6 +34,7 @@ function resolveJvRoot(params: Record<string, unknown> | undefined): string {
   if (process.env.REVDEV_JV_ROOT && process.env.REVDEV_JV_ROOT.length > 0) {
     return process.env.REVDEV_JV_ROOT;
   }
+  // Default layout: <home>/revfleet/<private planning root> (not a public path claim).
   return join(homedir(), 'revfleet', '.jv');
 }
 

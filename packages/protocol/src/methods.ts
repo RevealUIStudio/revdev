@@ -156,7 +156,7 @@ export const RPC_METHODS = {
   // HTTP gateway token management (GAP-421 guardrail-2 remediation S5)
   'gateway.revokeToken': 'gateway.revokeToken',
 
-  // GAP-473 — .jv operational workflows (registry SSOT under ~/revfleet/.jv/workflows)
+  // GAP-474 — operational workflows (registry under REVDEV_JV_ROOT / workflows)
   'workflow.list': 'workflow.list',
   'workflow.run': 'workflow.run',
 } as const;

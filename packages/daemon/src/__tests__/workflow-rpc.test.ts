@@ -1,6 +1,6 @@
 /**
- * GAP-473 — workflow.list / workflow.run unit tests.
- * Uses a scratch registry so tests never touch the real ~/revfleet/.jv tree.
+ * GAP-474 — workflow.list / workflow.run unit tests.
+ * Uses a scratch registry so tests never touch a live planning checkout.
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';

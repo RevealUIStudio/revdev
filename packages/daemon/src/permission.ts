@@ -142,7 +142,7 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['gateway.revokeToken', 'consequential'],
   // GAP-154 Phase 5 — peer discovery (diagnostic; empty without Neon)
   ['daemon.peers', 'routine'],
-  // GAP-473 — list is routine; run may trigger gated cleanup with fix:true
+  // GAP-474 — list is routine; run may trigger gated cleanup with fix:true
   ['workflow.list', 'routine'],
   ['workflow.run', 'consequential'],
 ]);
