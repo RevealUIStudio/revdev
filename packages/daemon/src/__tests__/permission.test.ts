@@ -47,6 +47,11 @@ describe('METHOD_ACTION_CLASS coverage', () => {
   it('unmapped method fails closed to critical', () => {
     expect(classifyMethod('totally.unknown.method')).toBe('critical');
   });
+
+  // Prove-red: without METHOD_ACTION_CLASS entry, classifyMethod fails closed to critical.
+  it('classifies daemon.peers as routine (GAP-154 Phase 5)', () => {
+    expect(classifyMethod('daemon.peers')).toBe('routine');
+  });
 });
 
 describe('shadow would (manual simulation)', () => {

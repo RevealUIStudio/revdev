@@ -100,6 +100,8 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['agent.resize', 'routine'],
   ['agent.stop', 'routine'],
   ['agent.list', 'routine'],
+  // GAP-154 Phase 5 — read-only peer discovery (Neon role=daemon)
+  ['daemon.peers', 'routine'],
   // consequential
   ['file.write', 'consequential'],
   ['file.delete', 'consequential'],

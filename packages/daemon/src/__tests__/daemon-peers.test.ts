@@ -84,7 +84,7 @@ function createPeerNeonStore(): {
     return Promise.resolve([]);
   };
 
-  return { mock: mock as any, agents };
+  return { mock: mock as never, agents };
 }
 
 function rpc(
