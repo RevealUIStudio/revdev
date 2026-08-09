@@ -8,5 +8,13 @@ export default defineConfig({
   dts: false,
   clean: true,
   banner: { js: '#!/usr/bin/env node' },
-  external: ['@revdev/protocol'],
+  external: [
+    '@revdev/protocol',
+    '@revealui/knowledge-graph',
+    '@revealui/knowledge-graph/ingest',
+    '@revealui/db',
+    '@revealui/db/pool',
+    '@revealui/ai',
+    '@revealui/ai/embeddings',
+  ],
 });
