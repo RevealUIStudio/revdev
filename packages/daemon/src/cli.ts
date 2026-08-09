@@ -39,6 +39,8 @@ import './agent.js';
 import './spawn.js';
 // Register gateway.revokeToken (GAP-421 guardrail-2 remediation S5).
 import './gateway-rpc.js';
+// GAP-474 — workflow.list / workflow.run (same registry as Studio /ops).
+import './workflow-rpc.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { LICENSE_TIER_HELP, LicenseConfigError, LicenseExpiredError } from './license.js';
 import { startDaemon } from './server.js';
