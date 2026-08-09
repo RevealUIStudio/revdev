@@ -51,7 +51,7 @@ let client: NeonQueryFunction<false, false> | null = null;
  * (file path is stream-safe for systemd PrivateTmp materialization).
  */
 export function resolvePostgresUrl(databaseUrl?: string | undefined): string {
-  if (databaseUrl && databaseUrl.trim()) return databaseUrl.trim();
+  if (databaseUrl?.trim()) return databaseUrl.trim();
   const inline = process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim();
   if (inline) return inline;
   const filePath = process.env.POSTGRES_URL_FILE?.trim();

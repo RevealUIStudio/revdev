@@ -13,24 +13,24 @@
  *
  * Cleans up test sessions on both sockets when possible.
  */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { connect } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { connect } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const ROOT = new URL("..", import.meta.url).pathname;
-const DIST_CLI = join(ROOT, "packages/daemon/dist/cli.js");
+const ROOT = new URL('..', import.meta.url).pathname;
+const _DIST_CLI = join(ROOT, 'packages/daemon/dist/cli.js');
 
 function rpc(socketPath, method, params = {}) {
   return new Promise((resolve, reject) => {
     const sock = connect(socketPath);
-    let buf = "";
-    const frame = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) + "\n";
-    sock.on("connect", () => sock.write(frame));
-    sock.on("data", (d) => {
+    let buf = '';
+    const frame = `${JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })}\n`;
+    sock.on('connect', () => sock.write(frame));
+    sock.on('data', (d) => {
       buf += d.toString();
-      const nl = buf.indexOf("\n");
+      const nl = buf.indexOf('\n');
       if (nl === -1) return;
       sock.end();
       try {
@@ -41,7 +41,7 @@ function rpc(socketPath, method, params = {}) {
         reject(e);
       }
     });
-    sock.on("error", reject);
+    sock.on('error', reject);
     sock.setTimeout(15_000, () => {
       sock.destroy();
       reject(new Error(`timeout ${method}`));
@@ -52,26 +52,26 @@ function rpc(socketPath, method, params = {}) {
 async function main() {
   if (!process.env.POSTGRES_URL && !process.env.POSTGRES_URL_FILE) {
     console.error(
-      "FAIL: set POSTGRES_URL (or POSTGRES_URL_FILE) via revvault run — see script header",
+      'FAIL: set POSTGRES_URL (or POSTGRES_URL_FILE) via revvault run — see script header',
     );
     process.exit(2);
   }
 
   // Dynamic import after env is set so neon init can see POSTGRES_URL
   const { startDaemon } = await import(
-    pathToFileURL(join(ROOT, "packages/daemon/dist/index.js")).href
+    pathToFileURL(join(ROOT, 'packages/daemon/dist/index.js')).href
   );
 
   const stamp = Date.now().toString(36);
   const agentA = `gap154-dogfood-a-${stamp}`;
   const agentB = `gap154-dogfood-b-${stamp}`;
 
-  const dirA = await mkdtemp(join(tmpdir(), "gap154-a-"));
-  const dirB = await mkdtemp(join(tmpdir(), "gap154-b-"));
-  const sockA = join(dirA, "harness.sock");
-  const sockB = join(dirB, "harness.sock");
-  await writeFile(join(dirA, "trusted-client-fingerprint"), "");
-  await writeFile(join(dirB, "trusted-client-fingerprint"), "");
+  const dirA = await mkdtemp(join(tmpdir(), 'gap154-a-'));
+  const dirB = await mkdtemp(join(tmpdir(), 'gap154-b-'));
+  const sockA = join(dirA, 'harness.sock');
+  const sockB = join(dirB, 'harness.sock');
+  await writeFile(join(dirA, 'trusted-client-fingerprint'), '');
+  await writeFile(join(dirB, 'trusted-client-fingerprint'), '');
 
   let closeA;
   let closeB;
@@ -81,7 +81,7 @@ async function main() {
       socketPath: sockA,
       dataDir: dirA,
       pruneIntervalMs: 0,
-      trustedClientFingerprintPath: join(dirA, "trusted-client-fingerprint"),
+      trustedClientFingerprintPath: join(dirA, 'trusted-client-fingerprint'),
       trustedAnchorRequireRootOwned: false,
     });
     closeA = a.close;
@@ -91,76 +91,70 @@ async function main() {
       socketPath: sockB,
       dataDir: dirB,
       pruneIntervalMs: 0,
-      trustedClientFingerprintPath: join(dirB, "trusted-client-fingerprint"),
+      trustedClientFingerprintPath: join(dirB, 'trusted-client-fingerprint'),
       trustedAnchorRequireRootOwned: false,
     });
     closeB = b.close;
 
-    const healthA = await rpc(sockA, "harness.health");
+    const healthA = await rpc(sockA, 'harness.health');
     if (!healthA.neonSyncActive) {
-      console.error("FAIL: neonSyncActive=false on A — POSTGRES_URL not loading");
+      console.error('FAIL: neonSyncActive=false on A — POSTGRES_URL not loading');
       process.exit(1);
     }
-    console.log("ok neonSyncActive on A");
+    console.log('ok neonSyncActive on A');
 
-    await rpc(sockA, "session.register", {
+    await rpc(sockA, 'session.register', {
       agentId: agentA,
       agentName: agentA,
-      env: "gap154-dogfood-a",
-      task: "gap-154 fleet dogfood",
+      env: 'gap154-dogfood-a',
+      task: 'gap-154 fleet dogfood',
     });
-    console.log("ok registered", agentA);
+    console.log('ok registered', agentA);
 
     // Allow Neon write lag
     await new Promise((r) => setTimeout(r, 1500));
 
-    const fleetB = await rpc(sockB, "session.list", { scope: "fleet" });
+    const fleetB = await rpc(sockB, 'session.list', { scope: 'fleet' });
     const sessions = fleetB.sessions || [];
     const found = sessions.some(
       (s) => s.agentId === agentA || s.id === agentA || s.agent_id === agentA,
     );
     if (!found) {
       console.error(
-        "FAIL: B fleet list missing A",
+        'FAIL: B fleet list missing A',
         JSON.stringify(
           sessions.slice(0, 5).map((s) => ({ id: s.id, agentId: s.agentId || s.agent_id })),
         ),
       );
       process.exit(1);
     }
-    console.log("ok B session.list({scope:fleet}) sees A");
+    console.log('ok B session.list({scope:fleet}) sees A');
 
-    const peersA = await rpc(sockA, "daemon.peers", {});
+    const peersA = await rpc(sockA, 'daemon.peers', {});
     if (!peersA.neonSyncActive) {
-      console.error("FAIL: daemon.peers neonSyncActive false");
+      console.error('FAIL: daemon.peers neonSyncActive false');
       process.exit(1);
     }
-    console.log(
-      "ok daemon.peers",
-      "selfId=",
-      peersA.selfId,
-      "count=",
-      (peersA.peers || []).length,
-    );
+    console.log('ok daemon.peers', 'selfId=', peersA.selfId, 'count=', (peersA.peers || []).length);
 
     // Cleanup test sessions (best-effort; may need signed end — try unsigned register end path)
     try {
-      await rpc(sockA, "session.end", { agentId: agentA });
+      await rpc(sockA, 'session.end', { agentId: agentA });
     } catch {
       /* optional */
     }
     try {
-      await rpc(sockB, "session.register", {
+      await rpc(sockB, 'session.register', {
         agentId: agentB,
         agentName: agentB,
-        env: "gap154-dogfood-b",
+        env: 'gap154-dogfood-b',
       });
-      await rpc(sockB, "session.end", { agentId: agentB });
+      await rpc(sockB, 'session.end', { agentId: agentB });
     } catch {
       /* optional */
     }
 
-    console.log("RESULT=PASS gap-154 neon fleet dogfood");
+    console.log('RESULT=PASS gap-154 neon fleet dogfood');
   } finally {
     if (closeB) await closeB().catch(() => undefined);
     if (closeA) await closeA().catch(() => undefined);
@@ -170,6 +164,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("FAIL:", e.message);
+  console.error('FAIL:', e.message);
   process.exit(1);
 });
