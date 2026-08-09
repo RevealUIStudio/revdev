@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type FleetMapPayload, readFleetMap } from '../../lib/fleet-map';
-import {
-  buildFleetMermaid,
-  type SnapshotEdge,
-  type SnapshotNode,
-} from '../../lib/fleet-map-graph';
+import { buildFleetMermaid, type SnapshotEdge, type SnapshotNode } from '../../lib/fleet-map-graph';
 import Button from '../adapters/Button';
 import ErrorAlert from '../adapters/ErrorAlert';
 import PanelHeader from '../adapters/PanelHeader';
@@ -78,12 +74,8 @@ export default function FleetMapPanel() {
   const free = useMemo(() => (data ? asFree(data.snapshot) : []), [data]);
   const graph = useMemo(() => {
     if (!data) return null;
-    const nodes = Array.isArray(data.snapshot.nodes)
-      ? (data.snapshot.nodes as SnapshotNode[])
-      : [];
-    const edges = Array.isArray(data.snapshot.edges)
-      ? (data.snapshot.edges as SnapshotEdge[])
-      : [];
+    const nodes = Array.isArray(data.snapshot.nodes) ? (data.snapshot.nodes as SnapshotNode[]) : [];
+    const edges = Array.isArray(data.snapshot.edges) ? (data.snapshot.edges as SnapshotEdge[]) : [];
     return buildFleetMermaid(nodes, edges);
   }, [data]);
 

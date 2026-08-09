@@ -23,12 +23,7 @@ const MAX_GRAPH_NODES = 80;
 export function mermaidSafeId(raw: string): string {
   const chars = Array.from(raw);
   const mapped = chars.map((c) => {
-    if (
-      (c >= 'a' && c <= 'z') ||
-      (c >= 'A' && c <= 'Z') ||
-      (c >= '0' && c <= '9') ||
-      c === '_'
-    ) {
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c === '_') {
       return c;
     }
     return '_';
