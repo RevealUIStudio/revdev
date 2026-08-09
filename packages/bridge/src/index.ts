@@ -467,6 +467,28 @@ server.tool(
   },
 );
 
+// GAP-362: long-poll completion (prefer over client sub-minute polling)
+server.tool(
+  'events_wait',
+  'Long-poll for a daemon event (default work.completed). Prefer this over polling tasks_list or events_query on a timer (GAP-362 token-economy).',
+  {
+    eventType: z.string().optional().describe('Event type to wait for (default: work.completed)'),
+    sinceId: z.number().optional().describe('Only return events with id greater than this'),
+    timeoutMs: z
+      .number()
+      .optional()
+      .describe('Max wait milliseconds (daemon clamps 100–120000; default 30000)'),
+  },
+  async ({ eventType, sinceId, timeoutMs }) => {
+    const result = await daemon.call(RPC_METHODS['events.wait'], {
+      eventType: eventType ?? 'work.completed',
+      sinceId: sinceId ?? 0,
+      timeoutMs: timeoutMs ?? 30_000,
+    });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
 // -- Permission modes (GAP-294) ---------------------------------------------
 // Headless decision surface (design: permission.pending / decide / setMode).
 // decide + setMode are signature-required; operator must use a trusted signed

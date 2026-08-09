@@ -13,7 +13,9 @@ import {
   harnessSendMessage,
   harnessSessions,
   harnessTasks,
+  harnessWaitForWorkCompleted,
 } from '../lib/invoke';
+import { runWorkCompletedRefreshLoop } from '../lib/work-completed-refresh';
 import type {
   HarnessClaimResult,
   HarnessMessage,
@@ -24,8 +26,11 @@ import type {
 } from '../types';
 import { usePollingFetch } from './use-polling-fetch';
 
-/** Fallback poll interval for browser dev mode (no Tauri events available) */
-const BROWSER_POLL_MS = 5_000;
+/**
+ * Fallback poll for mail/sessions/reservations (no work.completed bus).
+ * GAP-362: task completion is driven by events.wait long-poll below, not this.
+ */
+const BROWSER_POLL_MS = 30_000;
 
 export type HarnessStatus = 'connected' | 'connecting' | 'disconnected' | 'error';
 
@@ -193,13 +198,24 @@ export function useHarness(agentId?: string): UseHarnessReturn {
     };
   }, []);
 
-  // Browser mode: fall back to polling via usePollingFetch (no Tauri
-  // event system available). Tauri mode subscribes to push events
-  // (above) and disables the helper by passing intervalMs=null. The
-  // helper returns void from this fetcher — actual state lives in the
-  // outer setState calls that loadAll() makes; we're using the helper
-  // here purely for its abort + isMounted hygiene wrapping the polled
-  // call.
+  // Browser mode: GAP-362 long-poll work.completed (prefer over sub-minute
+  // tasks.list polls), plus a slower fallback poll for mail/sessions.
+  // Tauri mode uses harness:state push events and disables both loops.
+  useEffect(() => {
+    if (isTauri()) return;
+    const ac = new AbortController();
+    runWorkCompletedRefreshLoop({
+      signal: ac.signal,
+      wait: (p) => harnessWaitForWorkCompleted(p),
+      onEvent: () => loadAllRef.current(),
+    }).catch(() => {
+      /* aborted or daemon down — fallback poll still runs */
+    });
+    return () => {
+      ac.abort();
+    };
+  }, []);
+
   const browserPollFn = useCallback(async (_signal: AbortSignal): Promise<void> => {
     await loadAllRef.current();
   }, []);
