@@ -19,8 +19,11 @@ const mockPayload = {
       },
     ],
     freeSurfaces: [{ id: 'GAP-154', priority: 'high', initiativeId: 'INIT-002' }],
-    nodes: [{}, {}],
-    edges: [{}],
+    nodes: [
+      { id: 'INIT-002', kind: 'initiative', label: 'INIT-002', priority: 'P0' },
+      { id: 'GAP-154', kind: 'gap', label: 'GAP-154' },
+    ],
+    edges: [{ from: 'INIT-002', to: 'GAP-154', relation: 'member' }],
   },
   state: null,
   generatedAt: '2026-08-08T00:00:00.000Z',
@@ -52,6 +55,8 @@ describe('FleetMapPanel', () => {
     expect(screen.getByRole('heading', { name: 'Fleet map' })).toBeInTheDocument();
     expect(screen.getByText('RevDev daily driver')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Free surfaces/i })).toBeInTheDocument();
+    expect(screen.getByTestId('fleet-map-mermaid')).toHaveTextContent('flowchart TB');
+    expect(screen.getByTestId('fleet-map-mermaid')).toHaveTextContent('INIT_002');
   });
 
   it('shows error when snapshot missing', async () => {
