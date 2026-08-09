@@ -18,6 +18,13 @@ export type {
 } from './harness.js';
 export { RPC_METHODS } from './methods.js';
 export type { JsonRpcRequest, JsonRpcResponse, RpcErrorCode } from './rpc.js';
+export {
+  waitForWorkCompleted,
+  WORK_COMPLETED_EVENT,
+  type DaemonRpc,
+  type WaitForWorkParams,
+  type WaitForWorkResult,
+} from './wait-for-work.js';
 export type {
   AgentMemoryEntry,
   AgentMessage,

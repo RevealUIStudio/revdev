@@ -144,4 +144,43 @@ describe('GAP-362 work.completed + loop guard', () => {
     })) as { loop: { status: string } };
     expect(stopped.loop.status).toBe('stopped');
   });
+
+  it('loop.tick + loop.spend accumulate token spend', async () => {
+    await rpcAgent(socketPath, 'loop.arm', {
+      loopId: 'loop-spend',
+      intervalMs: 120_000,
+    });
+    await rpcAgent(socketPath, 'loop.tick', {
+      loopId: 'loop-spend',
+      advanced: true,
+      tokensIn: 100,
+      tokensOut: 50,
+      costMicros: 1_000,
+    });
+    await rpcAgent(socketPath, 'loop.record_spend', {
+      loopId: 'loop-spend',
+      tokensIn: 10,
+      tokensOut: 5,
+      costMicros: 100,
+    });
+    const spent = (await rpcAgent(socketPath, 'loop.spend', {
+      loopId: 'loop-spend',
+    })) as {
+      spend: { tokensIn: number; tokensOut: number; costMicros: number };
+      tickCount: number;
+    };
+    expect(spent.spend).toEqual({ tokensIn: 110, tokensOut: 55, costMicros: 1_100 });
+    expect(spent.tickCount).toBe(1);
+
+    const status = (await rpcAgent(socketPath, 'loop.status', {
+      loopId: 'loop-spend',
+    })) as { loop: { spend: { tokensIn: number } } };
+    expect(status.loop.spend.tokensIn).toBe(110);
+
+    const q = (await rpcAgent(socketPath, 'events.query', {
+      eventType: 'loop.spend_delta',
+      limit: 10,
+    })) as { events: Array<{ event_type: string }> };
+    expect(q.events.some((e) => e.event_type === 'loop.spend_delta')).toBe(true);
+  });
 });
