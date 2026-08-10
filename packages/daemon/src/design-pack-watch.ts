@@ -116,7 +116,7 @@ function hashStream(filePath: string): Promise<string> {
 
 async function walkFiles(root: string, depth = 0): Promise<string[]> {
   if (depth > MAX_WALK_DEPTH) return [];
-  let entries;
+  let entries: Awaited<ReturnType<typeof readdir>>;
   try {
     entries = await readdir(root, { withFileTypes: true });
   } catch {
