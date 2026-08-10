@@ -33,7 +33,8 @@ import {
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { readRootOwnedFile } from './confinement.js';
-import { notifyAgentEnded, notifyDaemonStarted } from './eviction.js';
+import { DESIGN_PACK_MOVED_EVENT, designPackEvents } from './design-pack-events.js';
+import { notifyAgentEnded, notifyDaemonStarted, notifyDaemonStopping } from './eviction.js';
 import { GoalHarness, GoalStore } from './goals/index.js';
 import {
   guardRpcMethod,
@@ -2064,8 +2065,8 @@ registerHandler('events.wait', async (params, db, ctx) => {
   let row = await pollOnce();
   if (row) return { event: row, timedOut: false };
 
-  // Also race the in-process bus for work.completed to avoid missing the row
-  // under test/driver lag (still falls back to DB poll).
+  // Race the in-process bus for hot event types (work.completed, design.pack.moved)
+  // to avoid missing the row under test/driver lag (still falls back to DB poll).
   await new Promise<void>((resolve) => {
     let settled = false;
     const finish = () => {
@@ -2073,6 +2074,7 @@ registerHandler('events.wait', async (params, db, ctx) => {
       settled = true;
       clearInterval(timer);
       workEvents.off(WORK_COMPLETED_EVENT, onBus);
+      designPackEvents.off(DESIGN_PACK_MOVED_EVENT, onBus);
       resolve();
     };
     const onBus = () => {
@@ -2085,6 +2087,9 @@ registerHandler('events.wait', async (params, db, ctx) => {
     };
     if (eventType === WORK_COMPLETED_EVENT) {
       workEvents.on(WORK_COMPLETED_EVENT, onBus);
+    }
+    if (eventType === DESIGN_PACK_MOVED_EVENT) {
+      designPackEvents.on(DESIGN_PACK_MOVED_EVENT, onBus);
     }
     const timer = setInterval(() => {
       if (Date.now() >= deadline) {
@@ -3159,6 +3164,8 @@ export async function startDaemon(
           if (pruneTimer) clearInterval(pruneTimer);
           clearInterval(nonceSweepTimer);
           clearInterval(licenseRecheckTimer);
+          // GAP-323 (+ future): release FS watchers / long-lived resources.
+          await notifyDaemonStopping();
           if (httpGateway) await httpGateway.stop();
           server.close();
           for (const s of openSockets) {

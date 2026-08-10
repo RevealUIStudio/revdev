@@ -52,6 +52,11 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['files.check', 'routine'],
   ['files.release', 'routine'],
   ['files.list', 'routine'],
+  // GAP-323 design-pack watch (advisory; routine)
+  ['design.pack.status', 'routine'],
+  ['design.pack.watch', 'routine'],
+  ['design.pack.unwatch', 'routine'],
+  ['design.pack.scan', 'routine'],
   ['tasks.create', 'routine'],
   ['tasks.claim', 'routine'],
   ['tasks.complete', 'routine'],
