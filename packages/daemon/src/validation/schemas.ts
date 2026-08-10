@@ -232,6 +232,35 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
+  // -- Design pack watch (GAP-323) --------------------------------------------
+  'design.pack.status': z
+    .object({
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'design.pack.watch': z
+    .object({
+      repoRoot: safePath.optional(),
+      paths: z.array(safePath).max(MAX_PATHS_BATCH).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'design.pack.unwatch': z
+    .object({
+      actorAgentId,
+    })
+    .passthrough(),
+
+  'design.pack.scan': z
+    .object({
+      force: z.boolean().optional(),
+      paths: z.array(safePath).max(MAX_PATHS_BATCH).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+
   // -- Tasks ------------------------------------------------------------------
   'tasks.create': z
     .object({

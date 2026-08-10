@@ -48,6 +48,12 @@ export const RPC_METHODS = {
   'files.release': 'files.release',
   'files.list': 'files.list',
 
+  // GAP-323 — design-pack filesystem watch (native pair of GAP-322 advisory)
+  'design.pack.status': 'design.pack.status',
+  'design.pack.watch': 'design.pack.watch',
+  'design.pack.unwatch': 'design.pack.unwatch',
+  'design.pack.scan': 'design.pack.scan',
+
   // Task coordination
   'tasks.create': 'tasks.create',
   'tasks.claim': 'tasks.claim',

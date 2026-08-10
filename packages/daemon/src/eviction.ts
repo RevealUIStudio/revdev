@@ -48,3 +48,23 @@ export function onDaemonStarted(hook: DaemonStartedHook): void {
 export async function notifyDaemonStarted(db: PGlite): Promise<void> {
   for (const hook of startedHooks) await hook(db);
 }
+
+// ---------------------------------------------------------------------------
+// Daemon-stopping hooks (startDaemon close())
+//
+// FS watchers and other long-lived resources register here so server.close
+// can release them without importing handler modules (avoids cycles).
+// ---------------------------------------------------------------------------
+
+type DaemonStoppingHook = () => void | Promise<void>;
+const stoppingHooks: DaemonStoppingHook[] = [];
+
+/** Register a cleanup hook to run once at the start of daemon close(). */
+export function onDaemonStopping(hook: DaemonStoppingHook): void {
+  stoppingHooks.push(hook);
+}
+
+/** Fire all daemon-stopping hooks. Called by startDaemon's close() sequence. */
+export async function notifyDaemonStopping(): Promise<void> {
+  for (const hook of stoppingHooks) await hook();
+}
