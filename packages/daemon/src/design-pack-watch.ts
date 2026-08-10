@@ -27,15 +27,16 @@ import { onDaemonStarted, onDaemonStopping } from './eviction.js';
 import { syncEventLog } from './neon.js';
 import { registerHandler } from './server.js';
 
-export { DESIGN_PACK_MOVED_EVENT, designPackEvents, type DesignPackMovedPayload } from './design-pack-events.js';
+export {
+  DESIGN_PACK_MOVED_EVENT,
+  type DesignPackMovedPayload,
+  designPackEvents,
+} from './design-pack-events.js';
 
 const log = createLogger({ service: 'revdev-daemon/design-pack' });
 
 /** Relative roots under a revealui monorepo (code-over-docs from GAP-323). */
-export const DEFAULT_RELATIVE_ROOTS = [
-  'packages/tokens/design-context',
-  'preview-dist',
-] as const;
+export const DEFAULT_RELATIVE_ROOTS = ['packages/tokens/design-context', 'preview-dist'] as const;
 
 const DEBOUNCE_MS = 250;
 /** Cap walk depth so a mis-pointed root cannot fan out the whole disk. */
@@ -328,8 +329,7 @@ export class DesignPackWatcher {
         roots: next.roots,
         previousDigest,
         digest: next.digest,
-        changedFiles:
-          changedFiles.length > 0 ? changedFiles : next.files.map((f) => f.rel),
+        changedFiles: changedFiles.length > 0 ? changedFiles : next.files.map((f) => f.rel),
         fileCount: next.files.length,
         at: new Date().toISOString(),
       };
@@ -351,7 +351,6 @@ export class DesignPackWatcher {
 export const designPackWatcher = new DesignPackWatcher();
 
 onDaemonStopping(() => designPackWatcher.stop());
-
 
 // ---------------------------------------------------------------------------
 // RPC registration

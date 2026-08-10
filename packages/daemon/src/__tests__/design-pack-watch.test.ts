@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  DesignPackWatcher,
   DESIGN_PACK_MOVED_EVENT,
+  DesignPackWatcher,
   designPackEvents,
   diffSnapshots,
   resolveAutoWatchRoots,

@@ -33,6 +33,8 @@ import {
 } from './agent-identity-crypto.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { readRootOwnedFile } from './confinement.js';
+import { DESIGN_PACK_MOVED_EVENT, designPackEvents } from './design-pack-events.js';
+import { notifyAgentEnded, notifyDaemonStarted, notifyDaemonStopping } from './eviction.js';
 import { GoalHarness, GoalStore } from './goals/index.js';
 import {
   guardRpcMethod,
@@ -94,8 +96,6 @@ import {
 import { migrate } from './storage/migrate.js';
 import { initToolGuard } from './tool-guard/index.js';
 import { invalidParamsResponse, validateParams } from './validation/index.js';
-import { DESIGN_PACK_MOVED_EVENT, designPackEvents } from './design-pack-events.js';
-import { notifyAgentEnded, notifyDaemonStarted, notifyDaemonStopping } from './eviction.js';
 import { WORK_COMPLETED_EVENT, workEvents } from './work-events.js';
 
 const log = createLogger({ service: 'revdev-daemon' });
