@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PHASE_C_INFERENCE_SNAP, prepareInvoke } from '../skill-invoke.js';
+import {
+  classifySkillInvokeFailure,
+  extractSkillInvokeText,
+  PHASE_C_INFERENCE_SNAP,
+  prepareInvoke,
+  skillInvokeTimeoutMs,
+  SKILL_INVOKE_MIN_TIMEOUT_MS,
+} from '../skill-invoke.js';
 
 describe('prepareInvoke (GAP-293 Phase C)', () => {
   it('rejects unknown skills', () => {
@@ -22,5 +29,28 @@ describe('prepareInvoke (GAP-293 Phase C)', () => {
     if ('error' in result) return;
     expect(result.model).toBe(PHASE_C_INFERENCE_SNAP);
     expect(result.user).toContain('cannot execute tools');
+  });
+
+  it('reads reasoning_content when content is empty', () => {
+    expect(
+      extractSkillInvokeText({
+        choices: [{ message: { content: '', reasoning_content: 'traffic-light report' } }],
+      }),
+    ).toBe('traffic-light report');
+  });
+
+  it('does not use the 120s invoke cap for a doctor-sized prompt', () => {
+    const timeout = skillInvokeTimeoutMs('# doctor\n'.repeat(400), 'run doctor');
+    expect(timeout).toBeGreaterThan(120_000);
+    expect(timeout).toBeGreaterThanOrEqual(SKILL_INVOKE_MIN_TIMEOUT_MS);
+  });
+
+  it('classifies abort-as-timeout separately from connect failure', () => {
+    const abort = new Error('The operation was aborted due to timeout');
+    abort.name = 'AbortError';
+    expect(classifySkillInvokeFailure(abort)).toBe('timeout');
+    expect(classifySkillInvokeFailure(new Error('connect ECONNREFUSED 127.0.0.1:9090'))).toBe(
+      'connect',
+    );
   });
 });
