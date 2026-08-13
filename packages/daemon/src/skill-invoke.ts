@@ -113,11 +113,51 @@ export function skillInvokeTimeoutMs(
 
 export type SkillInvokeFailureKind = 'timeout' | 'connect' | 'other';
 
+const TIMEOUT_NAMES = new Set([
+  'TimeoutError',
+  'AbortError',
+  'HeadersTimeoutError',
+  'BodyTimeoutError',
+  'ConnectTimeoutError',
+]);
+
+const TIMEOUT_CODES = new Set([
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
+function walkErrorChain(err: unknown, visit: (e: Error) => boolean): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof Error) {
+      if (visit(current)) return true;
+      current = current.cause;
+      continue;
+    }
+    break;
+  }
+  return false;
+}
+
+/** Undici wraps 300s header timeouts as TypeError: fetch failed + cause. */
+export function isSkillInvokeTimeoutError(err: unknown): boolean {
+  return walkErrorChain(err, (e) => {
+    if (TIMEOUT_NAMES.has(e.name)) return true;
+    const code = (e as Error & { code?: string }).code;
+    if (code && TIMEOUT_CODES.has(code)) return true;
+    return /aborted due to timeout|The operation was aborted|Headers Timeout|Body Timeout/i.test(
+      e.message,
+    );
+  });
+}
+
 export function classifySkillInvokeFailure(err: unknown): SkillInvokeFailureKind {
+  if (isSkillInvokeTimeoutError(err)) return 'timeout';
   if (!(err instanceof Error)) return 'other';
-  if (err.name === 'TimeoutError' || err.name === 'AbortError') return 'timeout';
   const msg = err.message;
-  if (/aborted due to timeout|The operation was aborted/i.test(msg)) return 'timeout';
   if (/ECONNREFUSED|ENOTFOUND|ECONNRESET|fetch failed|Failed to parse URL/i.test(msg)) {
     return 'connect';
   }
