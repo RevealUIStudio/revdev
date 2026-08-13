@@ -1,6 +1,6 @@
 /**
  * GAP-293 Phase C — native workflow allowlist + prompt bind.
- * Snap: product default `nemotron-3-nano` (US-origin catalog SSOT).
+ * Snap: product default `gemma3` (US-origin catalog SSOT).
  */
 
 import { readFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ export const NATIVE_WORKFLOW_SKILL_IDS = [
   'revealui-checkpoint',
 ] as const;
 
-export const PHASE_C_INFERENCE_SNAP = 'nemotron-3-nano';
+export const PHASE_C_INFERENCE_SNAP = 'gemma3';
 
 const ALIASES: Record<string, (typeof NATIVE_WORKFLOW_SKILL_IDS)[number]> = {
   doctor: 'revealui-doctor',
