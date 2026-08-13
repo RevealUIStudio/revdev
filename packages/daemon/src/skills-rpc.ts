@@ -12,8 +12,8 @@ import { listSkillCatalog } from './skill-catalog.js';
 import {
   classifySkillInvokeFailure,
   extractSkillInvokeText,
-  parseSkillInvokeTimeoutOverride,
   PHASE_C_INFERENCE_SNAP,
+  parseSkillInvokeTimeoutOverride,
   prepareInvoke,
   skillInvokeTimeoutMs,
 } from './skill-invoke.js';

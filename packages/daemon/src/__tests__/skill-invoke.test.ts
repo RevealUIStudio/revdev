@@ -7,8 +7,8 @@ import {
   extractSkillInvokeText,
   PHASE_C_INFERENCE_SNAP,
   prepareInvoke,
-  skillInvokeTimeoutMs,
   SKILL_INVOKE_MIN_TIMEOUT_MS,
+  skillInvokeTimeoutMs,
 } from '../skill-invoke.js';
 
 describe('prepareInvoke (GAP-293 Phase C)', () => {
