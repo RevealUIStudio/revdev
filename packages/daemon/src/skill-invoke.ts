@@ -108,10 +108,7 @@ export interface SkillInvokeCompletionBody {
 }
 
 /** OpenAI-compat POST body for skills.invoke. Always bounded. */
-export function skillInvokeCompletionBody(
-  system: string,
-  user: string,
-): SkillInvokeCompletionBody {
+export function skillInvokeCompletionBody(system: string, user: string): SkillInvokeCompletionBody {
   return {
     model: PHASE_C_INFERENCE_SNAP,
     messages: [
