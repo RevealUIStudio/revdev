@@ -266,8 +266,12 @@ describe('enforceSkillTool (GAP-294 skill tools)', () => {
         `SELECT id FROM pending_approvals WHERE agent_id = $1 AND method = $2 AND status = 'pending'`,
         ['agent-a', 'skills.tool.Bash'],
       );
-      expect(pending.rows[0]?.id).toBeTruthy();
-      await decideApproval(db, pending.rows[0].id, 'approved', 'op-1');
+      const pendingId = pending.rows[0]?.id;
+      expect(pendingId).toBeTruthy();
+      if (!pendingId) {
+        throw new Error('expected a pending skills.tool.Bash approval');
+      }
+      await decideApproval(db, pendingId, 'approved', 'op-1');
 
       await enforceSkillTool('Bash', params, { db, agentId: 'agent-a' });
 
