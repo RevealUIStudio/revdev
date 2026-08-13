@@ -8,8 +8,11 @@ import { RPC_METHODS } from '@revdev/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIGRATIONS } from '../migrations/index.js';
 import {
+  ApprovalRequiredError,
   classifyMethod,
+  decideApproval,
   decideEnforcement,
+  enforceSkillTool,
   evaluateShadow,
   expectedClassifiedMethods,
   grantCoversMethod,
@@ -101,6 +104,13 @@ describe('evaluateShadow', () => {
     expect(r.actionClass).toBe('critical');
     expect(r.would).toBe('require_approval');
   });
+
+  it('skills.tool.Bash is critical under auto shadow-as', () => {
+    process.env.REVDEV_PERMISSION_SHADOW_AS = 'auto';
+    const r = evaluateShadow('skills.tool.Bash');
+    expect(r.actionClass).toBe('critical');
+    expect(r.would).toBe('require_approval');
+  });
 });
 
 describe('owner-countersigned judgment calls', () => {
@@ -117,6 +127,13 @@ describe('owner-countersigned judgment calls', () => {
   });
   it('memory.store is routine', () => {
     expect(classifyMethod('memory.store')).toBe('routine');
+  });
+  it('skills.invoke stays routine; Bash tool is critical; Read/Grep/Glob are routine', () => {
+    expect(classifyMethod('skills.invoke')).toBe('routine');
+    expect(classifyMethod('skills.tool.Read')).toBe('routine');
+    expect(classifyMethod('skills.tool.Grep')).toBe('routine');
+    expect(classifyMethod('skills.tool.Glob')).toBe('routine');
+    expect(classifyMethod('skills.tool.Bash')).toBe('critical');
   });
 });
 
@@ -139,6 +156,8 @@ describe('decideEnforcement (Phase 1)', () => {
   it('auto allows consequential and requires approval for critical', () => {
     expect(decideEnforcement('file.write', 'auto').action).toBe('allow');
     expect(decideEnforcement('agent.spawn', 'auto').action).toBe('require_approval');
+    expect(decideEnforcement('skills.tool.Bash', 'auto').action).toBe('require_approval');
+    expect(decideEnforcement('skills.tool.Read', 'manual').action).toBe('allow');
   });
 
   it('deny-list absorbs', () => {
@@ -217,6 +236,53 @@ describe('parseSessionPermissionMode (Phase 2)', () => {
     expect(classifyMethod('permission.grant')).toBe('critical');
     expect(classifyMethod('permission.revokeGrant')).toBe('critical');
     expect(classifyMethod('permission.listGrants')).toBe('routine');
+  });
+});
+
+describe('enforceSkillTool (GAP-294 skill tools)', () => {
+  let db: PGlite;
+
+  afterEach(async () => {
+    delete process.env.REVDEV_PERMISSION_MODE;
+    await db?.close().catch(() => {});
+  });
+
+  it(
+    'shadow allows Bash; manual queues then consumes a single-use approval',
+    async () => {
+      db = new PGlite();
+      await migrate(db, [...MIGRATIONS]);
+      const params = { command: 'echo skill-ok' };
+
+      process.env.REVDEV_PERMISSION_MODE = 'shadow';
+      await enforceSkillTool('Bash', params, { db, agentId: 'agent-a' });
+
+      process.env.REVDEV_PERMISSION_MODE = 'manual';
+      await expect(
+        enforceSkillTool('Bash', params, { db, agentId: 'agent-a' }),
+      ).rejects.toBeInstanceOf(ApprovalRequiredError);
+
+      const pending = await db.query<{ id: string }>(
+        `SELECT id FROM pending_approvals WHERE agent_id = $1 AND method = $2 AND status = 'pending'`,
+        ['agent-a', 'skills.tool.Bash'],
+      );
+      expect(pending.rows[0]?.id).toBeTruthy();
+      await decideApproval(db, pending.rows[0].id, 'approved', 'op-1');
+
+      await enforceSkillTool('Bash', params, { db, agentId: 'agent-a' });
+
+      await expect(
+        enforceSkillTool('Bash', params, { db, agentId: 'agent-a' }),
+      ).rejects.toBeInstanceOf(ApprovalRequiredError);
+    },
+    DB_TEST_TIMEOUT,
+  );
+
+  it('Read stays allowed in manual without an approval', async () => {
+    db = new PGlite();
+    await migrate(db, [...MIGRATIONS]);
+    process.env.REVDEV_PERMISSION_MODE = 'manual';
+    await enforceSkillTool('Read', { path: 'note.txt' }, { db, agentId: 'agent-a' });
   });
 });
 

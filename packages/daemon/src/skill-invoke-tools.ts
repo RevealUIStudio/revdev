@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
+import { enforceSkillTool, type SkillPermissionCtx, type SkillToolName } from './permission.js';
 import {
   isNativeWorkflowToolName,
   type NativeWorkflowToolName,
@@ -22,6 +23,7 @@ const CMD_TIMEOUT_MS = 30_000;
 export interface SkillToolContext {
   projectRoot: string;
   revskillsRoot?: string;
+  permission?: SkillPermissionCtx;
 }
 
 export interface SkillToolResult {
@@ -202,6 +204,7 @@ export async function executeSkillInvokeTool(
     return { name: call.name, ok: false, text: `tool ${call.name} is not on this skill allowlist` };
   }
   const args = parseArgs(call.arguments);
+  await enforceSkillTool(call.name as SkillToolName, args, ctx.permission);
   if (call.name === 'Read') return runRead(args, ctx);
   if (call.name === 'Grep') return runGrep(args, ctx);
   if (call.name === 'Glob') return runGlob(args, ctx);

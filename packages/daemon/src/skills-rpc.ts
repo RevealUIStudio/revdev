@@ -48,7 +48,7 @@ function asBool(value: unknown): boolean {
   return value === true;
 }
 
-registerHandler('skills.invoke', async (params) => {
+registerHandler('skills.invoke', async (params, db, ctx) => {
   const skillId = typeof params?.skillId === 'string' ? params.skillId : '';
   const dryRun = asBool(params?.dryRun);
   const roots = resolveSkillRoots(params);
@@ -63,8 +63,11 @@ registerHandler('skills.invoke', async (params) => {
   if (dryRun) {
     return { ...prepared, dryRun: true, ran: false };
   }
+  const agentId =
+    ctx.agentId ?? (typeof params?.actorAgentId === 'string' ? params.actorAgentId : undefined);
   return runSkillInvokeRuntime(prepared, {
     projectRoot: roots.projectRoot,
     revskillsRoot: roots.revskillsRoot,
+    permission: agentId ? { db, agentId } : undefined,
   });
 });

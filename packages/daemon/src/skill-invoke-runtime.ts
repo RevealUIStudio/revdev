@@ -9,6 +9,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod/v4';
+import { ApprovalRequiredError, PermissionDeniedError } from './permission.js';
 import {
   type NativeWorkflowToolName,
   PHASE_C_INFERENCE_SNAP,
@@ -172,6 +173,9 @@ export async function runSkillInvokeRuntime(
       if (chunk.type === 'error' && chunk.error) outputParts.push(`[error] ${chunk.error}`);
     }
   } catch (err) {
+    if (err instanceof ApprovalRequiredError || err instanceof PermissionDeniedError) {
+      throw err;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return {
       skillId: prepared.skillId,
