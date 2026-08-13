@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, useState } from 'react';
+import Button from './components/adapters/Button';
 import AgentPanel from './components/agent/AgentPanel';
 import LoginScreen from './components/auth/LoginScreen';
 import Dashboard from './components/dashboard/Dashboard';
@@ -75,7 +76,7 @@ function MainApp() {
   // whereas completing setup persists. Conflating the two used to mark setup
   // permanently complete on any close gesture (UX-durability audit, Theme 3).
   const [wizardDismissed, setWizardDismissed] = useState(false);
-  const { config, loading, setIntent, updateConfig } = useConfig();
+  const { config, loading, error, reload, setIntent, updateConfig } = useConfig();
 
   // Listen for tray-click navigation events from Rust
   useEffect(() => {
@@ -93,10 +94,32 @@ function MainApp() {
     setPage('editor');
   }
 
-  if (loading || !config) {
+  if (loading) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-2 bg-surface-0">
+        <div className="text-fg-muted">Loading your Studio setup</div>
+        <p className="text-sm text-fg-subtle">Reading the local config for this machine.</p>
+      </div>
+    );
+  }
+
+  if (!config) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface-0">
-        <div className="text-fg-muted">Loading...</div>
+        <div className="w-full max-w-sm space-y-3 px-6 text-center">
+          <h1 className="text-lg font-semibold text-fg">Studio could not read its local config</h1>
+          <p className="text-sm text-fg-muted">
+            {error ?? 'The config file is missing or unreadable.'}
+          </p>
+          <Button
+            variant="primary"
+            onClick={() => {
+              reload().catch(() => undefined);
+            }}
+          >
+            Try again
+          </Button>
+        </div>
       </div>
     );
   }

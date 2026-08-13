@@ -54,6 +54,7 @@ describe('SetupWizard', () => {
   it('renders "Setup RevealUI Studio" title', () => {
     renderWizard();
     expect(screen.getByText('Setup RevealUI Studio')).toBeInTheDocument();
+    expect(screen.getByText(/Agent Approvals live under Agent in the sidebar/)).toBeInTheDocument();
   });
 
   it('renders Skip button', () => {

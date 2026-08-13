@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getConfig, setConfig } from '../lib/config';
 import type { StudioConfig } from '../types';
 
@@ -6,6 +6,7 @@ interface UseConfigReturn {
   config: StudioConfig | null;
   loading: boolean;
   error: string | null;
+  reload: () => Promise<void>;
   updateConfig: (updates: Partial<StudioConfig>) => Promise<void>;
   setIntent: (intent: 'deploy' | 'develop') => Promise<void>;
 }
@@ -15,12 +16,21 @@ export function useConfig(): UseConfigReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getConfig()
-      .then(setConfigState)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setConfigState(await getConfig());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    reload().catch(() => undefined);
+  }, [reload]);
 
   const updateConfig = async (updates: Partial<StudioConfig>) => {
     if (!config) return;
@@ -37,5 +47,5 @@ export function useConfig(): UseConfigReturn {
     await updateConfig({ intent });
   };
 
-  return { config, loading, error, updateConfig, setIntent };
+  return { config, loading, error, reload, updateConfig, setIntent };
 }

@@ -63,6 +63,10 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
         }
       >
         <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-fg-muted">
+            This checklist sets up WSL, Nix, DevPod, and git identity. It is optional. Skip to use
+            Studio now. Agent Approvals live under Agent in the sidebar.
+          </p>
           {setup.loading && !setup.status && (
             <p className="text-sm text-fg-muted">Checking environment...</p>
           )}
@@ -83,7 +87,7 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
       <ConfirmDialog
         open={confirmingDismiss}
         title="Dismiss setup?"
-        body="Setup isn't finished. Dismiss anyway? You can reopen setup later."
+        body="Setup is not finished. Dismiss anyway? You can reopen Setup from the sidebar. Agent Approvals are under Agent."
         confirmLabel="Dismiss setup"
         cancelLabel="Keep going"
         onConfirm={() => {

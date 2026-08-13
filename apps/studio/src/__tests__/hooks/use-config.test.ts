@@ -64,6 +64,28 @@ describe('useConfig', () => {
     expect(result.current.error).toContain('Config read failed');
   });
 
+  it('reload retries getConfig after a failure', async () => {
+    vi.mocked(getConfig)
+      .mockRejectedValueOnce(new Error('Config read failed'))
+      .mockResolvedValueOnce(MOCK_CONFIG);
+
+    const { result } = renderHook(() => useConfig());
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(result.current.config).toBeNull();
+
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.config).toEqual(MOCK_CONFIG);
+    expect(result.current.error).toBeNull();
+  });
+
   it('updateConfig merges and persists changes', async () => {
     const { result } = renderHook(() => useConfig());
 
