@@ -152,6 +152,7 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   // GAP-474 — list is routine; run may trigger gated cleanup with fix:true
   ['workflow.list', 'routine'],
   ['workflow.run', 'consequential'],
+  ['skills.list', 'routine'],
 ]);
 
 /** Fail closed: unmapped method is critical (spec §5 / I2). */

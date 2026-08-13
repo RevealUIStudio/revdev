@@ -73,6 +73,7 @@ import './spawn.js';
 import './gateway-rpc.js';
 // GAP-474 — workflow.list / workflow.run over operational-workflow registry
 import './workflow-rpc.js';
+import './skills-rpc.js';
 // GAP-323 — design-pack watch (design.pack.* + auto-watch on start)
 import './design-pack-watch.js';
 

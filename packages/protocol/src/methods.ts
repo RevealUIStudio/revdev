@@ -167,4 +167,7 @@ export const RPC_METHODS = {
   // GAP-474 — operational workflows (registry under REVDEV_JV_ROOT / workflows)
   'workflow.list': 'workflow.list',
   'workflow.run': 'workflow.run',
+
+  // GAP-293 Phase B — read-only skill catalog (no execution)
+  'skills.list': 'skills.list',
 } as const;

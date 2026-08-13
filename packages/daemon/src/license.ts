@@ -128,6 +128,8 @@ const EXEMPT_METHODS = new Set([
   // GAP-474: local operational workflows (same class as /ops; Studio daily driver)
   'workflow.list',
   'workflow.run',
+  // GAP-293 Phase B: catalog read is a daily-driver inspect (no execution)
+  'skills.list',
   // GAP-323: design-pack advisory (native pair of GAP-322 SessionStart warn).
   // Free-tier daily-driver surface — no multi-agent coordination required.
   'design.pack.status',
