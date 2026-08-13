@@ -13,12 +13,16 @@ import { listSkillCatalog } from './skill-catalog.js';
 import {
   classifySkillInvokeFailure,
   extractSkillInvokeText,
+  extractSkillInvokeToolCalls,
   PHASE_C_INFERENCE_SNAP,
   parseSkillInvokeTimeoutOverride,
   prepareInvoke,
+  SKILL_INVOKE_MAX_TOOL_ROUNDS,
+  type SkillInvokeMessage,
   skillInvokeCompletionBody,
   skillInvokeTimeoutMs,
 } from './skill-invoke.js';
+import { executeSkillInvokeTool } from './skill-invoke-tools.js';
 
 function asDir(value: unknown): string | undefined {
   if (typeof value === 'string' && value.length > 0) return value;
@@ -84,30 +88,68 @@ registerHandler('skills.invoke', async (params) => {
     bodyTimeout: timeoutMs,
     connectTimeout: 30_000,
   });
+  const messages: SkillInvokeMessage[] = [
+    { role: 'system', content: prepared.system },
+    { role: 'user', content: prepared.user },
+  ];
+  const toolTrace: Array<{ name: string; ok: boolean }> = [];
   try {
-    const res = await fetch(`${SNAPS_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(timeoutMs),
-      dispatcher,
-      body: JSON.stringify(skillInvokeCompletionBody(prepared.system, prepared.user)),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      return {
-        error: `Inference Snap ${PHASE_C_INFERENCE_SNAP} failed (${res.status}): ${text}`,
-        model: PHASE_C_INFERENCE_SNAP,
-        hint: `Check ${SNAPS_BASE} (${PHASE_C_INFERENCE_SNAP} status). HTTP ${String(res.status)} is not a missing-snap signal.`,
-      };
+    for (let round = 0; round < SKILL_INVOKE_MAX_TOOL_ROUNDS; round += 1) {
+      const res = await fetch(`${SNAPS_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs),
+        dispatcher,
+        body: JSON.stringify(skillInvokeCompletionBody(messages, prepared.allowedTools)),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return {
+          error: `Inference Snap ${PHASE_C_INFERENCE_SNAP} failed (${res.status}): ${text}`,
+          model: PHASE_C_INFERENCE_SNAP,
+          hint: `Check ${SNAPS_BASE} (${PHASE_C_INFERENCE_SNAP} status). HTTP ${String(res.status)} is not a missing-snap signal.`,
+          toolsExecuted: toolTrace.length > 0,
+          toolTrace,
+        };
+      }
+      const payload: unknown = await res.json();
+      const calls = extractSkillInvokeToolCalls(payload);
+      if (calls.length === 0) {
+        return {
+          skillId: prepared.skillId,
+          model: PHASE_C_INFERENCE_SNAP,
+          text: extractSkillInvokeText(payload),
+          ran: true,
+          toolsExecuted: toolTrace.length > 0,
+          toolTrace,
+          timeoutMs,
+        };
+      }
+      messages.push({
+        role: 'assistant',
+        content: extractSkillInvokeText(payload),
+        tool_calls: calls,
+      });
+      for (const call of calls) {
+        const result = await executeSkillInvokeTool(call, prepared.allowedTools, {
+          projectRoot: roots.projectRoot,
+          revskillsRoot: roots.revskillsRoot,
+        });
+        toolTrace.push({ name: result.name, ok: result.ok });
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: result.text,
+        });
+      }
     }
-    const payload: unknown = await res.json();
-    const text = extractSkillInvokeText(payload);
     return {
       skillId: prepared.skillId,
       model: PHASE_C_INFERENCE_SNAP,
-      text,
+      text: 'Tool loop reached SKILL_INVOKE_MAX_TOOL_ROUNDS without a final report.',
       ran: true,
-      toolsExecuted: false,
+      toolsExecuted: toolTrace.length > 0,
+      toolTrace,
       timeoutMs,
     };
   } catch (err) {
