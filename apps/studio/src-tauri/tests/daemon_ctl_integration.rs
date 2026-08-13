@@ -91,9 +91,20 @@ async fn daemon_lifecycle_start_status_stop() {
     let pid = daemon_ctl::daemon_start().await.expect("daemon_start succeeds");
     assert!(pid > 0);
 
-    // Up: pid file + process + reachable socket.
-    let during = daemon_ctl::daemon_status().await.expect("status (up)");
-    assert!(during.running, "daemon should be running");
+    // Up: pid file + process + reachable socket. Poll briefly: start
+    // returns on ping, and status.running is the pid file.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let during = loop {
+        let status = daemon_ctl::daemon_status().await.expect("status (up)");
+        if status.running {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "daemon should be running"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
     assert_eq!(during.pid, Some(pid), "pid file matches the spawned pid");
     assert!(during.reachable, "daemon should answer ping");
 

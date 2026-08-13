@@ -206,10 +206,19 @@ console.log('');
 console.log('  RevDev Daemon v0.1.0');
 console.log('  ────────────────────');
 
+// Write the PID file BEFORE listen. Studio liveness is the pid file
+// (`daemon_status.running`). startDaemon accepts ping as soon as the
+// socket binds, so a post-listen write races: start returns, status
+// reads a missing pid, CI reports "daemon should be running".
+await mkdir(dirname(pidFile), { recursive: true });
+await writeFile(pidFile, String(process.pid));
+console.log(`[daemon] PID ${process.pid} written to ${pidFile}`);
+
 let daemon: Awaited<ReturnType<typeof startDaemon>>;
 try {
   daemon = await startDaemon(config);
 } catch (err) {
+  await unlink(pidFile).catch(() => {});
   // Fail-closed license errors are operator-actionable, not crashes:
   // initLicenseGuard already logged the CRITICAL detail for an expired
   // license; surface a config error then exit non-zero with no stack trace.
@@ -222,11 +231,6 @@ try {
   }
   throw err;
 }
-
-// Write PID file so supervisors and Studio can find us
-await mkdir(dirname(pidFile), { recursive: true });
-await writeFile(pidFile, String(process.pid));
-console.log(`[daemon] PID ${process.pid} written to ${pidFile}`);
 
 // Graceful shutdown — clean up PID file and socket
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
