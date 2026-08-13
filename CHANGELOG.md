@@ -34,6 +34,9 @@ Dates are ISO 8601 (UTC).
   reject-with-receipt (`-32004`, `pending_approvals` queue). `permission.pending`
   + signed `permission.decide` (no self-approval). Migration 0007. Default remains
   shadow until the operator sets the env.
+- **GAP-294 skill-tool enforce.** `skills.invoke` inner tools use the same
+  queue. `skills.tool.Read` / `Grep` / `Glob` are routine. `skills.tool.Bash`
+  is critical (auto still requires approval). Install default stays shadow.
 
 ### Fixed
 

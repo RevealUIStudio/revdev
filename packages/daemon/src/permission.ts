@@ -154,7 +154,26 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['workflow.run', 'consequential'],
   ['skills.list', 'routine'],
   ['skills.invoke', 'routine'],
+  // Inner tools of skills.invoke (not standalone RPCs). Bash is a shell, so
+  // critical: auto mode still requires approval (policy floor). Reads stay routine.
+  ['skills.tool.Read', 'routine'],
+  ['skills.tool.Grep', 'routine'],
+  ['skills.tool.Glob', 'routine'],
+  ['skills.tool.Bash', 'critical'],
 ]);
+
+export const SKILL_TOOL_METHODS = {
+  Read: 'skills.tool.Read',
+  Grep: 'skills.tool.Grep',
+  Glob: 'skills.tool.Glob',
+  Bash: 'skills.tool.Bash',
+} as const;
+
+export type SkillToolName = keyof typeof SKILL_TOOL_METHODS;
+
+export function skillToolMethod(name: SkillToolName): string {
+  return SKILL_TOOL_METHODS[name];
+}
 
 /** Fail closed: unmapped method is critical (spec §5 / I2). */
 export function classifyMethod(method: string): ActionClass {
@@ -725,6 +744,16 @@ export function summarizeParams(
   return bits.join(' ').slice(0, 240);
 }
 
+export class PermissionDeniedError extends Error {
+  readonly code = APPROVAL_REQUIRED_CODE;
+  readonly data: { kind: 'permission-denied'; method: string; reason: string };
+  constructor(method: string, reason: string) {
+    super(`Permission denied for ${method}`);
+    this.name = 'PermissionDeniedError';
+    this.data = { kind: 'permission-denied', method, reason };
+  }
+}
+
 export class ApprovalRequiredError extends Error {
   readonly code = APPROVAL_REQUIRED_CODE;
   readonly data: {
@@ -950,10 +979,54 @@ export function parseSessionPermissionMode(raw: unknown): SessionPermissionMode 
   return null;
 }
 
+export interface SkillPermissionCtx {
+  db: PGlite;
+  agentId: string;
+}
+
 /**
- * Effective mode for a call: session `permission_mode` override, else daemon default.
- * Spec §3: effective = per-session override ?? daemon default.
+ * GAP-294 enforce for skills.invoke inner tools. Shadow observes only.
+ * Missing session + non-shadow + non-routine fails closed.
  */
+export async function enforceSkillTool(
+  toolName: SkillToolName,
+  params: Record<string, unknown>,
+  ctx: SkillPermissionCtx | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const method = skillToolMethod(toolName);
+  const mode = ctx
+    ? await resolveEffectiveMode(ctx.db, ctx.agentId, env)
+    : resolvePermissionMode(env);
+
+  if (ctx) {
+    emitPermissionShadowEvent(ctx.db, ctx.agentId, method, evaluateShadow(method, env));
+  }
+
+  if (mode === 'shadow') return;
+
+  const decision = decideEnforcement(method, mode, env);
+  if (decision.action === 'allow') return;
+
+  if (!ctx) {
+    throw new PermissionDeniedError(method, 'no-session');
+  }
+
+  if (decision.action === 'deny') {
+    throw new PermissionDeniedError(method, decision.reason);
+  }
+
+  if (mode === 'agent-scoped' || decision.reason === 'agent_scoped') {
+    const grantHit = await tryConsumeGrant(ctx.db, ctx.agentId, method, params);
+    if (grantHit) return;
+  }
+  const consumed = await tryConsumeApproval(ctx.db, ctx.agentId, method, params);
+  if (!consumed) {
+    await queueApprovalRequired(ctx.db, ctx.agentId, method, params);
+  }
+}
+
+/** Effective mode: session permission_mode override, else daemon default (spec §3). */
 export async function resolveEffectiveMode(
   db: PGlite,
   agentId: string | null | undefined,
