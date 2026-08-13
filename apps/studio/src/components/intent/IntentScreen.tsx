@@ -37,10 +37,11 @@ export default function IntentScreen({ onSelect }: IntentScreenProps) {
         </div>
 
         <div className="grid grid-cols-2 gap-6">
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={() => setSelected('deploy')}
-            className={`rounded-xl border-2 p-6 text-left transition ${
+            className={`h-auto rounded-xl border-2 p-6 text-left ${
               selected === 'deploy'
                 ? 'border-brand bg-surface-2'
                 : 'border-edge bg-surface-1 hover:border-edge'
@@ -51,12 +52,13 @@ export default function IntentScreen({ onSelect }: IntentScreenProps) {
             <p className="mt-1 text-sm text-fg-muted">
               I want to run RevealUI for my business. Set up Vercel, database, Stripe, and go live.
             </p>
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={() => setSelected('develop')}
-            className={`rounded-xl border-2 p-6 text-left transition ${
+            className={`h-auto rounded-xl border-2 p-6 text-left ${
               selected === 'develop'
                 ? 'border-brand bg-surface-2'
                 : 'border-edge bg-surface-1 hover:border-edge'
@@ -67,7 +69,7 @@ export default function IntentScreen({ onSelect }: IntentScreenProps) {
             <p className="mt-1 text-sm text-fg-muted">
               I want to contribute to RevealUI. Set up the dev environment with WSL, Nix, and tools.
             </p>
-          </button>
+          </Button>
         </div>
 
         <div className="mt-8 flex flex-col items-center gap-4">

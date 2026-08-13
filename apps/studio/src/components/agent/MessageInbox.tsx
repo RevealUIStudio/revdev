@@ -1,5 +1,8 @@
+import { Select, Textarea } from '@revealui/presentation';
 import { useState } from 'react';
 import type { HarnessMessage, HarnessSession } from '../../types';
+import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 
 interface MessageInboxProps {
   messages: HarnessMessage[];
@@ -66,21 +69,25 @@ export default function MessageInbox({
         ) : null}
         <div className="ml-auto flex gap-1">
           {unreadCount > 0 ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => void handleMarkAllRead()}
               className="rounded px-2 py-1 text-[10px] text-fg-subtle hover:bg-surface-2 hover:text-fg-muted"
             >
               Mark all read
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setComposing(!composing)}
             className="rounded bg-info-subtle px-2 py-1 text-[10px] font-medium text-info hover:bg-info-subtle/70"
           >
             {composing ? 'Cancel' : 'Compose'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -88,11 +95,7 @@ export default function MessageInbox({
       {composing ? (
         <div className="border-b border-edge bg-surface-1/50 p-3">
           <div className="mb-2 flex gap-2">
-            <select
-              value={toAgent}
-              onChange={(e) => setToAgent(e.target.value)}
-              className="flex-1 rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg focus:border-brand focus:outline-none"
-            >
+            <Select value={toAgent} onChange={(e) => setToAgent(e.target.value)} className="flex-1">
               <option value="">To agent…</option>
               {sessions
                 .filter((s) => s.id !== agentId && !s.ended_at)
@@ -101,29 +104,31 @@ export default function MessageInbox({
                     {s.id}
                   </option>
                 ))}
-            </select>
+            </Select>
           </div>
-          <input
+          <Input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Subject"
-            className="mb-2 w-full rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
+            className="mb-2"
           />
-          <textarea
+          <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Message body…"
             rows={3}
-            className="mb-2 w-full resize-none rounded border border-edge bg-surface-2 px-2 py-1.5 text-xs text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
+            resizable={false}
+            className="mb-2"
           />
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={() => void handleSend()}
             disabled={sending || !toAgent.trim() || !subject.trim()}
-            className="rounded bg-brand px-3 py-1 text-xs font-medium text-on-brand hover:bg-brand-hover disabled:opacity-40"
           >
             {sending ? 'Sending…' : 'Send'}
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -137,14 +142,15 @@ export default function MessageInbox({
             const isExpanded = expanded === msg.id;
             const isIncoming = msg.to_agent === agentId;
             return (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 key={msg.id}
                 onClick={() => {
                   setExpanded(isExpanded ? null : msg.id);
                   if (!msg.read && isIncoming) void onMarkRead([msg.id]);
                 }}
-                className={`w-full rounded-lg border p-2.5 text-left transition-colors ${
+                className={`h-auto w-full rounded-lg border p-2.5 text-left transition-colors ${
                   msg.read ? 'border-edge bg-surface-1/40' : 'border-info/40 bg-info-subtle'
                 } hover:bg-surface-2/50`}
               >
@@ -163,7 +169,7 @@ export default function MessageInbox({
                     {msg.body}
                   </p>
                 ) : null}
-              </button>
+              </Button>
             );
           })}
         </div>

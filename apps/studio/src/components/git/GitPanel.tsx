@@ -4,6 +4,17 @@ const COMMIT_SUCCESS_FEEDBACK_MS = 3_000;
 const REMOTE_SUCCESS_FEEDBACK_MS = 2_000;
 
 import {
+  IconCheck,
+  IconChevronDown,
+  IconDownload,
+  IconEdit,
+  IconMinus,
+  IconPlus,
+  IconRefresh,
+  IconUpload,
+  Textarea,
+} from '@revealui/presentation';
+import {
   gitCommit,
   gitCreateBranch,
   gitDiffContent,
@@ -24,8 +35,10 @@ import type {
   GitFileEntry,
   GitStatusResult,
 } from '../../types';
+import Button from '../adapters/Button';
 import ConfirmDialog from '../adapters/ConfirmDialog';
 import ErrorAlert from '../adapters/ErrorAlert';
+import Input from '../adapters/Input';
 import DiffView from './DiffView';
 
 // ── Status badge ─────────────────────────────────────────────────────────────
@@ -77,8 +90,10 @@ function FileRow({
   const dir = entry.path.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/')) : '';
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={onSelect}
       className={`group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors ${
         selected ? 'bg-surface-3 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg'
@@ -136,7 +151,7 @@ function FileRow({
           </ActionBtn>
         )}
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -152,8 +167,10 @@ function ActionBtn({
   danger?: boolean;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="danger"
+      size="sm"
       title={title}
       onClick={onClick}
       className={`flex size-5 items-center justify-center rounded transition-colors ${
@@ -163,7 +180,7 @@ function ActionBtn({
       }`}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -234,7 +251,7 @@ function CommitForm({ stagedCount, onCommit }: CommitFormProps) {
 
   return (
     <div className="border-t border-edge p-3">
-      <textarea
+      <Textarea
         ref={textareaRef}
         value={msg}
         onChange={(e) => setMsg(e.target.value)}
@@ -244,22 +261,23 @@ function CommitForm({ stagedCount, onCommit }: CommitFormProps) {
         }
         disabled={stagedCount === 0 || busy}
         rows={3}
-        className="w-full resize-none rounded border border-edge bg-surface-0 px-2.5 py-2 text-xs text-fg placeholder:text-fg-subtle focus:border-edge-strong focus:outline-none disabled:opacity-40"
+        resizable={false}
       />
       {err && <p className="mt-1 text-[10px] text-error">{err}</p>}
       {ok && <p className="mt-1 text-[10px] text-success">{ok}</p>}
-      <button
+      <Button
         type="button"
+        variant="primary"
         onClick={() => {
           void handleCommit();
         }}
         disabled={!msg.trim() || stagedCount === 0 || busy}
-        className="mt-2 w-full rounded bg-brand px-3 py-1.5 text-xs font-medium text-on-brand transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-2 w-full"
       >
         {busy
           ? 'Committing…'
           : `Commit${stagedCount > 0 ? ` ${stagedCount} file${stagedCount !== 1 ? 's' : ''}` : ''}`}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -339,20 +357,21 @@ function NewBranchInput({
         }}
         className="flex gap-1"
       >
-        <input
+        <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="New branch name…"
           disabled={creating}
-          className="min-w-0 flex-1 rounded border border-edge-strong bg-surface-0 px-2 py-1 text-[11px] text-fg placeholder:text-fg-subtle focus:border-edge focus:outline-none disabled:opacity-40"
         />
-        <button
+        <Button
           type="submit"
+          variant="ghost"
+          size="sm"
           disabled={!name.trim() || creating}
           className="rounded bg-surface-3 px-2 py-1 text-[11px] text-fg hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
         >
           {creating ? '…' : 'Create'}
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -636,7 +655,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
               }}
               className="flex gap-1.5"
             >
-              <input
+              <Input
                 ref={pathInputRef}
                 value={draftPath}
                 onChange={(e) => setDraftPath(e.target.value)}
@@ -644,7 +663,6 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setEditingPath(false);
                 }}
-                className="min-w-0 flex-1 rounded border border-edge-strong bg-surface-2 px-2 py-1 text-xs text-fg focus:border-edge focus:outline-none"
               />
             </form>
           ) : (
@@ -652,8 +670,10 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
               <div className="flex items-center gap-1">
                 {/* Branch dropdown trigger */}
                 <div ref={branchDropdownRef} className="relative min-w-0 flex-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setBranchError(null);
                       setShowBranchDropdown((v) => !v);
@@ -665,7 +685,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                       {currentBranch}
                     </span>
                     <ChevronDownIcon />
-                  </button>
+                  </Button>
 
                   {showBranchDropdown && (
                     <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border border-edge bg-surface-2 shadow-xl">
@@ -674,9 +694,11 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                           <p className="px-3 py-2 text-[11px] text-fg-subtle">No branches found</p>
                         )}
                         {branches.map((b) => (
-                          <button
+                          <Button
                             key={b.name}
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => {
                               if (!b.is_current) void switchBranch(b.name);
                             }}
@@ -688,20 +710,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                             } disabled:opacity-60`}
                           >
                             {b.is_current ? (
-                              <svg
-                                className="size-3 shrink-0"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2.5}
-                                aria-hidden="true"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
+                              <IconCheck size="sm" className="size-3 shrink-0" />
                             ) : (
                               <span className="size-3 shrink-0" />
                             )}
@@ -709,7 +718,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                             {switchingTo === b.name && (
                               <span className="ml-auto text-[10px] text-fg-subtle">switching…</span>
                             )}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                       {branchError && (
@@ -724,8 +733,10 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
 
                 {/* Toolbar: pull, push, refresh */}
                 <div className="flex shrink-0 items-center gap-0.5">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => void handlePull()}
                     disabled={pullStatus === 'loading'}
                     title="Pull"
@@ -738,9 +749,11 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                     }`}
                   >
                     <DownloadIcon spinning={pullStatus === 'loading'} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => void handlePush()}
                     disabled={pushStatus === 'loading'}
                     title="Push"
@@ -753,22 +766,26 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                     }`}
                   >
                     <UploadIcon spinning={pushStatus === 'loading'} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => void refresh()}
                     disabled={loadingStatus}
                     title="Refresh"
                     className="flex size-6 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg-muted disabled:opacity-40"
                   >
                     <RefreshIcon spinning={loadingStatus} />
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               {/* Repo path */}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setDraftPath(repoPath);
                   setEditingPath(true);
@@ -777,14 +794,16 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                 title="Change repository path"
               >
                 {repoPath}
-              </button>
+              </Button>
 
               {/* Remote error — persists until the user dismisses it */}
               {remoteError && (
                 <div className="mt-0.5 flex items-start gap-1 text-[10px] text-error">
                   <span className="flex-1 break-words">{remoteError}</span>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setRemoteError(null);
                       if (pushStatus === 'error') setPushStatus('idle');
@@ -794,7 +813,7 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
                     aria-label="Dismiss error"
                   >
                     ×
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
@@ -905,24 +924,28 @@ export default function GitPanel({ onOpenEditor }: GitPanelProps) {
         {/* Tab bar */}
         <div className="flex items-center gap-3 border-b border-edge px-3 py-1.5">
           <div className="flex gap-0.5">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setRightTab('diff')}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 rightTab === 'diff' ? 'bg-surface-3 text-fg' : 'text-fg-subtle hover:text-fg-muted'
               }`}
             >
               Diff
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setRightTab('log')}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 rightTab === 'log' ? 'bg-surface-3 text-fg' : 'text-fg-subtle hover:text-fg-muted'
               }`}
             >
               Log
-            </button>
+            </Button>
           </div>
           {rightTab === 'diff' && selected && (
             <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1007,102 +1030,27 @@ function BranchIcon() {
 }
 
 function ChevronDownIcon() {
-  return (
-    <svg
-      className="size-3 shrink-0 text-fg-subtle"
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2.5}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  );
+  return <IconChevronDown size="sm" className="size-3 shrink-0 text-fg-subtle" />;
 }
 
 function RefreshIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg
-      className={`size-3.5 ${spinning ? 'animate-spin' : ''}`}
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path d="M4 4v5h5M20 20v-5h-5" />
-      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15" />
-    </svg>
-  );
+  return <IconRefresh size="sm" className={`size-3.5 ${spinning ? 'animate-spin' : ''}`} />;
 }
 
 function DownloadIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg
-      className={`size-3.5 ${spinning ? 'animate-pulse' : ''}`}
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-      />
-    </svg>
-  );
+  return <IconDownload size="sm" className={`size-3.5 ${spinning ? 'animate-pulse' : ''}`} />;
 }
 
 function UploadIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg
-      className={`size-3.5 ${spinning ? 'animate-pulse' : ''}`}
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-      />
-    </svg>
-  );
+  return <IconUpload size="sm" className={`size-3.5 ${spinning ? 'animate-pulse' : ''}`} />;
 }
 
 function PlusIcon() {
-  return (
-    <svg
-      className="size-3"
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2.5}
-    >
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
+  return <IconPlus size="sm" className="size-3" />;
 }
 
 function MinusIcon() {
-  return (
-    <svg
-      className="size-3"
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2.5}
-    >
-      <path d="M5 12h14" />
-    </svg>
-  );
+  return <IconMinus size="sm" className="size-3" />;
 }
 
 function UndoIcon() {
@@ -1122,20 +1070,5 @@ function UndoIcon() {
 }
 
 function PencilIcon() {
-  return (
-    <svg
-      className="size-3"
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-      />
-    </svg>
-  );
+  return <IconEdit size="sm" className="size-3" />;
 }

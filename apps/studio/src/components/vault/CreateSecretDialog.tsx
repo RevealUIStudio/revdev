@@ -1,3 +1,4 @@
+import { Textarea } from '@revealui/presentation';
 import { useState } from 'react';
 import Button from '../adapters/Button';
 import ErrorAlert from '../adapters/ErrorAlert';
@@ -71,13 +72,13 @@ export default function CreateSecretDialog({ onConfirm, onClose }: CreateSecretD
           <label htmlFor="secret-value" className="mb-1 block text-xs font-medium text-fg-muted">
             Value
           </label>
-          <textarea
+          <Textarea
             id="secret-value"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="Secret value..."
             rows={3}
-            className="w-full resize-none rounded-md border border-edge bg-surface-2 px-3 py-2 font-mono text-sm text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
+            className="[&_textarea]:font-mono"
           />
         </div>
       </form>

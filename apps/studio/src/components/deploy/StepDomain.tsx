@@ -1,3 +1,4 @@
+import { Checkbox, CheckboxField } from '@revealui/presentation';
 import { useState } from 'react';
 import type { StudioConfig, WizardData } from '../../types';
 import Button from '../adapters/Button';
@@ -132,19 +133,17 @@ export default function StepDomain({
           </div>
         )}
 
-        <label className="flex items-center gap-2 text-sm text-fg-muted cursor-pointer">
-          <input
-            type="checkbox"
+        <CheckboxField disabled={saved} className="text-sm text-fg-muted">
+          <Checkbox
             checked={signupOpen}
-            onChange={(e) => {
-              setSignupOpen(e.target.checked);
+            onChange={(checked) => {
+              setSignupOpen(checked);
               setSaved(false);
             }}
             disabled={saved}
-            className="rounded border-edge-strong bg-surface-2 text-brand focus:ring-brand"
           />
-          Allow public signups (REVEALUI_SIGNUP_OPEN)
-        </label>
+          <span>Allow public signups (REVEALUI_SIGNUP_OPEN)</span>
+        </CheckboxField>
 
         <Input
           id="brand-name"

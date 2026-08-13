@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { HarnessTask } from '../../types';
+import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 
 interface TaskBoardProps {
   tasks: HarnessTask[];
@@ -68,38 +70,41 @@ export default function TaskBoard({
         <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-muted">
           {tasks.length}
         </span>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setCreating(!creating)}
           className="ml-auto rounded bg-info-subtle px-2 py-1 text-[10px] font-medium text-info hover:bg-info-subtle/70"
         >
           {creating ? 'Cancel' : '+ Task'}
-        </button>
+        </Button>
       </div>
 
       {/* Create form */}
       {creating ? (
         <div className="border-b border-edge bg-surface-1/50 p-3">
-          <input
+          <Input
             value={newId}
             onChange={(e) => setNewId(e.target.value)}
             placeholder="Task ID (e.g. task-004)"
-            className="mb-2 w-full rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
+            className="mb-2"
           />
-          <input
+          <Input
             value={newDesc}
             onChange={(e) => setNewDesc(e.target.value)}
             placeholder="Description"
-            className="mb-2 w-full rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
+            className="mb-2"
           />
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={() => void handleCreate()}
             disabled={submitting || !newId.trim() || !newDesc.trim()}
-            className="rounded bg-brand px-3 py-1 text-xs font-medium text-on-brand hover:bg-brand-hover disabled:opacity-40"
           >
             {submitting ? 'Creating…' : 'Create'}
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -175,30 +180,36 @@ function TaskCard({ task, agentId, relativeTime, onClaim, onComplete, onRelease 
       {/* Actions */}
       <div className="mt-1.5 flex gap-1">
         {task.status === 'open' ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={onClaim}
             className="rounded bg-info-subtle px-2 py-0.5 text-[10px] font-medium text-info hover:bg-info-subtle/70"
           >
             Claim
-          </button>
+          </Button>
         ) : null}
         {task.status === 'claimed' && isOwned ? (
           <>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onComplete}
               className="rounded bg-success-subtle px-2 py-0.5 text-[10px] font-medium text-success hover:bg-success-subtle/70"
             >
               Complete
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onRelease}
               className="rounded bg-surface-3/40 px-2 py-0.5 text-[10px] font-medium text-fg-muted hover:bg-surface-3/60"
             >
               Release
-            </button>
+            </Button>
           </>
         ) : null}
       </div>

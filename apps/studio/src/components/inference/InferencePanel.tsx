@@ -9,7 +9,9 @@ import { useState } from 'react';
 
 import { useInference } from '../../hooks/use-inference';
 import type { LocalAiTier } from '../../types';
+import Button from '../adapters/Button';
 import ConfirmDialog from '../adapters/ConfirmDialog';
+import Input from '../adapters/Input';
 
 interface PendingDelete {
   kind: 'model' | 'snapshot';
@@ -84,13 +86,15 @@ export default function InferencePanel() {
             Manage local AI models — no cloud, no API keys, fully sovereign
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => void refresh()}
           className="rounded bg-surface-2 px-3 py-1.5 text-xs text-fg-muted transition-colors hover:bg-surface-3"
         >
           Refresh
-        </button>
+        </Button>
       </div>
 
       {error ? (
@@ -120,9 +124,11 @@ export default function InferencePanel() {
           {TIERS.map((t) => {
             const selected = activeTier === t.id;
             return (
-              <button
+              <Button
                 key={t.id}
                 type="button"
+                variant="ghost"
+                size="sm"
                 disabled={applyingTier}
                 onClick={() => void applyTier(t.id)}
                 className={`rounded-lg border px-2.5 py-2 text-left transition-colors disabled:opacity-50 ${
@@ -135,7 +141,7 @@ export default function InferencePanel() {
                 <span className="mt-0.5 block text-[10px] leading-snug text-fg-subtle">
                   {t.blurb}
                 </span>
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -216,26 +222,30 @@ export default function InferencePanel() {
                   <span className="inline-block rounded bg-success-subtle px-2 py-0.5 text-[10px] font-medium text-success">
                     Running
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => void stopOllama()}
                     className="rounded bg-error-subtle px-2 py-0.5 text-[10px] text-error transition-colors hover:bg-error-subtle/50"
                   >
                     Stop
-                  </button>
+                  </Button>
                 </>
               ) : (
                 <>
                   <span className="inline-block rounded bg-warning-subtle px-2 py-0.5 text-[10px] font-medium text-warning">
                     Stopped
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => void startOllama()}
                     className="rounded bg-success-subtle px-2 py-0.5 text-[10px] text-success transition-colors hover:bg-success-subtle/50"
                   >
                     Start
-                  </button>
+                  </Button>
                 </>
               )
             ) : (
@@ -265,23 +275,27 @@ export default function InferencePanel() {
                   <span className="rounded bg-success-subtle px-2 py-0.5 text-[10px] font-medium text-success">
                     Installed
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setPendingDelete({ kind: 'snapshot', name: snap.name })}
                     className="rounded px-2 py-0.5 text-[10px] text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error"
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => void installSnap(snap.name)}
                   disabled={installingSnap !== null}
                   className="shrink-0 rounded bg-warning-subtle px-3 py-1 text-[10px] font-medium text-warning transition-colors hover:bg-warning-subtle/50 disabled:opacity-40"
                 >
                   {installingSnap === snap.name ? 'Installing…' : 'Install'}
-                </button>
+                </Button>
               )}
             </div>
           ))}
@@ -308,20 +322,22 @@ export default function InferencePanel() {
             }}
             className="mb-3 flex gap-2"
           >
-            <input
+            <Input
               value={pullInput}
               onChange={(e) => setPullInput(e.target.value)}
               placeholder="Pull a model (e.g. gemma3:1b)"
               disabled={pulling}
-              className="flex-1 rounded border border-edge-strong bg-surface-2 px-2.5 py-1.5 text-xs text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none disabled:opacity-50"
+              className="flex-1"
             />
-            <button
+            <Button
               type="submit"
+              variant="primary"
+              size="sm"
               disabled={pulling || !pullInput.trim()}
               className="shrink-0 rounded bg-brand px-3 py-1.5 text-xs font-medium text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-40"
             >
               {pulling ? 'Pulling…' : 'Pull'}
-            </button>
+            </Button>
           </form>
         ) : null}
 
@@ -335,13 +351,15 @@ export default function InferencePanel() {
                     {m.size} · {m.modified}
                   </span>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setPendingDelete({ kind: 'model', name: m.name })}
                   className="shrink-0 rounded px-2 py-0.5 text-[10px] text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error"
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             ))}
           </div>

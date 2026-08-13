@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import type { Theme } from '../../hooks/use-settings';
 import { useSettingsContext } from '../../hooks/use-settings';
 import { getDaemonUrl, pairWithDaemon, setDaemonToken, setDaemonUrl } from '../../lib/invoke';
+import Button from '../adapters/Button';
 import Card from '../adapters/Card';
+import Input from '../adapters/Input';
 import PanelHeader from '../adapters/PanelHeader';
 
 type SettingsTab = 'appearance' | 'connection' | 'about';
@@ -56,9 +58,10 @@ export default function SettingsPanel() {
       {/* Tab bar */}
       <div className="flex gap-1 rounded-lg bg-surface-1 p-1">
         {TABS.map((tab) => (
-          <button
+          <Button
             key={tab.key}
             type="button"
+            variant="ghost"
             onClick={() => setActiveTab(tab.key)}
             className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.key ? 'bg-surface-2 text-fg' : 'text-fg-subtle hover:text-fg-muted'
@@ -70,7 +73,7 @@ export default function SettingsPanel() {
                 LOCAL
               </span>
             )}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -81,9 +84,10 @@ export default function SettingsPanel() {
             <span className="text-sm text-fg-muted">Theme</span>
             <div className="flex gap-2">
               {(['dark', 'light', 'system'] as const).map((option) => (
-                <button
+                <Button
                   key={option}
                   type="button"
+                  variant={settings.theme === option ? 'primary' : 'ghost'}
                   onClick={() => updateSettings({ theme: option as Theme })}
                   className={`rounded-md px-4 py-2 text-sm capitalize transition-colors ${
                     settings.theme === option
@@ -92,7 +96,7 @@ export default function SettingsPanel() {
                   }`}
                 >
                   {option}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -106,21 +110,22 @@ export default function SettingsPanel() {
               <label htmlFor="settings-api-url" className="text-sm text-fg-muted">
                 API URL
               </label>
-              <input
+              <Input
                 id="settings-api-url"
                 type="text"
                 value={settings.apiUrl}
                 onChange={(e) => updateSettings({ apiUrl: e.target.value })}
-                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-fg-muted focus:border-edge focus:outline-none"
               />
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-sm text-fg-muted">Polling interval</span>
               <div className="flex gap-2">
                 {POLLING_OPTIONS.map((opt) => (
-                  <button
+                  <Button
                     key={opt.value}
                     type="button"
+                    variant={settings.pollingIntervalMs === opt.value ? 'primary' : 'ghost'}
+                    size="sm"
                     onClick={() => updateSettings({ pollingIntervalMs: opt.value })}
                     className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
                       settings.pollingIntervalMs === opt.value
@@ -129,7 +134,7 @@ export default function SettingsPanel() {
                     }`}
                   >
                     {opt.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -144,9 +149,10 @@ export default function SettingsPanel() {
               </div>
               <div className="flex gap-2">
                 {LOCAL_MODE_OPTIONS.map((opt) => (
-                  <button
+                  <Button
                     key={opt.label}
                     type="button"
+                    variant={settings.localMode === opt.value ? 'primary' : 'ghost'}
                     onClick={() => updateSettings({ localMode: opt.value })}
                     className={`rounded-md px-4 py-2 text-sm transition-colors ${
                       settings.localMode === opt.value
@@ -155,7 +161,7 @@ export default function SettingsPanel() {
                     }`}
                   >
                     {opt.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <span className="text-xs text-fg-subtle">
@@ -189,13 +195,15 @@ export default function SettingsPanel() {
               <span className="text-sm text-fg-subtle">revnation.discourse.group</span>
             </div>
             <div className="pt-2 border-t border-edge">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={resetSettings}
-                className="text-sm text-fg-subtle hover:text-fg-muted transition-colors"
+                className="h-auto p-0 text-sm text-fg-subtle hover:text-fg-muted transition-colors"
               >
                 Reset all settings to defaults
-              </button>
+              </Button>
             </div>
           </div>
         </Card>
@@ -254,53 +262,55 @@ function RemoteDaemonPairing() {
             <span className="text-sm text-fg-muted">
               Paired with <span className="text-fg">{pairedUrl}</span>
             </span>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={handleForget}
-              className="text-sm text-fg-subtle hover:text-fg-muted transition-colors"
+              className="h-auto p-0 text-sm text-fg-subtle hover:text-fg-muted transition-colors"
             >
               Forget
-            </button>
+            </Button>
           </div>
         )}
         <div className="flex flex-col gap-1">
           <label htmlFor="daemon-pair-url" className="text-sm text-fg-muted">
             Daemon URL
           </label>
-          <input
+          <Input
             id="daemon-pair-url"
             type="text"
             placeholder="http://127.0.0.1:7890"
             value={daemonUrl}
             onChange={(e) => setDaemonUrlInput(e.target.value)}
-            className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-fg-muted focus:border-edge focus:outline-none"
           />
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="daemon-pair-secret" className="text-sm text-fg-muted">
             Pairing secret
           </label>
-          <input
+          <Input
             id="daemon-pair-secret"
             type="password"
             placeholder="contents of the daemon's gateway-pairing-secret file"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
-            className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-fg-muted focus:border-edge focus:outline-none"
           />
           <span className="text-xs text-fg-subtle">
             Read from the 0600 secret file the daemon printed at boot. Never sent on the wire — used
             only to sign the pairing challenge locally.
           </span>
         </div>
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={() => void handlePair()}
           disabled={status.kind === 'pairing'}
-          className="self-start rounded-md bg-brand px-4 py-2 text-sm text-on-brand transition-colors disabled:opacity-60"
+          loading={status.kind === 'pairing'}
+          className="self-start"
         >
           {status.kind === 'pairing' ? 'Pairing…' : 'Pair'}
-        </button>
+        </Button>
         {status.message && (
           <span className={`text-xs ${status.kind === 'error' ? 'text-error' : 'text-fg-subtle'}`}>
             {status.message}

@@ -140,24 +140,28 @@ export default function LoginScreen() {
               Verify
             </Button>
             <div className="flex items-center justify-between text-xs">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={handleResend}
                 disabled={loading || resendBlocked}
-                className="text-fg-subtle hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-auto p-0 text-fg-subtle hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {resendBlocked ? `Resend in ${resendCooldown}s` : 'Resend code'}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setOtpSent(false);
                   setCode('');
                 }}
-                className="text-fg-subtle hover:text-fg-muted"
+                className="h-auto p-0 text-fg-subtle hover:text-fg-muted"
               >
                 Use different email
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
@@ -165,13 +169,14 @@ export default function LoginScreen() {
         {/* Local mode escape hatch (email step only) */}
         {showOtp ? null : (
           <div className="space-y-2 border-t border-edge pt-4">
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => updateSettings({ localMode: true })}
               className="w-full rounded-md border border-edge px-3 py-2 text-sm text-fg-muted transition-colors hover:border-brand hover:text-fg"
             >
               Continue in local mode
-            </button>
+            </Button>
             <p className="text-center text-[11px] text-fg-subtle">
               Use local tools (terminal, shell, git) without signing in. Account features stay
               disabled until you sign in.
