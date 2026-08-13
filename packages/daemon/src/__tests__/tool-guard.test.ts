@@ -354,9 +354,14 @@ describe('GAP-384 command-position scoping (prose false-positives)', () => {
     );
   });
 
-  it('allows npx package --yes but blocks npx -y package (GAP-388)', () => {
+  it('allows npx package --yes but blocks npx -y / --yes package (GAP-388 / GAP-389)', () => {
     expect(evaluateCommand('npx create-revealui@latest --yes', manifest)).toBeNull();
-    expect(evaluateCommand('npx -y cowsay moo', manifest)).not.toBeNull();
+    expect(evaluateCommand('npx create-revealui app --yes', manifest)).toBeNull();
+    expect(evaluateCommand('cd ~/x && npx create-revealui app --yes', manifest)).toBeNull();
+    expect(evaluateCommand('npx -y cowsay moo', manifest)?.reason).toContain('npx');
+    expect(evaluateCommand('npx --yes cowsay moo', manifest)?.reason).toContain('npx');
+    expect(evaluateCommand('cd ~/x && npx -y some-pkg', manifest)?.reason).toContain('npx');
+    expect(evaluateCommand('npx foo && npx -y bar', manifest)?.reason).toContain('npx');
   });
 });
 
