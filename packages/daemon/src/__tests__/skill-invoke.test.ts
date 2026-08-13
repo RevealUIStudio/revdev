@@ -7,7 +7,9 @@ import {
   extractSkillInvokeText,
   PHASE_C_INFERENCE_SNAP,
   prepareInvoke,
+  SKILL_INVOKE_MAX_COMPLETION_TOKENS,
   SKILL_INVOKE_MIN_TIMEOUT_MS,
+  skillInvokeCompletionBody,
   skillInvokeTimeoutMs,
 } from '../skill-invoke.js';
 
@@ -37,6 +39,18 @@ describe('prepareInvoke (GAP-293 Phase C)', () => {
         choices: [{ message: { content: '', reasoning_content: 'traffic-light report' } }],
       }),
     ).toBe('traffic-light report');
+  });
+
+  it('caps completion tokens so a small snap cannot decode without bound', () => {
+    const body = skillInvokeCompletionBody('# doctor\n', 'run doctor');
+    expect(body.model).toBe(PHASE_C_INFERENCE_SNAP);
+    expect(body.max_tokens).toBe(SKILL_INVOKE_MAX_COMPLETION_TOKENS);
+    expect(body.max_tokens).toBe(2_048);
+    expect(body.stream).toBe(false);
+    expect(body.messages).toEqual([
+      { role: 'system', content: '# doctor\n' },
+      { role: 'user', content: 'run doctor' },
+    ]);
   });
 
   it('does not use the 120s invoke cap for a doctor-sized prompt', () => {

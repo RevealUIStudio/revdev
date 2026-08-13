@@ -16,6 +16,7 @@ import {
   PHASE_C_INFERENCE_SNAP,
   parseSkillInvokeTimeoutOverride,
   prepareInvoke,
+  skillInvokeCompletionBody,
   skillInvokeTimeoutMs,
 } from './skill-invoke.js';
 
@@ -89,20 +90,14 @@ registerHandler('skills.invoke', async (params) => {
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(timeoutMs),
       dispatcher,
-      body: JSON.stringify({
-        model: PHASE_C_INFERENCE_SNAP,
-        messages: [
-          { role: 'system', content: prepared.system },
-          { role: 'user', content: prepared.user },
-        ],
-      }),
+      body: JSON.stringify(skillInvokeCompletionBody(prepared.system, prepared.user)),
     });
     if (!res.ok) {
       const text = await res.text();
       return {
         error: `Inference Snap ${PHASE_C_INFERENCE_SNAP} failed (${res.status}): ${text}`,
         model: PHASE_C_INFERENCE_SNAP,
-        hint: `Check ${SNAPS_BASE} (nemotron-3-nano status). HTTP ${String(res.status)} is not a missing-snap signal.`,
+        hint: `Check ${SNAPS_BASE} (${PHASE_C_INFERENCE_SNAP} status). HTTP ${String(res.status)} is not a missing-snap signal.`,
       };
     }
     const payload: unknown = await res.json();

@@ -91,7 +91,7 @@ Environment:
   REVDEV_DAEMON_SHUTDOWN_GRACE_MS  Max wait for in-flight handlers during close() (default: ${DAEMON_DEFAULTS.shutdownGracePeriodMs} ms = ${DAEMON_DEFAULTS.shutdownGracePeriodMs / 1000} s)
   REVDEV_PERMISSION_MODE       GAP-294 mode: shadow (default) | manual | auto | agent-scoped
                                shadow = would_* events only (no block). Flip only after soak review.
-  REVDEV_SKILLS_INVOKE_TIMEOUT_MS  Override skills.invoke wall-clock (default: prompt-sized, min 300s)
+  REVDEV_SKILLS_INVOKE_TIMEOUT_MS  Override skills.invoke wall-clock (default: prompt-sized, min 300s; completion is also capped at 2048 tokens)
   INFERENCE_SNAPS_BASE_URL     OpenAI-compat snap base (default: http://localhost:9090/v1)
 
 ${LICENSE_TIER_HELP}
