@@ -153,6 +153,7 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['workflow.list', 'routine'],
   ['workflow.run', 'consequential'],
   ['skills.list', 'routine'],
+  ['skills.invoke', 'routine'],
 ]);
 
 /** Fail closed: unmapped method is critical (spec §5 / I2). */

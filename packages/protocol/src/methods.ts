@@ -170,4 +170,6 @@ export const RPC_METHODS = {
 
   // GAP-293 Phase B — read-only skill catalog (no execution)
   'skills.list': 'skills.list',
+  // GAP-293 Phase C — native workflow generate on product default snap
+  'skills.invoke': 'skills.invoke',
 } as const;
