@@ -14,6 +14,4 @@ export default defineConfig({
   target: 'node24',
   banner: { js: '' },
   external: ['@electric-sql/pglite'],
-  // Bundle undici so systemd `node dist/cli.js` does not need a hoisted install.
-  noExternal: ['undici'],
 });
