@@ -53,4 +53,13 @@ describe('prepareInvoke (GAP-293 Phase C)', () => {
       'connect',
     );
   });
+
+  it('classifies undici fetch-failed header timeouts as timeout not connect', () => {
+    const cause = new Error('Headers Timeout Error');
+    cause.name = 'HeadersTimeoutError';
+    (cause as Error & { code?: string }).code = 'UND_ERR_HEADERS_TIMEOUT';
+    const wrapped = new Error('fetch failed', { cause });
+    wrapped.name = 'TypeError';
+    expect(classifySkillInvokeFailure(wrapped)).toBe('timeout');
+  });
 });

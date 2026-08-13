@@ -7,6 +7,7 @@
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { Agent } from 'undici';
 import { registerHandler } from './server.js';
 import { listSkillCatalog } from './skill-catalog.js';
 import {
@@ -77,11 +78,17 @@ registerHandler('skills.invoke', async (params) => {
     prepared.user,
     parseSkillInvokeTimeoutOverride(process.env.REVDEV_SKILLS_INVOKE_TIMEOUT_MS),
   );
+  const dispatcher = new Agent({
+    headersTimeout: timeoutMs,
+    bodyTimeout: timeoutMs,
+    connectTimeout: 30_000,
+  });
   try {
     const res = await fetch(`${SNAPS_BASE}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(timeoutMs),
+      dispatcher,
       body: JSON.stringify({
         model: PHASE_C_INFERENCE_SNAP,
         messages: [
@@ -131,5 +138,7 @@ registerHandler('skills.invoke', async (params) => {
       model: PHASE_C_INFERENCE_SNAP,
       hint: `Check ${SNAPS_BASE} and daemon logs.`,
     };
+  } finally {
+    await dispatcher.close();
   }
 });
