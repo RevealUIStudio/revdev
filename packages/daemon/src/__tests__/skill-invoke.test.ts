@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifySkillInvokeFailure,
   extractSkillInvokeText,
+  extractSkillInvokeToolCalls,
   PHASE_C_INFERENCE_SNAP,
   prepareInvoke,
   SKILL_INVOKE_MAX_COMPLETION_TOKENS,
@@ -30,7 +31,34 @@ describe('prepareInvoke (GAP-293 Phase C)', () => {
     expect('error' in result).toBe(false);
     if ('error' in result) return;
     expect(result.model).toBe(PHASE_C_INFERENCE_SNAP);
+    expect(result.allowedTools).toEqual([]);
     expect(result.user).toContain('cannot execute tools');
+  });
+
+  it('advertises allowed-tools from SKILL.md on the completion body', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'inv-tools-'));
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'SKILL.md');
+    writeFileSync(
+      path,
+      '---\nname: Doc\ndescription: d\nallowed-tools: Read, Bash\n---\n# doctor\n',
+    );
+    const result = prepareInvoke('doctor', [
+      { id: 'revealui-doctor', name: 'Doc', description: 'd', path, source: 'revskills' },
+    ]);
+    expect('error' in result).toBe(false);
+    if ('error' in result) return;
+    expect(result.allowedTools).toEqual(['Read', 'Bash']);
+    expect(result.user).toContain('Use the provided tools');
+    const body = skillInvokeCompletionBody(
+      [
+        { role: 'system', content: result.system },
+        { role: 'user', content: result.user },
+      ],
+      result.allowedTools,
+    );
+    expect(body.tools?.map((t) => t.function.name)).toEqual(['Read', 'Bash']);
+    expect(body.tool_choice).toBe('auto');
   });
 
   it('reads reasoning_content when content is empty', () => {
@@ -42,15 +70,33 @@ describe('prepareInvoke (GAP-293 Phase C)', () => {
   });
 
   it('caps completion tokens so a small snap cannot decode without bound', () => {
-    const body = skillInvokeCompletionBody('# doctor\n', 'run doctor');
+    const body = skillInvokeCompletionBody([
+      { role: 'system', content: '# doctor\n' },
+      { role: 'user', content: 'run doctor' },
+    ]);
     expect(body.model).toBe(PHASE_C_INFERENCE_SNAP);
     expect(body.max_tokens).toBe(SKILL_INVOKE_MAX_COMPLETION_TOKENS);
     expect(body.max_tokens).toBe(2_048);
     expect(body.stream).toBe(false);
+    expect(body.tools).toBeUndefined();
     expect(body.messages).toEqual([
       { role: 'system', content: '# doctor\n' },
       { role: 'user', content: 'run doctor' },
     ]);
+  });
+
+  it('extracts OpenAI tool_calls', () => {
+    expect(
+      extractSkillInvokeToolCalls({
+        choices: [
+          {
+            message: {
+              tool_calls: [{ id: 'c1', function: { name: 'Read', arguments: '{"path":"x"}' } }],
+            },
+          },
+        ],
+      }),
+    ).toEqual([{ id: 'c1', name: 'Read', arguments: '{"path":"x"}' }]);
   });
 
   it('does not use the 120s invoke cap for a doctor-sized prompt', () => {
