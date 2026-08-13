@@ -93,6 +93,33 @@ export const SKILL_INVOKE_DECODE_BUDGET_MS = 180_000;
 export const SKILL_INVOKE_MIN_TIMEOUT_MS = 300_000;
 export const SKILL_INVOKE_MAX_TIMEOUT_MS = 14_400_000;
 
+/**
+ * Hard cap on completion tokens. Unbounded decode lets a 270m CPU snap
+ * ramble until the wall-clock budget (minutes) while the client is gone.
+ * 2048 is enough for a Phase C traffic-light / diagnostic / checkpoint report.
+ */
+export const SKILL_INVOKE_MAX_COMPLETION_TOKENS = 2_048;
+
+export interface SkillInvokeCompletionBody {
+  model: typeof PHASE_C_INFERENCE_SNAP;
+  messages: Array<{ role: 'system' | 'user'; content: string }>;
+  max_tokens: typeof SKILL_INVOKE_MAX_COMPLETION_TOKENS;
+  stream: false;
+}
+
+/** OpenAI-compat POST body for skills.invoke. Always bounded. */
+export function skillInvokeCompletionBody(system: string, user: string): SkillInvokeCompletionBody {
+  return {
+    model: PHASE_C_INFERENCE_SNAP,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    max_tokens: SKILL_INVOKE_MAX_COMPLETION_TOKENS,
+    stream: false,
+  };
+}
+
 export function parseSkillInvokeTimeoutOverride(raw: string | undefined): number | null {
   if (!raw || raw.trim().length === 0) return null;
   const parsed = Number.parseInt(raw, 10);
