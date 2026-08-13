@@ -1,5 +1,14 @@
+import {
+  IconCode,
+  IconLock,
+  IconRefresh,
+  IconSettings,
+  IconTerminal,
+  IconUsers,
+} from '@revealui/presentation';
 import { useMemo, useState } from 'react';
 import type { Page } from '../../types';
+import Button from '../adapters/Button';
 
 interface SidebarProps {
   currentPage: Page;
@@ -102,8 +111,10 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           const isOpen = effectiveOpen[group.id];
           return (
             <div key={group.id} className="pb-1">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => toggleGroup(group.id)}
                 aria-expanded={isOpen}
                 className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide text-fg-muted uppercase hover:bg-surface-3 hover:text-fg"
@@ -112,13 +123,15 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
                 <span aria-hidden="true" className="text-[10px]">
                   {isOpen ? '▾' : '▸'}
                 </span>
-              </button>
+              </Button>
               {isOpen && (
                 <div className="mt-0.5 space-y-0.5">
                   {group.items.map((item) => (
-                    <button
+                    <Button
                       key={item.page}
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => onNavigate(item.page)}
                       className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
                         currentPage === item.page
@@ -128,7 +141,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
                     >
                       <NavIcon name={item.icon} />
                       {item.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -156,19 +169,7 @@ function NavIcon({ name }: { name: string }) {
         </svg>
       );
     case 'lock':
-      return (
-        <svg
-          className="size-4"
-          aria-hidden="true"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-      );
+      return <IconLock size="sm" />;
     case 'server':
       return (
         <svg
@@ -186,47 +187,11 @@ function NavIcon({ name }: { name: string }) {
         </svg>
       );
     case 'refresh':
-      return (
-        <svg
-          className="size-4"
-          aria-hidden="true"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path d="M4 4v5h5M20 20v-5h-5" />
-          <path d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15" />
-        </svg>
-      );
+      return <IconRefresh size="sm" />;
     case 'terminal':
-      return (
-        <svg
-          className="size-4"
-          aria-hidden="true"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <polyline points="4 17 10 11 4 5" />
-          <line x1="12" x2="20" y1="19" y2="19" />
-        </svg>
-      );
+      return <IconTerminal size="sm" />;
     case 'settings':
-      return (
-        <svg
-          className="size-4"
-          aria-hidden="true"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      );
+      return <IconSettings size="sm" />;
     case 'git':
       return (
         <svg
@@ -245,33 +210,9 @@ function NavIcon({ name }: { name: string }) {
         </svg>
       );
     case 'editor':
-      return (
-        <svg
-          className="size-4"
-          aria-hidden="true"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <polyline points="16 18 22 12 16 6" />
-          <polyline points="8 6 2 12 8 18" />
-        </svg>
-      );
+      return <IconCode size="sm" />;
     case 'agent':
-      return (
-        <svg
-          className="size-4"
-          aria-hidden="true"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <rect x="7" y="7" width="10" height="10" rx="1" />
-          <path d="M9 7V5m3 2V5m3 2V5M9 17v2m3-2v2m3-2v2M7 9H5m2 3H5m2 3H5M17 9h2m-2 3h2m-2 3h2" />
-        </svg>
-      );
+      return <IconUsers size="sm" />;
     case 'inference':
       return (
         <svg
@@ -304,18 +245,7 @@ function NavIcon({ name }: { name: string }) {
         </svg>
       );
     case 'wrench':
-      return (
-        <svg
-          className="size-4"
-          aria-hidden="true"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" />
-        </svg>
-      );
+      return <IconSettings size="sm" />;
     case 'map':
       return (
         <svg

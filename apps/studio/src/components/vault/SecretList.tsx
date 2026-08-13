@@ -1,5 +1,7 @@
+import { IconTrash } from '@revealui/presentation';
 import { useState } from 'react';
 import type { SecretInfo } from '../../types';
+import Button from '../adapters/Button';
 import ConfirmDialog from '../adapters/ConfirmDialog';
 
 interface SecretListProps {
@@ -34,16 +36,21 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
                 : 'text-fg-muted hover:bg-surface-3 hover:text-fg'
             }`}
           >
-            <button
+            <Button
               type="button"
-              className="flex-1 text-left"
+              variant="ghost"
+              className="h-auto flex-1 justify-start p-0 text-left"
               onClick={() => onSelect(secret.path)}
             >
-              <p className="truncate text-sm font-medium">{secret.path.split('/').pop()}</p>
-              <p className="truncate text-xs text-fg-subtle">{secret.path}</p>
-            </button>
-            <button
+              <span className="block w-full">
+                <p className="truncate text-sm font-medium">{secret.path.split('/').pop()}</p>
+                <p className="truncate text-xs text-fg-subtle">{secret.path}</p>
+              </span>
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={(e) => {
                 e.stopPropagation();
                 setPendingDelete(secret.path);
@@ -51,17 +58,8 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
               className="ml-2 hidden rounded p-1 text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error group-hover:flex"
               aria-label={`Delete ${secret.path}`}
             >
-              <svg
-                className="size-3.5"
-                aria-hidden="true"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-              </svg>
-            </button>
+              <IconTrash size="sm" className="size-3.5" />
+            </Button>
           </div>
         ))}
       </div>

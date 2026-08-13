@@ -1,4 +1,6 @@
 import { type ReactNode, useId, useState } from 'react';
+import Button from './Button';
+import Input from './Input';
 import Modal from './Modal';
 
 interface ConfirmDialogProps {
@@ -64,21 +66,12 @@ export default function ConfirmDialog({
       maxWidth="sm"
       footer={
         <>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-fg-muted hover:bg-surface-2"
-          >
+          <Button type="button" variant="ghost" onClick={handleClose}>
             {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={confirmDisabled}
-            className="rounded-md bg-error px-3 py-1.5 text-sm font-medium text-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-          >
+          </Button>
+          <Button type="button" variant="danger" onClick={handleConfirm} disabled={confirmDisabled}>
             {confirmLabel}
-          </button>
+          </Button>
         </>
       }
     >
@@ -100,7 +93,7 @@ export default function ConfirmDialog({
             <span className="text-xs text-fg-muted">
               Type <span className="font-mono text-fg">{typeToConfirm}</span> to confirm:
             </span>
-            <input
+            <Input
               id={inputId}
               type="text"
               value={typed}
@@ -108,7 +101,7 @@ export default function ConfirmDialog({
               autoComplete="off"
               // biome-ignore lint/a11y/noAutofocus: focusing the gate input is the expected UX
               autoFocus
-              className="w-full rounded border border-edge bg-surface-1 px-2 py-1 font-mono text-sm text-fg outline-none focus:border-error"
+              mono
             />
           </label>
         )}

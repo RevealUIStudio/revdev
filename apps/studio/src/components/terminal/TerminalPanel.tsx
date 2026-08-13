@@ -43,15 +43,17 @@ function TabButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={onClick}
       className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
         active ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-1 hover:text-fg'
       }`}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

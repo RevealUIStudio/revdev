@@ -1,4 +1,6 @@
+import { IconClose } from '@revealui/presentation';
 import { useCallback, useState } from 'react';
+import Button from '../adapters/Button';
 
 const STORAGE_KEY = 'revealui-welcome-dismissed';
 
@@ -14,23 +16,16 @@ export default function WelcomeBanner() {
 
   return (
     <div className="relative rounded-lg border border-brand/40 bg-brand-subtle px-5 py-4">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={dismiss}
-        className="absolute right-3 top-3 text-fg-subtle hover:text-fg-muted"
+        className="absolute right-3 top-3 p-1 text-fg-subtle hover:text-fg-muted"
         aria-label="Dismiss welcome message"
       >
-        <svg
-          className="size-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden="true"
-        >
-          <path d="M18 6 6 18M6 6l12 12" />
-        </svg>
-      </button>
+        <IconClose size="sm" />
+      </Button>
       <h2 className="text-sm font-semibold text-brand-text">
         Run your agents on your own infrastructure
       </h2>

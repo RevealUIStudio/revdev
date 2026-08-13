@@ -1,3 +1,4 @@
+import { IconCheck } from '@revealui/presentation';
 import { useState } from 'react';
 import { useConfig } from '../../hooks/use-config';
 import { useDeployWizard } from '../../hooks/use-deploy-wizard';
@@ -105,12 +106,13 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
             const done = wizard.isStepDone(s.id);
             const active = i === wizard.currentStep;
             return (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 key={s.id}
                 onClick={() => wizard.goTo(i)}
                 aria-current={active ? 'step' : undefined}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                className={`flex h-auto w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
                   active
                     ? 'bg-surface-2 text-fg'
                     : done
@@ -127,22 +129,10 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
                         : 'border border-edge-strong text-fg-subtle'
                   }`}
                 >
-                  {done ? (
-                    <svg viewBox="0 0 16 16" fill="none" className="size-3.5" aria-hidden="true">
-                      <path
-                        d="M3 8l3.5 3.5L13 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : (
-                    i + 1
-                  )}
+                  {done ? <IconCheck size="sm" className="size-3.5" /> : i + 1}
                 </span>
                 {s.label}
-              </button>
+              </Button>
             );
           })}
         </nav>

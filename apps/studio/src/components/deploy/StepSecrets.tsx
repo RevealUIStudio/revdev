@@ -1,3 +1,4 @@
+import { IconCheck } from '@revealui/presentation';
 import { useState } from 'react';
 import { generateKek, generateSecret } from '../../lib/deploy';
 import type { WizardData } from '../../types';
@@ -89,18 +90,7 @@ export default function StepSecrets({ data, onUpdateData, onNext }: StepSecretsP
 function SecretRow({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-success/50 bg-success-subtle px-3 py-2">
-      <svg
-        className="size-4 shrink-0 text-success"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        aria-hidden="true"
-      >
-        <path
-          fillRule="evenodd"
-          d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
-          clipRule="evenodd"
-        />
-      </svg>
+      <IconCheck size="sm" className="shrink-0 text-success" />
       <span className="text-sm font-mono text-fg-muted">{label}</span>
       <span className="text-xs text-success">Generated</span>
     </div>

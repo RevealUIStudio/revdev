@@ -19,6 +19,7 @@ const AGENT_POLL_INTERVAL_MS = 30_000;
 
 type RightTab = 'changes' | 'chat' | 'messages' | 'tasks' | 'reservations' | 'approvals';
 
+import { IconMinus, IconPlus, IconRefresh, IconUsers } from '@revealui/presentation';
 import { useHarness } from '../../hooks/use-harness';
 import { useSettingsContext } from '../../hooks/use-settings';
 import type { AgentCard } from '../../lib/a2a-api';
@@ -31,6 +32,8 @@ import {
   gitUnstageFile,
 } from '../../lib/invoke';
 import type { AgentSession, GitFileEntry, GitStatusResult } from '../../types';
+import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 
 // ── Workboard parser ──────────────────────────────────────────────────────────
 
@@ -140,34 +143,40 @@ function ChangeRow({ entry, staged, onStage, onUnstage, onDiscard }: ChangeRowPr
       ) : null}
       <div className="hidden shrink-0 items-center gap-1 group-hover:flex">
         {onStage ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             title="Stage"
             onClick={onStage}
             className="flex size-5 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
           >
             <PlusIcon />
-          </button>
+          </Button>
         ) : null}
         {onUnstage ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             title="Unstage"
             onClick={onUnstage}
             className="flex size-5 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
           >
             <MinusIcon />
-          </button>
+          </Button>
         ) : null}
         {onDiscard ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             title="Discard"
             onClick={onDiscard}
             className="flex size-5 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error"
           >
             <UndoIcon />
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>
@@ -475,7 +484,7 @@ export default function AgentPanel() {
                 applyWorkboardPath();
               }}
             >
-              <input
+              <Input
                 ref={workboardInputRef}
                 value={draftWorkboard}
                 onChange={(e) => setDraftWorkboard(e.target.value)}
@@ -483,12 +492,13 @@ export default function AgentPanel() {
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setEditingWorkboard(false);
                 }}
-                className="w-full rounded border border-edge-strong bg-surface-2 px-2 py-1 text-[11px] text-fg focus:border-brand focus:outline-none"
               />
             </form>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setDraftWorkboard(workboardPath);
                 setEditingWorkboard(true);
@@ -497,7 +507,7 @@ export default function AgentPanel() {
               title="Change workboard path"
             >
               {workboardPath}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -564,8 +574,10 @@ export default function AgentPanel() {
       <div className="flex min-w-0 flex-1 flex-col bg-surface-0">
         {/* Tab bar — horizontally scrollable on mobile */}
         <div className="flex items-center overflow-x-auto border-b border-edge">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setRightTab('changes')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'changes'
@@ -579,9 +591,11 @@ export default function AgentPanel() {
                 {totalChanges}
               </span>
             ) : null}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setRightTab('chat')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'chat'
@@ -590,9 +604,11 @@ export default function AgentPanel() {
             }`}
           >
             Agent Chat
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setRightTab('messages')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'messages'
@@ -606,9 +622,11 @@ export default function AgentPanel() {
                 {harness.messages.filter((m) => !m.read).length}
               </span>
             ) : null}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setRightTab('tasks')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'tasks'
@@ -617,9 +635,11 @@ export default function AgentPanel() {
             }`}
           >
             Tasks
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setRightTab('reservations')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'reservations'
@@ -633,9 +653,11 @@ export default function AgentPanel() {
                 {harness.reservations.length}
               </span>
             ) : null}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setRightTab('approvals')}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               rightTab === 'approvals'
@@ -644,38 +666,44 @@ export default function AgentPanel() {
             }`}
           >
             Approvals
-          </button>
+          </Button>
           {rightTab === 'changes' ? (
             <div className="ml-auto flex items-center gap-1 pr-2">
               {(gitState?.unstaged.length ?? 0) + (gitState?.untracked.length ?? 0) > 0 ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => void stageAll()}
                   disabled={stagingAll}
                   className="rounded bg-surface-2 px-2 py-1 text-[10px] text-fg-muted transition-colors hover:bg-surface-3 disabled:opacity-40"
                 >
                   {stagingAll ? 'Staging…' : 'Stage All'}
-                </button>
+                </Button>
               ) : null}
               {(gitState?.unstaged.length ?? 0) > 0 ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setConfirmDiscardAll(true)}
                   disabled={discardingAll}
                   className="rounded px-2 py-1 text-[10px] text-fg-subtle transition-colors hover:bg-error-subtle hover:text-error disabled:opacity-40"
                 >
                   {discardingAll ? 'Discarding…' : 'Discard All'}
-                </button>
+                </Button>
               ) : null}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => void refresh()}
                 disabled={loading}
                 title="Refresh"
                 className="flex size-6 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg-muted disabled:opacity-40"
               >
                 <RefreshIcon spinning={loading} />
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
@@ -692,7 +720,7 @@ export default function AgentPanel() {
                     applyRepoPath();
                   }}
                 >
-                  <input
+                  <Input
                     ref={repoInputRef}
                     value={draftRepo}
                     onChange={(e) => setDraftRepo(e.target.value)}
@@ -700,12 +728,13 @@ export default function AgentPanel() {
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') setEditingRepo(false);
                     }}
-                    className="w-full rounded border border-edge-strong bg-surface-2 px-2 py-1 text-[11px] text-fg focus:border-brand focus:outline-none"
                   />
                 </form>
               ) : (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setDraftRepo(repoPath);
                     setEditingRepo(true);
@@ -714,7 +743,7 @@ export default function AgentPanel() {
                   title="Change repository path"
                 >
                   {repoPath}
-                </button>
+                </Button>
               )}
               {gitState ? (
                 <p className="mt-0.5 text-[10px] text-fg-subtle">
@@ -883,65 +912,19 @@ function RemoteAgentCard({ agent }: { agent: AgentCard }) {
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 function AgentIcon() {
-  return (
-    <svg
-      className="size-4 shrink-0 text-fg-muted"
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <rect x="7" y="7" width="10" height="10" rx="1" />
-      <path d="M9 7V5m3 2V5m3 2V5M9 17v2m3-2v2m3-2v2M7 9H5m2 3H5m2 3H5M17 9h2m-2 3h2m-2 3h2" />
-    </svg>
-  );
+  return <IconUsers size="sm" className="text-fg-muted" />;
 }
 
 function RefreshIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg
-      className={`size-3.5 ${spinning ? 'animate-spin' : ''}`}
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path d="M4 4v5h5M20 20v-5h-5" />
-      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15" />
-    </svg>
-  );
+  return <IconRefresh size="sm" className={`size-3.5 ${spinning ? 'animate-spin' : ''}`} />;
 }
 
 function PlusIcon() {
-  return (
-    <svg
-      className="size-3"
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2.5}
-    >
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
+  return <IconPlus size="sm" className="size-3" />;
 }
 
 function MinusIcon() {
-  return (
-    <svg
-      className="size-3"
-      aria-hidden="true"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2.5}
-    >
-      <path d="M5 12h14" />
-    </svg>
-  );
+  return <IconMinus size="sm" className="size-3" />;
 }
 
 function UndoIcon() {

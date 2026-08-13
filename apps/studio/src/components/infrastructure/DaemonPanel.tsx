@@ -7,6 +7,7 @@ import {
   daemonStatus,
   daemonStop,
 } from '../../lib/invoke';
+import Button from '../adapters/Button';
 import ConfirmDialog from '../adapters/ConfirmDialog';
 
 interface DaemonPanelProps {
@@ -103,32 +104,36 @@ export default function DaemonPanel({ harnessStatus }: DaemonPanelProps) {
       {/* Controls */}
       <div className="flex gap-2">
         {!status?.running ? (
-          <button
+          <Button
             type="button"
+            variant="success"
+            size="sm"
             onClick={handleStart}
             disabled={loading}
-            className="rounded bg-success px-3 py-1.5 text-xs font-medium text-fg hover:brightness-110 disabled:opacity-50"
+            loading={loading}
           >
             {loading ? 'Starting...' : 'Start Daemon'}
-          </button>
+          </Button>
         ) : (
           <>
-            <button
+            <Button
               type="button"
+              size="sm"
               onClick={() => setPendingAction('restart')}
               disabled={loading}
-              className="rounded bg-warning px-3 py-1.5 text-xs font-medium text-fg hover:brightness-110 disabled:opacity-50"
+              className="bg-warning text-fg hover:brightness-110"
             >
               {loading && pendingAction === null ? 'Restarting...' : 'Restart'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="danger"
+              size="sm"
               onClick={() => setPendingAction('stop')}
               disabled={loading}
-              className="rounded bg-error px-3 py-1.5 text-xs font-medium text-fg hover:brightness-110 disabled:opacity-50"
             >
               {loading && pendingAction === null ? 'Stopping...' : 'Stop'}
-            </button>
+            </Button>
           </>
         )}
       </div>

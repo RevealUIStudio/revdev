@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useHarness } from '../../hooks/use-harness';
+import Button from '../adapters/Button';
 import AppsPanel from '../apps/AppsPanel';
 import DevBoxPanel from '../devbox/DevBoxPanel';
 import DaemonPanel from './DaemonPanel';
@@ -38,14 +39,15 @@ function TabButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-        active ? 'border-brand text-fg' : 'border-transparent text-fg-muted hover:text-fg'
+      className={`-mb-px rounded-none border-b-2 px-4 py-2 text-sm font-medium ${
+        active ? 'border-brand text-fg' : 'border-transparent text-fg-muted'
       }`}
     >
       {label}
-    </button>
+    </Button>
   );
 }

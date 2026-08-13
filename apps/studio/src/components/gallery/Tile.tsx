@@ -1,4 +1,6 @@
+import { IconEye, IconEyeOff } from '@revealui/presentation';
 import type { TileDefinition } from '../../lib/tiles';
+import Button from '../adapters/Button';
 import TileIcon from './TileIcon';
 
 interface TileProps {
@@ -14,8 +16,9 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
   const isUrl = tile.action.type === 'url';
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       onClick={() => {
         if (editing && onToggle) {
           onToggle(tile.id);
@@ -23,7 +26,7 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
           onLaunch(tile);
         }
       }}
-      className={`group flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-all ${
+      className={`group flex h-auto items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-all ${
         hidden
           ? 'border-edge/50 bg-surface-1/30 text-fg-subtle'
           : running
@@ -58,33 +61,12 @@ export default function Tile({ tile, hidden, editing, running, onLaunch, onToggl
       {editing && (
         <span className="ml-auto shrink-0">
           {hidden ? (
-            <svg
-              className="size-4 text-fg-subtle"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              aria-hidden="true"
-            >
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-              <line x1="1" x2="23" y1="1" y2="23" />
-            </svg>
+            <IconEyeOff size="sm" className="text-fg-subtle" />
           ) : (
-            <svg
-              className="size-4 text-fg-subtle"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              aria-hidden="true"
-            >
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
+            <IconEye size="sm" className="text-fg-subtle" />
           )}
         </span>
       )}
-    </button>
+    </Button>
   );
 }

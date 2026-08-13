@@ -193,11 +193,12 @@ export default function AgentTerminalPane() {
             </p>
           )}
           {sessions.map((s) => (
-            <button
+            <Button
               key={s.id}
               type="button"
+              variant="ghost"
               onClick={() => setActiveSession(s.id)}
-              className={`flex w-full items-center gap-2 border-b border-edge/50 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2/50 ${
+              className={`flex h-auto w-full items-center gap-2 rounded-none border-b border-edge/50 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2/50 ${
                 activeSession === s.id ? 'bg-surface-2' : ''
               }`}
             >
@@ -212,8 +213,10 @@ export default function AgentTerminalPane() {
                 </div>
               </div>
               {s.status === 'running' && (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
                     stopSession(s.id);
@@ -222,9 +225,9 @@ export default function AgentTerminalPane() {
                   aria-label="Stop agent"
                 >
                   <span aria-hidden="true">■</span>
-                </button>
+                </Button>
               )}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

@@ -1,5 +1,7 @@
+import { IconClose, IconSearch } from '@revealui/presentation';
 import { useTiles } from '../../hooks/use-tiles';
 import Button from '../adapters/Button';
+import Input from '../adapters/Input';
 import PanelHeader from '../adapters/PanelHeader';
 import CategorySection from './CategorySection';
 import Tile from './Tile';
@@ -31,42 +33,28 @@ export default function TileGallery() {
 
       {/* Search bar */}
       <div className="relative">
-        <svg
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden="true"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" x2="16.65" y1="21" y2="16.65" />
-        </svg>
-        <input
+        <IconSearch
+          size="sm"
+          className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-fg-subtle"
+        />
+        <Input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search tiles..."
-          className="w-full rounded-lg border border-edge bg-surface-1 py-2 pl-10 pr-3 text-sm text-fg placeholder:text-fg-subtle focus:border-brand focus:outline-none"
+          className="pl-10 pr-9"
         />
         {query && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setQuery('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg-muted"
+            className="absolute right-2 top-1/2 z-10 h-auto -translate-y-1/2 p-1 text-fg-subtle hover:text-fg-muted"
+            aria-label="Clear search"
           >
-            <svg
-              className="size-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              aria-hidden="true"
-            >
-              <line x1="18" x2="6" y1="6" y2="18" />
-              <line x1="6" x2="18" y1="6" y2="18" />
-            </svg>
-          </button>
+            <IconClose size="sm" />
+          </Button>
         )}
       </div>
 

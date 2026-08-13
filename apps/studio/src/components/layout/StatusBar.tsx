@@ -1,4 +1,5 @@
 import { useStatusContext } from '../../hooks/use-status';
+import Button from '../adapters/Button';
 import StatusDot from '../adapters/StatusDot';
 
 /** Max characters for truncated error message in the status bar. */
@@ -50,15 +51,17 @@ export default function StatusBar() {
           </div>
         </>
       )}
-      <button
+      <Button
         type="button"
-        className="ml-auto text-fg-subtle transition-colors hover:text-fg-muted"
+        variant="ghost"
+        size="sm"
+        className="ml-auto text-fg-subtle"
         onClick={refresh}
         aria-label="Refresh status"
         title="Refresh status"
       >
         &#x21bb;
-      </button>
+      </Button>
     </footer>
   );
 }

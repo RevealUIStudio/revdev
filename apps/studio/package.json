@@ -18,7 +18,7 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/inter-tight": "^5.2.7",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "@revealui/presentation": "^0.12.1",
+    "@revealui/presentation": "^0.13.1",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-shell": "^2.3.5",

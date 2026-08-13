@@ -6,6 +6,7 @@
  *   - Secondary: local inference (Snap / Ollama) — not the daily-driver path
  */
 
+import { Textarea } from '@revealui/presentation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSpawner } from '../../hooks/use-spawner';
 import {
@@ -15,7 +16,9 @@ import {
   harnessAgentStop,
 } from '../../lib/invoke';
 import type { AgentBackend, HarnessAgentProcess } from '../../types';
+import Button from '../adapters/Button';
 import ConfirmDialog from '../adapters/ConfirmDialog';
+import Input from '../adapters/Input';
 
 type SpawnMode = 'harness' | 'local';
 
@@ -112,32 +115,38 @@ export default function SpawnerPanel() {
     <div className="mt-4">
       <div className="mb-1.5 flex items-center justify-between gap-1">
         <div className="flex items-center gap-1 rounded bg-surface-2 p-0.5">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setMode('harness')}
             className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
               mode === 'harness' ? 'bg-accent-soft text-accent' : 'text-fg-muted hover:text-fg'
             }`}
           >
             Harness
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setMode('local')}
             className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
               mode === 'local' ? 'bg-accent-soft text-accent' : 'text-fg-muted hover:text-fg'
             }`}
           >
             Local inference
-          </button>
+          </Button>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setShowSpawn(!showSpawn)}
           className="rounded bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent-soft/70"
         >
           + Spawn
-        </button>
+        </Button>
       </div>
 
       <p className="mb-2 text-[10px] leading-snug text-fg-subtle">
@@ -185,8 +194,10 @@ export default function SpawnerPanel() {
                     : 'border-edge hover:border-edge-strong'
                 }`}
               >
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   className="w-full text-left"
                   onClick={() => setSelectedSession(selectedSession === s.id ? null : s.id)}
                 >
@@ -218,21 +229,25 @@ export default function SpawnerPanel() {
                     </p>
                   ) : null}
                   <p className="mt-0.5 font-mono text-[10px] text-fg-muted">{s.id.slice(0, 8)}…</p>
-                </button>
+                </Button>
                 <div className="mt-2 flex items-center gap-1">
                   {s.status === 'running' ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() =>
                         setPendingAction({ kind: 'stop', id: s.id, name: s.name, mode: 'harness' })
                       }
                       className="rounded bg-error-subtle px-2 py-0.5 text-[10px] text-error transition-colors hover:bg-error-subtle/70"
                     >
                       Stop
-                    </button>
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() =>
                         setPendingAction({
                           kind: 'remove',
@@ -244,7 +259,7 @@ export default function SpawnerPanel() {
                       className="rounded bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface-3"
                     >
                       Remove
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -258,8 +273,10 @@ export default function SpawnerPanel() {
                     : 'border-edge hover:border-edge-strong'
                 }`}
               >
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   className="w-full text-left"
                   onClick={() => setSelectedSession(selectedSession === s.id ? null : s.id)}
                 >
@@ -284,28 +301,32 @@ export default function SpawnerPanel() {
                   <p className="mt-0.5 truncate text-[11px] leading-snug text-fg-muted">
                     {s.prompt}
                   </p>
-                </button>
+                </Button>
                 <div className="mt-2 flex items-center gap-1">
                   {s.status === 'running' ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() =>
                         setPendingAction({ kind: 'stop', id: s.id, name: s.name, mode: 'local' })
                       }
                       className="rounded bg-error-subtle px-2 py-0.5 text-[10px] text-error transition-colors hover:bg-error-subtle/70"
                     >
                       Stop
-                    </button>
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() =>
                         setPendingAction({ kind: 'remove', id: s.id, name: s.name, mode: 'local' })
                       }
                       className="rounded bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface-3"
                     >
                       Remove
-                    </button>
+                    </Button>
                   )}
                 </div>
                 {selectedSession === s.id && local.output[s.id] ? (
@@ -386,22 +407,29 @@ function HarnessSpawnForm({ onSpawn, onCancel }: HarnessSpawnFormProps) {
         Spawns via daemon <code className="text-fg">agent.spawn</code> (signed, confined). Requires
         a project root the Studio identity can open.
       </p>
-      <label className="mb-2 block">
-        <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">Project root</span>
-        <input
+      <div className="mb-2">
+        <label
+          htmlFor="spawn-repo-path"
+          className="mb-0.5 block text-[10px] font-medium text-fg-muted"
+        >
+          Project root
+        </label>
+        <Input
+          id="spawn-repo-path"
           value={repoPath}
           onChange={(e) => setRepoPath(e.target.value)}
           placeholder="/home/…/revfleet/revealui"
-          className="w-full rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
         />
-      </label>
+      </div>
       <div className="mb-2">
         <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">Preset</span>
         <div className="flex flex-wrap gap-1">
           {HARNESS_PRESETS.map((p) => (
-            <button
+            <Button
               key={p.label}
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setCommand(p.command);
                 setArgsText(p.args);
@@ -409,50 +437,61 @@ function HarnessSpawnForm({ onSpawn, onCancel }: HarnessSpawnFormProps) {
               className="rounded bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted hover:bg-surface-3 hover:text-fg"
             >
               {p.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
-      <label className="mb-2 block">
-        <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">Command</span>
-        <input
+      <div className="mb-2">
+        <label
+          htmlFor="spawn-command"
+          className="mb-0.5 block text-[10px] font-medium text-fg-muted"
+        >
+          Command
+        </label>
+        <Input
+          id="spawn-command"
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           placeholder="bash"
-          className="w-full rounded border border-edge bg-surface-2 px-2 py-1 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+          mono
         />
-      </label>
-      <label className="mb-3 block">
-        <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">
+      </div>
+      <div className="mb-3">
+        <label htmlFor="spawn-args" className="mb-0.5 block text-[10px] font-medium text-fg-muted">
           Args (space-separated)
-        </span>
-        <input
+        </label>
+        <Input
+          id="spawn-args"
           value={argsText}
           onChange={(e) => setArgsText(e.target.value)}
           placeholder="-l"
-          className="w-full rounded border border-edge bg-surface-2 px-2 py-1 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+          mono
         />
-      </label>
+      </div>
       {formError ? (
         <div className="mb-2 rounded border border-error/40 bg-error-subtle px-2 py-1.5 text-[10px] text-error">
           {formError}
         </div>
       ) : null}
       <div className="flex justify-end gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onCancel}
           className="rounded px-3 py-1 text-xs text-fg-muted transition-colors hover:text-fg"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
+          variant="primary"
+          size="sm"
           disabled={submitting || !command.trim() || !repoPath.trim()}
           className="rounded bg-accent px-3 py-1 text-xs font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-40"
         >
           {submitting ? 'Spawning…' : 'Spawn confined'}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -471,7 +510,6 @@ function LocalSpawnForm({ onSpawn, onCancel }: LocalSpawnFormProps) {
   const [model, setModel] = useState('nemotron-3-nano');
   const [prompt, setPrompt] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const nameRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -492,23 +530,29 @@ function LocalSpawnForm({ onSpawn, onCancel }: LocalSpawnFormProps) {
       <p className="mb-2 text-[10px] text-fg-subtle">
         Local inference only (Ubuntu Inference Snaps / Ollama). Not the confined harness path.
       </p>
-      <label className="mb-2 block">
-        <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">Name</span>
-        <input
-          ref={nameRef}
+      <div className="mb-2">
+        <label
+          htmlFor="local-spawn-name"
+          className="mb-0.5 block text-[10px] font-medium text-fg-muted"
+        >
+          Name
+        </label>
+        <Input
+          id="local-spawn-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="my-agent"
-          className="w-full rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
         />
-      </label>
+      </div>
       <div className="mb-2">
         <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">Backend</span>
         <div className="flex gap-1.5">
           {(['Snap', 'Ollama'] as const).map((b) => (
-            <button
+            <Button
               key={b}
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setBackend(b)}
               className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
                 backend === b
@@ -517,44 +561,59 @@ function LocalSpawnForm({ onSpawn, onCancel }: LocalSpawnFormProps) {
               }`}
             >
               {b === 'Snap' ? 'Snaps' : b}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
-      <label className="mb-2 block">
-        <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">Model</span>
-        <input
+      <div className="mb-2">
+        <label
+          htmlFor="local-spawn-model"
+          className="mb-0.5 block text-[10px] font-medium text-fg-muted"
+        >
+          Model
+        </label>
+        <Input
+          id="local-spawn-model"
           value={model}
           onChange={(e) => setModel(e.target.value)}
           placeholder={backend === 'Snap' ? 'nemotron-3-nano' : 'gemma4:e2b'}
-          className="w-full rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
         />
-      </label>
-      <label className="mb-3 block">
-        <span className="mb-0.5 block text-[10px] font-medium text-fg-muted">Prompt</span>
-        <textarea
+      </div>
+      <div className="mb-3">
+        <label
+          htmlFor="local-spawn-prompt"
+          className="mb-0.5 block text-[10px] font-medium text-fg-muted"
+        >
+          Prompt
+        </label>
+        <Textarea
+          id="local-spawn-prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="What should this agent do?"
           rows={3}
-          className="w-full resize-none rounded border border-edge bg-surface-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+          resizable={false}
         />
-      </label>
+      </div>
       <div className="flex justify-end gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onCancel}
           className="rounded px-3 py-1 text-xs text-fg-muted transition-colors hover:text-fg"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
+          variant="secondary"
+          size="sm"
           disabled={submitting || !name.trim() || !model.trim() || !prompt.trim()}
           className="rounded bg-surface-3 px-3 py-1 text-xs font-medium text-fg transition-colors hover:bg-surface-2 disabled:opacity-40"
         >
           {submitting ? 'Spawning…' : 'Spawn local'}
-        </button>
+        </Button>
       </div>
     </form>
   );
