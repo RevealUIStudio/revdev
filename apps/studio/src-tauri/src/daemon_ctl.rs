@@ -86,6 +86,7 @@ mod wsl {
     pub async fn run(args: &[&str]) -> Result<std::process::Output, String> {
         let distro = distro();
         let mut cmd = Command::new("wsl.exe");
+        crate::win_process::hide_tokio(&mut cmd);
         cmd.args(["-d", &distro, "-e"]).args(args);
         cmd.output()
             .await

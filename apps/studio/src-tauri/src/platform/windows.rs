@@ -14,8 +14,14 @@ impl WindowsPlatform {
         }
     }
 
+    fn hidden(program: &str) -> Command {
+        let mut cmd = Command::new(program);
+        crate::win_process::hide_std(&mut cmd);
+        cmd
+    }
+
     fn wsl_exec(&self, cmd: &str) -> Result<String, String> {
-        let output = Command::new("wsl.exe")
+        let output = Self::hidden("wsl.exe")
             .args(["-d", &self.distribution, "-e", "bash", "-c", cmd])
             .output()
             .map_err(|e| format!("Failed to run wsl.exe: {e}"))?;
@@ -39,7 +45,7 @@ impl WindowsPlatform {
 
         // Check if repo exists
         let git_dir = format!("{}/.git", full_path.replace('\\', "/"));
-        if Command::new("cmd")
+        if Self::hidden("cmd")
             .args(["/C", &format!("if exist \"{}\" echo EXISTS", git_dir.replace('/', "\\"))])
             .output()
             .map(|o| !String::from_utf8_lossy(&o.stdout).contains("EXISTS"))
@@ -185,7 +191,7 @@ impl WindowsPlatform {
 impl PlatformOps for WindowsPlatform {
     fn get_system_status(&self) -> Result<SystemStatus, String> {
         // Check if WSL is running
-        let wsl_check = Command::new("wsl.exe")
+        let wsl_check = Self::hidden("wsl.exe")
             .args(["--list", "--running"])
             .output()
             .map_err(|e| format!("Failed to check WSL: {e}"))?;
@@ -261,7 +267,7 @@ impl PlatformOps for WindowsPlatform {
 
     fn mount_devbox(&self) -> Result<String, String> {
         // Spawn elevated PowerShell to run Mount-WSLDev
-        let output = Command::new("pwsh.exe")
+        let output = Self::hidden("pwsh.exe")
             .args([
                 "-NoProfile",
                 "-Command",
@@ -290,7 +296,7 @@ impl PlatformOps for WindowsPlatform {
 
     fn unmount_devbox(&self) -> Result<String, String> {
         // Find the physical drive number first, then unmount
-        let output = Command::new("pwsh.exe")
+        let output = Self::hidden("pwsh.exe")
             .args([
                 "-NoProfile",
                 "-Command",
@@ -365,7 +371,7 @@ impl PlatformOps for WindowsPlatform {
             "cd ~/projects/RevealUI && nohup {dev_cmd} > /tmp/revealui-{name}.log 2>&1 &"
         );
 
-        Command::new("wsl.exe")
+        Self::hidden("wsl.exe")
             .args(["-d", &self.distribution, "-e", "bash", "-c", &bash_cmd])
             .spawn()
             .map_err(|e| format!("Failed to start {name}: {e}"))?;
@@ -386,7 +392,7 @@ impl PlatformOps for WindowsPlatform {
 
     fn check_setup(&self) -> Result<SetupStatus, String> {
         // Check WSL running
-        let wsl_check = Command::new("wsl.exe")
+        let wsl_check = Self::hidden("wsl.exe")
             .args(["--list", "--running"])
             .output()
             .map_err(|e| format!("Failed to check WSL: {e}"))?;
@@ -415,13 +421,13 @@ impl PlatformOps for WindowsPlatform {
             .unwrap_or(false);
 
         // Read git config (pass args directly — no shell injection risk)
-        let git_name = Command::new("wsl.exe")
+        let git_name = Self::hidden("wsl.exe")
             .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.name"])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
 
-        let git_email = Command::new("wsl.exe")
+        let git_email = Self::hidden("wsl.exe")
             .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.email"])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -431,12 +437,12 @@ impl PlatformOps for WindowsPlatform {
     }
 
     fn set_git_identity(&self, name: &str, email: &str) -> Result<(), String> {
-        Command::new("wsl.exe")
+        Self::hidden("wsl.exe")
             .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.name", name])
             .output()
             .map_err(|e| format!("Failed to set git name: {e}"))?;
 
-        Command::new("wsl.exe")
+        Self::hidden("wsl.exe")
             .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.email", email])
             .output()
             .map_err(|e| format!("Failed to set git email: {e}"))?;
