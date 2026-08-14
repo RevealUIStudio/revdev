@@ -76,15 +76,39 @@ describe('useDeployWizard', () => {
     expect(result.current.currentStep).toBe(0);
   });
 
-  it('goTo navigates to specific step', () => {
+  it('goTo refuses to skip past the first incomplete step', () => {
     const { result } = renderHook(() => useDeployWizard(BASE_CONFIG));
 
     act(() => {
       result.current.goTo(4);
     });
 
-    expect(result.current.currentStep).toBe(4);
-    expect(result.current.step?.id).toBe('blob');
+    expect(result.current.currentStep).toBe(0);
+    expect(result.current.step?.id).toBe('vercel');
+  });
+
+  it('goTo can open the first incomplete step and any prior step', () => {
+    vi.mocked(isStepComplete).mockImplementation((_config, id) => id === 'vercel');
+    const config: StudioConfig = {
+      ...BASE_CONFIG,
+      completedSteps: ['vercel'],
+    };
+    const { result } = renderHook(() => useDeployWizard(config));
+
+    act(() => {
+      result.current.goTo(1);
+    });
+    expect(result.current.step?.id).toBe('database');
+
+    act(() => {
+      result.current.goTo(0);
+    });
+    expect(result.current.step?.id).toBe('vercel');
+
+    act(() => {
+      result.current.goTo(5);
+    });
+    expect(result.current.step?.id).toBe('vercel');
   });
 
   it('isStepDone delegates to isStepComplete', () => {

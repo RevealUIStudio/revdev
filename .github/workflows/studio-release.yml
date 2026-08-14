@@ -93,5 +93,31 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "RevealUI Studio ${{ github.ref_name }}"
           releaseBody: "See the [changelog](https://github.com/RevealUIStudio/revdev/blob/main/CHANGELOG.md) for details."
-          releaseDraft: ${{ github.event.inputs.draft || true }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
           prerelease: false
+          includeUpdaterJson: true
+
+  # Stable updater feed. Shipped binaries also try releases.revealui.com first;
+  # this GitHub release is the durable fallback and the source that domain should
+  # mirror. Tag is rolling (assets only) so /releases/latest can stay a version tag.
+  publish-updater:
+    needs: build
+    if: github.event_name == 'push' || inputs.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish latest.json to studio-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release download "$tag" -R RevealUIStudio/revdev -p 'latest.json' -p 'latest*.json'
+          test -f latest.json
+          if ! gh release view studio-latest -R RevealUIStudio/revdev >/dev/null 2>&1; then
+            gh release create studio-latest -R RevealUIStudio/revdev \
+              --title "Studio updater feed" \
+              --notes "Rolling Tauri updater manifest. Install a studio-v* release, not this tag."
+          fi
+          gh release upload studio-latest latest.json -R RevealUIStudio/revdev --clobber

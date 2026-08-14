@@ -93,6 +93,18 @@ describe('DeployWizard', () => {
     expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
+  it('shows retry when config failed to load', () => {
+    vi.mocked(useConfig).mockReturnValue(
+      mockUseConfigReturn({ config: null, loading: false, error: 'disk error' }),
+    );
+
+    render(<DeployWizard onComplete={vi.fn()} />);
+
+    expect(screen.getByText('Could not load deploy config')).toBeInTheDocument();
+    expect(screen.getByText('disk error')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
   it('renders wizard title and step navigation when config is loaded', () => {
     vi.mocked(useConfig).mockReturnValue(
       mockUseConfigReturn({ config: MOCK_CONFIG, loading: false }),

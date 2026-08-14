@@ -125,6 +125,24 @@ export async function smtpSendTest(
   return tauriInvoke<boolean>('smtp_send_test', { host, port, user, pass, toEmail });
 }
 
+export async function gmailSendTest(
+  serviceAccountEmail: string,
+  privateKey: string,
+  fromEmail: string,
+  toEmail: string,
+): Promise<{ messageId: string; sentAt: string }> {
+  if (!isTauri()) {
+    markDegraded('Demo mode. No test email was sent.');
+    throw new Error('Demo mode cannot send a real Gmail test. Run Studio to verify delivery.');
+  }
+  return tauriInvoke<{ messageId: string; sentAt: string }>('gmail_send_test', {
+    serviceAccountEmail,
+    privateKey,
+    fromEmail,
+    toEmail,
+  });
+}
+
 // ── Secrets ────────────────────────────────────────────────────────────────
 
 /**

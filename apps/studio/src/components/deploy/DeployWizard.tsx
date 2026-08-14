@@ -1,5 +1,5 @@
 import { IconCheck } from '@revealui/presentation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useConfig } from '../../hooks/use-config';
 import { useDeployWizard } from '../../hooks/use-deploy-wizard';
 import type { WizardData } from '../../types';
@@ -40,21 +40,49 @@ const EMPTY_WIZARD_DATA: WizardData = {
   brandLogo: undefined,
 };
 
+function draftToWizardData(draft: Record<string, unknown> | undefined): WizardData {
+  if (!draft) return EMPTY_WIZARD_DATA;
+  return { ...EMPTY_WIZARD_DATA, ...(draft as Partial<WizardData>) };
+}
+
 export default function DeployWizard({ onComplete }: DeployWizardProps) {
-  const { config, updateConfig } = useConfig();
+  const { config, updateConfig, reload, loading, error } = useConfig();
   const [data, setData] = useState<WizardData>(EMPTY_WIZARD_DATA);
-  const wizard = useDeployWizard(config);
+  const [hydrated, setHydrated] = useState(false);
+  const wizard = useDeployWizard(config, { reload });
+
+  useEffect(() => {
+    if (!config || hydrated) return;
+    setData(draftToWizardData(config.wizardDraft));
+    setHydrated(true);
+  }, [config, hydrated]);
 
   if (!config) {
     return (
-      <div className="flex h-screen items-center justify-center bg-surface-0">
-        <div className="text-fg-muted">Loading...</div>
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-surface-0">
+        <div className="text-fg-muted">
+          {loading ? 'Loading...' : 'Could not load deploy config'}
+        </div>
+        {error && <p className="max-w-md text-center text-sm text-error">{error}</p>}
+        {!loading && (
+          <Button variant="secondary" onClick={() => void reload()}>
+            Retry
+          </Button>
+        )}
       </div>
     );
   }
 
+  const persistDraft = (next: WizardData) => {
+    void updateConfig({ wizardDraft: next as unknown as Record<string, unknown> });
+  };
+
   const updateData = (updates: Partial<WizardData>) => {
-    setData((prev) => ({ ...prev, ...updates }));
+    setData((prev) => {
+      const next = { ...prev, ...updates };
+      persistDraft(next);
+      return next;
+    });
   };
 
   const stepComponents: Record<string, React.ReactNode> = {
