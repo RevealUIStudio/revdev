@@ -177,7 +177,7 @@ The daemon stores all events, messages, and memory in PGlite. If the database ex
 
 Studio checks `releases.revealui.com` first, then the GitHub `studio-latest` updater feed. If this fails:
 - Check internet connectivity
-- `releases.revealui.com` may 404 until the owner aliases it; the GitHub fallback should still work after a `studio-v*` publish
+- The custom host should return JSON (HTTP 200), not a 404. GitHub fallback still works after a `studio-v*` publish
 - Studio continues working normally without updates
 
 ### Update signature verification failed
