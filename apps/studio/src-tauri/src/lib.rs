@@ -9,6 +9,7 @@ mod harness_watcher;
 mod inference;
 mod local_shell;
 mod platform;
+mod presentment;
 pub mod signing;
 mod spawner;
 pub mod ssh;
@@ -55,6 +56,10 @@ pub fn run() {
         .setup(|app| {
             tray::setup_tray(&app.handle())?;
             harness_watcher::start(app.handle().clone());
+            presentment::present_main_window(&app.handle()).map_err(|err| {
+                eprintln!("{err}");
+                Box::<dyn std::error::Error>::from(err)
+            })?;
 
             // Register the tile-gallery hotkey dynamically so registration
             // failures (e.g. a stale WSLg compositor claim) degrade to a
