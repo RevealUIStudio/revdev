@@ -459,7 +459,9 @@ async fn rpc_call_once(
     // never needs to know the WSL username; `exec` hands stdio straight to the
     // relay. A login shell (`-lc`) ensures $HOME is set.
     let relay_cmd = format!(r#"exec "$HOME/.local/bin/revdev-relay" "$HOME/{SOCKET_REL_PATH}""#);
-    let mut child = Command::new("wsl.exe")
+    let mut relay = Command::new("wsl.exe");
+    crate::win_process::hide_tokio(&mut relay);
+    let mut child = relay
         .args(["-d", &wsl_distro(), "-e", "bash", "-lc", &relay_cmd])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

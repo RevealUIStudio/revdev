@@ -1,4 +1,4 @@
-import { createContext, use, useEffect, useState } from 'react';
+import { createContext, use, useState } from 'react';
 
 export type Theme = 'dark' | 'light' | 'system';
 
@@ -75,12 +75,7 @@ export function useSettingsContext(): SettingsContextValue {
 }
 
 export function useSettings(): SettingsContextValue {
-  const [settings, setSettings] = useState<StudioSettings>(DEFAULT_SETTINGS);
-
-  // Load from localStorage on mount (client-only)
-  useEffect(() => {
-    setSettings(loadSettings());
-  }, []);
+  const [settings, setSettings] = useState<StudioSettings>(loadSettings);
 
   function updateSettings(patch: Partial<StudioSettings>) {
     setSettings((prev) => {

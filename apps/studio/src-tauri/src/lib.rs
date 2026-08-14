@@ -16,6 +16,7 @@ pub mod ssh;
 mod state;
 mod tray;
 mod updater;
+mod win_process;
 
 use commands::{
     agent as agent_cmds, apps, config as config_cmds, deploy, git as git_cmds,

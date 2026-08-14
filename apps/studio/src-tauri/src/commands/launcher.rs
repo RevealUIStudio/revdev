@@ -22,7 +22,9 @@ fn focus_window_platform(process_name: &str) -> Result<bool, StudioError> {
         clean_name
     );
 
-    let output = Command::new("powershell.exe")
+    let mut cmd = Command::new("powershell.exe");
+    crate::win_process::hide_std(&mut cmd);
+    let output = cmd
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()
         .map_err(|e| StudioError::Process(e.to_string()))?;
