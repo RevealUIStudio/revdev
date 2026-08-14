@@ -23,6 +23,18 @@ use tokio::time::{timeout, Duration};
 
 const SOCKET_REL_PATH: &str = ".local/share/revealui/harness.sock";
 
+/// User-facing copy when the Windows WSL relay exits before a JSON-RPC line.
+/// Kept off the `not(unix)` gate so Linux CI can lock the wording.
+#[cfg_attr(unix, allow(dead_code))]
+pub(crate) fn relay_closed_message(stderr: &str) -> String {
+    let hint = stderr.trim();
+    let base = "Relay closed without response. The agent daemon in WSL is not running. Open Setup from the sidebar, then try Agent again.";
+    if hint.is_empty() {
+        return base.to_string();
+    }
+    format!("{base} ({hint})")
+}
+
 /// Per-attempt timeout for daemon RPC calls. Shared by both transports.
 const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -452,7 +464,7 @@ async fn rpc_call_once(
     params: &serde_json::Value,
     signature: &Option<String>,
 ) -> Result<serde_json::Value, String> {
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::process::Command;
 
     // The socket path is resolved WSL-side against the daemon's $HOME so Studio
@@ -511,7 +523,16 @@ async fn rpc_call_once(
         .map_err(|e| format!("Read failed: {e}"))?;
     if n == 0 {
         // EOF before any response — relay or daemon died. Transient → respawn.
-        return Err("Relay closed without response".to_string());
+        let mut err_buf = String::new();
+        if let Some(stderr) = child.stderr.take() {
+            let mut err_reader = BufReader::new(stderr);
+            let _ = timeout(
+                Duration::from_millis(250),
+                err_reader.read_to_string(&mut err_buf),
+            )
+            .await;
+        }
+        return Err(relay_closed_message(&err_buf));
     }
 
     // child is killed + reaped on drop (kill_on_drop) at function exit.
@@ -522,4 +543,26 @@ async fn rpc_call_once(
         return Err(error.message);
     }
     Ok(response.result.unwrap_or(serde_json::Value::Null))
+}
+
+#[cfg(test)]
+mod relay_closed_tests {
+    use super::relay_closed_message;
+
+    #[test]
+    fn empty_stderr_points_at_setup() {
+        let msg = relay_closed_message("  ");
+        assert!(msg.starts_with("Relay closed without response"));
+        assert!(msg.contains("Open Setup from the sidebar"));
+        assert!(!msg.contains('('));
+    }
+
+    #[test]
+    fn includes_relay_stderr_hint() {
+        let msg = relay_closed_message(
+            "revdev-relay: connect /home/x/.local/share/revealui/harness.sock: No such file or directory\n",
+        );
+        assert!(msg.starts_with("Relay closed without response"));
+        assert!(msg.contains("No such file or directory"));
+    }
 }

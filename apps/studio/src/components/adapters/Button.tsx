@@ -55,7 +55,15 @@ export default function Button({
   ...props
 }: ButtonProps) {
   const intent = intentMap[variant];
-  const overrideClassName = [compactSizeOverride[size], className].filter(Boolean).join(' ');
+  // Ghost chrome stays body ink on a raised surface. Presentation 0.13
+  // ghost+neutral still hovers to accent-foreground (ink-on-amber), which
+  // vanishes on Studio's dark card. Drop this override when Studio depends
+  // on a presentation release that ships hover:text-foreground for ghost.
+  const ghostContrast =
+    variant === 'ghost' ? 'text-fg hover:bg-surface-2! hover:text-fg!' : undefined;
+  const overrideClassName = [compactSizeOverride[size], ghostContrast, className]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <PresentationButton

@@ -10,10 +10,12 @@ import { Textarea } from '@revealui/presentation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSpawner } from '../../hooks/use-spawner';
 import {
+  formatDaemonUnreachable,
   harnessAgentList,
   harnessAgentRemove,
   harnessAgentSpawn,
   harnessAgentStop,
+  invokeErrorMessage,
 } from '../../lib/invoke';
 import type { AgentBackend, HarnessAgentProcess } from '../../types';
 import Button from '../adapters/Button';
@@ -79,7 +81,7 @@ export default function SpawnerPanel() {
       setHarnessProcs(list);
       setHarnessError(null);
     } catch (e) {
-      setHarnessError(e instanceof Error ? e.message : String(e));
+      setHarnessError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setHarnessLoading(false);
     }

@@ -14,6 +14,7 @@ import {
   harnessSessions,
   harnessTasks,
   harnessWaitForWorkCompleted,
+  invokeErrorMessage,
 } from '../lib/invoke';
 import { runWorkCompletedRefreshLoop } from '../lib/work-completed-refresh';
 import type {
@@ -115,7 +116,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       setReservations(state.reservations);
       setError(state.connected ? null : 'Harness daemon not running');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       setConnected(false);
     } finally {
       setLoading(false);
@@ -182,12 +183,12 @@ export function useHarness(agentId?: string): UseHarnessReturn {
     }
 
     setupListeners().catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
     });
 
     // Do one initial fetch so we don't wait for the first watcher tick
     loadAllRef.current().catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
     });
 
     return () => {
@@ -237,7 +238,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       if (!isTauri()) await loadAll();
       return msg;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       throw e;
     }
   }
@@ -247,7 +248,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       await harnessMarkRead(messageIds);
       if (!isTauri()) await loadAll();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       throw e;
     }
   }
@@ -258,7 +259,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       if (!isTauri()) await loadAll();
       return task;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       throw e;
     }
   }
@@ -269,7 +270,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       if (!isTauri()) await loadAll();
       return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       throw e;
     }
   }
@@ -280,7 +281,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       if (!isTauri()) await loadAll();
       return ok;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       throw e;
     }
   }
@@ -291,7 +292,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       if (!isTauri()) await loadAll();
       return ok;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       throw e;
     }
   }
@@ -307,7 +308,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       if (!isTauri()) await loadAll();
       return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(invokeErrorMessage(e));
       throw e;
     }
   }

@@ -475,3 +475,65 @@ describe('pairWithDaemon (GAP-397 challenge-response)', () => {
     expect(localStorage.getItem('revdev-daemon-token')).toBeNull();
   });
 });
+
+describe('formatInvokeError', () => {
+  it('keeps a real Error', async () => {
+    const { formatInvokeError } = await import('../../lib/invoke');
+    const err = new Error('already an error');
+    expect(formatInvokeError(err)).toBe(err);
+  });
+
+  it('unwraps StudioError { kind, message }', async () => {
+    const { invokeErrorMessage } = await import('../../lib/invoke');
+    expect(invokeErrorMessage({ kind: 'Other', message: 'git status failed' })).toBe(
+      'git status failed',
+    );
+  });
+
+  it('unwraps a nested Tauri { message: StudioError } envelope', async () => {
+    const { invokeErrorMessage } = await import('../../lib/invoke');
+    expect(
+      invokeErrorMessage({
+        message: { kind: 'Process', message: 'Relay closed without response' },
+      }),
+    ).toBe('Relay closed without response');
+  });
+
+  it('never renders [object Object]', async () => {
+    const { invokeErrorMessage } = await import('../../lib/invoke');
+    expect(invokeErrorMessage({ kind: 'Io' })).toBe('Studio command failed');
+    expect(invokeErrorMessage({})).toBe('Studio command failed');
+  });
+
+  it('rewrites relay/daemon failures into one Setup line', async () => {
+    const { formatDaemonUnreachable, isDaemonUnreachable } = await import('../../lib/invoke');
+    expect(isDaemonUnreachable('Relay closed without response')).toBe(true);
+    expect(formatDaemonUnreachable('Relay closed without response')).toMatch(/Open Setup/);
+    expect(formatDaemonUnreachable('permission denied')).toBe('permission denied');
+  });
+});
+
+describe('invoke bridge (Tauri reject payload)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.restoreAllMocks();
+  });
+
+  it('throws Error.message from a StudioError object reject', async () => {
+    const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
+    vi.mocked(tauriInvoke).mockRejectedValue({
+      kind: 'Other',
+      message: 'Relay closed without response',
+    });
+
+    const { gitStatus } = await import('../../lib/invoke');
+    await expect(gitStatus('/repo')).rejects.toSatisfy((err: unknown) => {
+      return err instanceof Error && err.message === 'Relay closed without response';
+    });
+  });
+});

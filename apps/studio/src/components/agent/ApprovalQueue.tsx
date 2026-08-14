@@ -8,9 +8,11 @@
 import { Select } from '@revealui/presentation';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  formatDaemonUnreachable,
   harnessPermissionDecide,
   harnessPermissionPending,
   harnessPermissionSetMode,
+  invokeErrorMessage,
 } from '../../lib/invoke';
 import type { HarnessApproval, HarnessSession } from '../../types';
 import Button from '../adapters/Button';
@@ -63,7 +65,7 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
       setApprovals(rows);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setLoading(false);
     }
@@ -84,7 +86,7 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
       await refresh();
       onChanged?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setBusyId(null);
     }
@@ -106,7 +108,7 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
       );
       onChanged?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setModeBusy(false);
     }
