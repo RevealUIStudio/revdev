@@ -124,6 +124,7 @@ pub fn run() {
             deploy::stripe::stripe_catalog_sync,
             deploy::email::resend_send_test,
             deploy::email::smtp_send_test,
+            deploy::email::gmail_send_test,
             deploy::health::health_check,
             git_cmds::git_status,
             git_cmds::git_diff_file,

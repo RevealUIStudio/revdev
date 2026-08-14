@@ -157,6 +157,7 @@ const MOCK_DATA: Record<string, unknown> = {
     completedSteps: [],
     deploy: null,
     develop: null,
+    wizardDraft: undefined,
   } satisfies StudioConfig,
   set_config: undefined,
   reset_config: undefined,

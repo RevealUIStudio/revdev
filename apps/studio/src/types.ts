@@ -327,4 +327,11 @@ export interface WizardData {
   signupWhitelist?: string;
   brandColor?: string;
   brandLogo?: string;
+  /** True only after a real Gmail test send returned a message id. */
+  emailVerified?: boolean;
+}
+
+export interface EmailTestResult {
+  messageId: string;
+  sentAt: string;
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { gmailSendTest } from '../../lib/deploy';
 import type { StudioConfig, WizardData } from '../../types';
 import Button from '../adapters/Button';
 import Input from '../adapters/Input';
@@ -24,10 +25,19 @@ export default function StepEmail({
   );
   const [privateKey, setPrivateKey] = useState(data.googlePrivateKey || '');
   const [emailFrom, setEmailFrom] = useState(data.emailFrom || '');
+  const [testTo, setTestTo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [probing, setProbing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [probeResult, setProbeResult] = useState<string | null>(
+    data.emailVerified ? 'Previous test send succeeded.' : null,
+  );
 
-  const isConfigured = serviceAccountEmail.trim().length > 0 && privateKey.trim().length > 0;
+  const isConfigured =
+    serviceAccountEmail.trim().length > 0 &&
+    privateKey.trim().length > 0 &&
+    emailFrom.trim().length > 0;
+  const canProbe = isConfigured && testTo.trim().length > 0 && !probing && !loading;
 
   async function handleSaveConfig() {
     setLoading(true);
@@ -58,6 +68,33 @@ export default function StepEmail({
       setError(err instanceof Error ? err.message : 'Failed to save email config');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSendTest() {
+    setProbing(true);
+    setError(null);
+    setProbeResult(null);
+    try {
+      const result = await gmailSendTest(
+        serviceAccountEmail.trim(),
+        privateKey.trim(),
+        emailFrom.trim(),
+        testTo.trim(),
+      );
+      onUpdateData({
+        emailProvider: 'gmail',
+        googleServiceAccountEmail: serviceAccountEmail.trim(),
+        googlePrivateKey: privateKey.trim(),
+        emailFrom: emailFrom.trim(),
+        emailVerified: true,
+      });
+      setProbeResult(`Sent. Gmail message id ${result.messageId}`);
+    } catch (err) {
+      onUpdateData({ emailVerified: false });
+      setError(err instanceof Error ? err.message : 'Test send failed');
+    } finally {
+      setProbing(false);
     }
   }
 
@@ -103,10 +140,18 @@ export default function StepEmail({
           />
         </div>
 
-        <p className="text-xs text-fg-muted">
-          In-wizard test send is not wired yet — verify delivery from the Admin app after
-          deployment.
-        </p>
+        <Input
+          id="email-test-to"
+          label="Send test to"
+          hint="A real inbox you can check. Next stays disabled until this send succeeds."
+          type="email"
+          placeholder="you@yourdomain.com"
+          value={testTo}
+          onChange={(e) => setTestTo(e.target.value)}
+          disabled={probing || loading}
+        />
+
+        {probeResult && <p className="text-xs text-success">{probeResult}</p>}
 
         <div className="flex gap-3 self-end">
           <Button
@@ -117,7 +162,10 @@ export default function StepEmail({
           >
             Save Config
           </Button>
-          <Button variant="primary" onClick={onNext} disabled={!isConfigured}>
+          <Button variant="secondary" onClick={() => void handleSendTest()} loading={probing} disabled={!canProbe}>
+            Send test email
+          </Button>
+          <Button variant="primary" onClick={onNext} disabled={!data.emailVerified}>
             Next
           </Button>
         </div>

@@ -175,9 +175,9 @@ The daemon stores all events, messages, and memory in PGlite. If the database ex
 
 ### "Update check failed"
 
-Studio checks `releases.revealui.com` for updates. If this fails:
+Studio checks `releases.revealui.com` first, then the GitHub `studio-latest` updater feed. If this fails:
 - Check internet connectivity
-- The update server may be temporarily unavailable
+- `releases.revealui.com` may 404 until the owner aliases it; the GitHub fallback should still work after a `studio-v*` publish
 - Studio continues working normally without updates
 
 ### Update signature verification failed

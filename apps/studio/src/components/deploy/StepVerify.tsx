@@ -61,15 +61,24 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
     try {
       // RC-7: Push admin env vars first
       const apiProjectId = config.deploy?.apps?.api;
-      if (apiProjectId) {
-        await vercelSetEnv(data.vercelToken, apiProjectId, 'REVEALUI_ADMIN_EMAIL', trimmedEmail);
-        await vercelSetEnv(
-          data.vercelToken,
-          apiProjectId,
-          'REVEALUI_ADMIN_PASSWORD',
-          trimmedPassword,
+      if (!apiProjectId) {
+        setError('API project id is missing. Go back to the Vercel step and create the API app.');
+        setChecks((prev) =>
+          prev.map((c) => ({
+            ...c,
+            status: 'fail' as const,
+            detail: 'Skipped: no API project id',
+          })),
         );
+        return;
       }
+      await vercelSetEnv(data.vercelToken, apiProjectId, 'REVEALUI_ADMIN_EMAIL', trimmedEmail);
+      await vercelSetEnv(
+        data.vercelToken,
+        apiProjectId,
+        'REVEALUI_ADMIN_PASSWORD',
+        trimmedPassword,
+      );
 
       // Health checks
       const endpoints = [
@@ -98,17 +107,13 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
         }
       }
 
-      // Email delivery check
-      try {
-        updateCheck(4, { status: 'checking' });
-        // Gmail credentials are validated during StepEmail
-        if (data.googleServiceAccountEmail && data.googlePrivateKey) {
-          updateCheck(4, { status: 'pass', detail: 'Gmail configured' });
-        } else {
-          updateCheck(4, { status: 'pass', detail: 'Validated in email step' });
-        }
-      } catch {
-        updateCheck(4, { status: 'fail', detail: 'Email delivery failed' });
+      if (data.emailVerified) {
+        updateCheck(4, { status: 'pass', detail: 'Test email sent' });
+      } else {
+        updateCheck(4, {
+          status: 'fail',
+          detail: 'Not verified. Send a test email in the Email step.',
+        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
