@@ -7,6 +7,29 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-08-14
+
+### Added
+
+- **Auto-update feed.** Studio bundles updater artifacts. New `studio-v*` tags
+  publish `latest.json` to the rolling `studio-latest` GitHub release. The
+  client tries `releases.revealui.com` first, then that GitHub feed.
+- **Deploy-wizard Gmail probe (revdev#15).** Send-test uses the service account
+  and domain-wide delegation, returns a Gmail message id, and rate-limits at
+  5/min. Next stays disabled until the send succeeds.
+
+### Fixed
+
+- **Deploy wizard honesty.** Draft (including generated secrets) persists in
+  local config (mode 0600). Sidebar cannot skip past the first incomplete
+  step. Verify fails when email was not probed or the API project id is
+  missing. Deploy poll can be cancelled. Config load failure shows Retry.
+- **First-run and WSLg.** Local-first first-run and refuse-to-start when WSLg
+  cannot present a window (revdev#405, #406), included in this desktop tag.
+
+[0.2.1]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.1
+
+
 ### Added
 
 - **GAP-269 spawned agent identity.** `agent.spawn` mints a distinct
