@@ -53,10 +53,11 @@ describe('Button', () => {
     expect(button.className).toContain('bg-secondary');
   });
 
-  it('maps ghost → neutral ghost appearance', () => {
-    render(<Button variant="ghost">Ghost</Button>);
+  it('maps ghost → readable hover ink (body text, not ink-on-accent)', () => {
+    render(<Button variant="ghost">Skip</Button>);
     const button = screen.getByRole('button');
-    expect(button.className).toContain('hover:text-accent-foreground');
+    expect(button.className).toContain('hover:text-fg!');
+    expect(button.className).toContain('text-fg');
   });
 
   it('maps danger → danger solid (bg-destructive)', () => {

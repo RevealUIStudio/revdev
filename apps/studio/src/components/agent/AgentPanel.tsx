@@ -26,10 +26,13 @@ import type { AgentCard } from '../../lib/a2a-api';
 import { fetchAgentCards } from '../../lib/a2a-api';
 import {
   agentReadWorkboard,
+  formatDaemonUnreachable,
   gitDiscardFile,
   gitStageFile,
   gitStatus,
   gitUnstageFile,
+  invokeErrorMessage,
+  isDaemonUnreachable,
 } from '../../lib/invoke';
 import type { AgentSession, GitFileEntry, GitStatusResult } from '../../types';
 import Button from '../adapters/Button';
@@ -342,7 +345,7 @@ export default function AgentPanel() {
       setSessions(parseWorkboard(md));
       setWorkboardError(null);
     } catch (e) {
-      setWorkboardError(e instanceof Error ? e.message : String(e));
+      setWorkboardError(formatDaemonUnreachable(invokeErrorMessage(e)));
       setSessions([]);
     }
   }
@@ -354,7 +357,7 @@ export default function AgentPanel() {
       const s = await gitStatus(repoPath);
       setGitState(s);
     } catch (e) {
-      setGitError(e instanceof Error ? e.message : String(e));
+      setGitError(formatDaemonUnreachable(invokeErrorMessage(e)));
       setGitState(null);
     } finally {
       setLoading(false);
@@ -413,7 +416,7 @@ export default function AgentPanel() {
       await gitStageFile(repoPath, path);
       await loadChanges();
     } catch (e) {
-      setGitError(e instanceof Error ? e.message : String(e));
+      setGitError(formatDaemonUnreachable(invokeErrorMessage(e)));
     }
   };
 
@@ -422,7 +425,7 @@ export default function AgentPanel() {
       await gitUnstageFile(repoPath, path);
       await loadChanges();
     } catch (e) {
-      setGitError(e instanceof Error ? e.message : String(e));
+      setGitError(formatDaemonUnreachable(invokeErrorMessage(e)));
     }
   };
 
@@ -431,7 +434,7 @@ export default function AgentPanel() {
       await gitDiscardFile(repoPath, path);
       await loadChanges();
     } catch (e) {
-      setGitError(e instanceof Error ? e.message : String(e));
+      setGitError(formatDaemonUnreachable(invokeErrorMessage(e)));
     }
   };
 
@@ -444,7 +447,7 @@ export default function AgentPanel() {
       );
       await loadChanges();
     } catch (e) {
-      setGitError(e instanceof Error ? e.message : String(e));
+      setGitError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setStagingAll(false);
     }
@@ -457,11 +460,17 @@ export default function AgentPanel() {
       await Promise.all(gitState.unstaged.map((f) => gitDiscardFile(repoPath, f.path)));
       await loadChanges();
     } catch (e) {
-      setGitError(e instanceof Error ? e.message : String(e));
+      setGitError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setDiscardingAll(false);
     }
   };
+
+  const daemonUnreachable =
+    isDaemonUnreachable(workboardError ?? '') || isDaemonUnreachable(gitError ?? '');
+  const daemonBanner = daemonUnreachable
+    ? formatDaemonUnreachable(workboardError ?? gitError ?? '')
+    : null;
 
   const totalChanges =
     (gitState?.staged.length ?? 0) +
@@ -512,7 +521,12 @@ export default function AgentPanel() {
         </div>
 
         <div className="max-h-48 flex-1 overflow-y-auto px-2 py-2 md:max-h-none">
-          {workboardError ? (
+          {daemonBanner ? (
+            <div className="mb-2 rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">
+              {daemonBanner}
+            </div>
+          ) : null}
+          {workboardError && !isDaemonUnreachable(workboardError) ? (
             <div className="rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">
               {workboardError}
             </div>
@@ -756,7 +770,7 @@ export default function AgentPanel() {
 
             {/* File list */}
             <div className="flex-1 overflow-y-auto px-3 py-2">
-              {gitError ? (
+              {gitError && !isDaemonUnreachable(gitError) ? (
                 <div className="rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">
                   {gitError}
                 </div>
