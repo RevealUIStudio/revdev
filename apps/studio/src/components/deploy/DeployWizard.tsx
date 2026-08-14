@@ -60,7 +60,9 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
   if (!config) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3 bg-surface-0">
-        <div className="text-fg-muted">{loading ? 'Loading...' : 'Could not load deploy config'}</div>
+        <div className="text-fg-muted">
+          {loading ? 'Loading...' : 'Could not load deploy config'}
+        </div>
         {error && <p className="max-w-md text-center text-sm text-error">{error}</p>}
         {!loading && (
           <Button variant="secondary" onClick={() => void reload()}>

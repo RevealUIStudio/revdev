@@ -162,7 +162,12 @@ export default function StepEmail({
           >
             Save Config
           </Button>
-          <Button variant="secondary" onClick={() => void handleSendTest()} loading={probing} disabled={!canProbe}>
+          <Button
+            variant="secondary"
+            onClick={() => void handleSendTest()}
+            loading={probing}
+            disabled={!canProbe}
+          >
             Send test email
           </Button>
           <Button variant="primary" onClick={onNext} disabled={!data.emailVerified}>
