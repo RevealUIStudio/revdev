@@ -7,6 +7,16 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-08-14
+
+### Fixed
+
+- **Console flashes after close.** Window X quits the process instead of
+  hiding to the tray. Windows `wsl.exe` / `cmd` / `pwsh` spawns use
+  `CREATE_NO_WINDOW` so daemon polls do not flash a terminal.
+
+[0.2.2]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.2
+
 ## [0.2.1] — 2026-08-14
 
 ### Added
