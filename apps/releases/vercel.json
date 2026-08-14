@@ -3,16 +3,7 @@
   "rewrites": [
     {
       "source": "/studio/:target/:arch/latest.json",
-      "destination": "https://github.com/RevealUIStudio/revdev/releases/download/studio-latest/latest.json"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/studio/:target/:arch/latest.json",
-      "headers": [
-        { "key": "Content-Type", "value": "application/json; charset=utf-8" },
-        { "key": "Cache-Control", "value": "public, max-age=60" }
-      ]
+      "destination": "/api/latest"
     }
   ]
 }
