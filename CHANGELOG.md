@@ -7,6 +7,8 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.7] — 2026-08-15
+
 ### Fixed
 
 - **Agent Setup actually installs the WSL relay.** Complete Setup calls
@@ -16,6 +18,8 @@ Dates are ISO 8601 (UTC).
 - **Agent ping over a live daemon.** `revdev-relay` now flushes each
   pipe write. Piped stdout was fully buffered, so Studio never saw a
   response while the daemon kept the socket open.
+
+[0.2.7]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.7
 
 ## [0.2.6] — 2026-08-15
 
