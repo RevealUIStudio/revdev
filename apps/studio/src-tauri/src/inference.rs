@@ -112,7 +112,12 @@ pub fn ollama_list_models() -> Result<Vec<OllamaModel>, String> {
 }
 
 /// Pull (download) an Ollama model.
+///
+/// Registry names only (`gemma3:latest`). Lockstep with
+/// `@revealui/ai` `assertOllamaPullRef` (GAP-484): refuse pickle-class and
+/// local weight-file paths so Studio cannot be the ACE ingest.
 pub fn ollama_pull(model_name: &str) -> Result<ModelPullResult, String> {
+    let model_name = assert_ollama_pull_ref(model_name)?;
     let output = Command::new("ollama")
         .arg("pull")
         .arg(model_name)
@@ -733,4 +738,89 @@ pub fn profile_apply(tier: &str) -> Result<LocalAiProfileView, String> {
 
     save_profile(&profile)?;
     Ok(value_to_view(&profile))
+}
+
+/// Pickle-class deserialize formats (NIST AI 100-2 / GAP-484).
+const ACE_MODEL_SUFFIXES: &[&str] = &[
+    ".pickle", ".pkl", ".joblib", ".dill", ".pth", ".pt", ".ckpt", ".bin",
+];
+
+/// Non-pickle weight files. Still not valid Ollama *registry* refs.
+const WEIGHT_FILE_SUFFIXES: &[&str] = &[".safetensors", ".gguf", ".onnx"];
+
+fn last_path_segment(value: &str) -> &str {
+    let trimmed = value.trim();
+    let cut = trimmed
+        .rfind(['/', '\\'])
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let rest = &trimmed[cut..];
+    match rest.find('?') {
+        Some(q) => &rest[..q],
+        None => rest,
+    }
+}
+
+fn has_suffix_ci(name: &str, suffix: &str) -> bool {
+    if name.len() <= suffix.len() {
+        return false;
+    }
+    name.to_ascii_lowercase().ends_with(suffix)
+}
+
+/// Ollama pull refs are registry names, not files. Lockstep with
+/// `@revealui/ai` `assertOllamaPullRef`.
+pub fn assert_ollama_pull_ref(model_name: &str) -> Result<&str, String> {
+    let name = model_name.trim();
+    if name.is_empty() {
+        return Err("Ollama pull ref is empty".into());
+    }
+    let segment = last_path_segment(name);
+    let looks_like_file = ACE_MODEL_SUFFIXES
+        .iter()
+        .chain(WEIGHT_FILE_SUFFIXES.iter())
+        .any(|suffix| has_suffix_ci(segment, suffix));
+    if looks_like_file {
+        return Err(format!(
+            "Ollama pull ref \"{name}\" looks like a weight file. Pull a registry name, \
+             not a pickle or local artifact path (GAP-484)."
+        ));
+    }
+    Ok(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assert_ollama_pull_ref;
+
+    #[test]
+    fn allows_registry_names() {
+        assert_eq!(assert_ollama_pull_ref("gemma3:latest").unwrap(), "gemma3:latest");
+        assert_eq!(assert_ollama_pull_ref("  llama3  ").unwrap(), "llama3");
+    }
+
+    #[test]
+    fn refuses_empty() {
+        assert!(assert_ollama_pull_ref("   ").is_err());
+    }
+
+    #[test]
+    fn refuses_pickle_class_and_weight_files() {
+        for name in [
+            "model.pkl",
+            "weights.pickle",
+            "clf.joblib",
+            "net.pth",
+            "/tmp/pytorch.bin",
+            r"C:\models\x.ckpt",
+            "gemma.gguf",
+            "w.safetensors",
+            "graph.onnx",
+        ] {
+            assert!(
+                assert_ollama_pull_ref(name).is_err(),
+                "expected refuse for {name}"
+            );
+        }
+    }
 }
