@@ -16,6 +16,7 @@ import {
   harnessAgentSpawn,
   harnessAgentStop,
   invokeErrorMessage,
+  isDaemonUnreachable,
 } from '../../lib/invoke';
 import type { AgentBackend, HarnessAgentProcess } from '../../types';
 import Button from '../adapters/Button';
@@ -179,7 +180,7 @@ export default function SpawnerPanel() {
         />
       ) : null}
 
-      {error ? (
+      {error && !isDaemonUnreachable(error) ? (
         <div className="mb-2 rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">
           {error}
         </div>

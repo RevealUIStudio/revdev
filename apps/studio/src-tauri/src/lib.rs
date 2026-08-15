@@ -19,9 +19,9 @@ mod updater;
 mod win_process;
 
 use commands::{
-    agent as agent_cmds, apps, config as config_cmds, deploy, git as git_cmds,
+    agent as agent_cmds, apps, config as config_cmds, deploy, fleet_map, git as git_cmds,
     harness as harness_cmds, inference as inference_cmds, launcher, local_shell as shell_cmds,
-    fleet_map, mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, vault,
+    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, vault,
 };
 use config::ConfigState;
 use local_shell::LocalShellState;
@@ -38,6 +38,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, _event| {
