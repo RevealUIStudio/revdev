@@ -35,6 +35,14 @@ pub(crate) fn relay_closed_message(stderr: &str) -> String {
     format!("{base} ({hint})")
 }
 
+/// After a failed WSL relay spawn, skip new `wsl.exe` children until `until`.
+pub(crate) fn relay_spawn_on_cooldown(
+    now: std::time::Instant,
+    until: Option<std::time::Instant>,
+) -> bool {
+    until.is_some_and(|t| now < t)
+}
+
 /// Per-attempt timeout for daemon RPC calls. Shared by both transports.
 const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -416,11 +424,52 @@ fn wsl_distro() -> String {
 }
 
 #[cfg(not(unix))]
+const RELAY_DOWN_COOLDOWN: Duration = Duration::from_secs(20);
+
+#[cfg(not(unix))]
+static RELAY_COOLDOWN_UNTIL: std::sync::Mutex<Option<std::time::Instant>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(not(unix))]
+struct LiveRelay {
+    child: tokio::process::Child,
+    stdin: tokio::process::ChildStdin,
+    stdout: tokio::io::BufReader<tokio::process::ChildStdout>,
+}
+
+#[cfg(not(unix))]
+impl Drop for LiveRelay {
+    fn drop(&mut self) {
+        let _ = self.child.start_kill();
+    }
+}
+
+#[cfg(not(unix))]
+static LIVE_RELAY: tokio::sync::Mutex<Option<LiveRelay>> = tokio::sync::Mutex::const_new(None);
+
+#[cfg(not(unix))]
+fn mark_relay_down() {
+    if let Ok(mut guard) = RELAY_COOLDOWN_UNTIL.lock() {
+        *guard = Some(std::time::Instant::now() + RELAY_DOWN_COOLDOWN);
+    }
+}
+
+#[cfg(not(unix))]
+fn relay_is_cooling_down() -> bool {
+    let until = RELAY_COOLDOWN_UNTIL.lock().ok().and_then(|g| *g);
+    relay_spawn_on_cooldown(std::time::Instant::now(), until)
+}
+
+#[cfg(not(unix))]
 async fn rpc_call_raw(
     method: &str,
     params: serde_json::Value,
     signature: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    if relay_is_cooling_down() {
+        return Err(relay_closed_message(""));
+    }
+
     let mut last_err = String::new();
 
     for attempt in 0..MAX_RETRIES {
@@ -442,6 +491,9 @@ async fn rpc_call_raw(
         }
     }
 
+    if last_err.starts_with("Relay closed") || last_err.starts_with("Relay spawn failed:") {
+        mark_relay_down();
+    }
     Err(last_err)
 }
 
@@ -457,30 +509,68 @@ fn is_transient_error(err: &str) -> bool {
         || err.starts_with("RPC timeout")
 }
 
-/// Execute a single RPC over a freshly-spawned relay child.
+#[cfg(not(unix))]
+async fn spawn_live_relay() -> Result<LiveRelay, String> {
+    use tokio::io::BufReader;
+    use tokio::process::Command;
+
+    // `--shell-type none` + `bash -c` (not `-lc`) so WSL does not open a
+    // login console. `$HOME` is still set. CREATE_NO_WINDOW is applied by
+    // hide_tokio. One child is reused for every RPC on this process.
+    let relay_cmd = format!(r#"exec "$HOME/.local/bin/revdev-relay" "$HOME/{SOCKET_REL_PATH}""#);
+    let mut relay = Command::new("wsl.exe");
+    crate::win_process::hide_tokio(&mut relay);
+    let mut child = relay
+        .args([
+            "-d",
+            &wsl_distro(),
+            "--shell-type",
+            "none",
+            "-e",
+            "bash",
+            "-c",
+            &relay_cmd,
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(false)
+        .spawn()
+        .map_err(|e| format!("Relay spawn failed: {e}"))?;
+
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Relay spawn failed: stdin unavailable".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Relay spawn failed: stdout unavailable".to_string())?;
+    Ok(LiveRelay {
+        child,
+        stdin,
+        stdout: BufReader::new(stdout),
+    })
+}
+
+/// Execute one RPC on the long-lived WSL relay. The daemon already accepts
+/// many newline-framed requests on one Unix socket; we keep stdin open so
+/// the relay child stays up across Agent/git/workboard/watcher calls.
 #[cfg(not(unix))]
 async fn rpc_call_once(
     method: &str,
     params: &serde_json::Value,
     signature: &Option<String>,
 ) -> Result<serde_json::Value, String> {
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-    use tokio::process::Command;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
-    // The socket path is resolved WSL-side against the daemon's $HOME so Studio
-    // never needs to know the WSL username; `exec` hands stdio straight to the
-    // relay. A login shell (`-lc`) ensures $HOME is set.
-    let relay_cmd = format!(r#"exec "$HOME/.local/bin/revdev-relay" "$HOME/{SOCKET_REL_PATH}""#);
-    let mut relay = Command::new("wsl.exe");
-    crate::win_process::hide_tokio(&mut relay);
-    let mut child = relay
-        .args(["-d", &wsl_distro(), "-e", "bash", "-lc", &relay_cmd])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("Relay spawn failed: {e}"))?;
+    let mut slot = LIVE_RELAY.lock().await;
+    if slot.is_none() {
+        *slot = Some(spawn_live_relay().await.map_err(|e| {
+            mark_relay_down();
+            e
+        })?);
+    }
 
     let id = REQUEST_ID.fetch_add(1, Ordering::Relaxed);
     let request = JsonRpcRequest {
@@ -493,49 +583,58 @@ async fn rpc_call_once(
     let mut payload = serde_json::to_vec(&request).map_err(|e| e.to_string())?;
     payload.push(b'\n');
 
-    // Write the request, then close stdin so the relay half-closes the socket
-    // write side — the daemon has the complete (newline-framed) request and can
-    // respond. The response comes back over the child's stdout.
-    {
-        let mut stdin = child
+    let write_err = {
+        let relay = slot.as_mut().expect("relay just inserted");
+        relay
             .stdin
-            .take()
-            .ok_or_else(|| "Relay spawn failed: stdin unavailable".to_string())?;
-        stdin
             .write_all(&payload)
             .await
-            .map_err(|e| format!("Write failed: {e}"))?;
-        stdin
-            .flush()
-            .await
-            .map_err(|e| format!("Write failed: {e}"))?;
+            .err()
+            .map(|e| format!("Write failed: {e}"))
+    };
+    if let Some(err) = write_err {
+        *slot = None;
+        return Err(err);
+    }
+    if let Some(relay) = slot.as_mut() {
+        if let Err(e) = relay.stdin.flush().await {
+            *slot = None;
+            return Err(format!("Write failed: {e}"));
+        }
     }
 
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Read failed: stdout unavailable".to_string())?;
-    let mut reader = BufReader::new(stdout);
     let mut line = String::new();
-    let n = reader
-        .read_line(&mut line)
-        .await
-        .map_err(|e| format!("Read failed: {e}"))?;
-    if n == 0 {
-        // EOF before any response — relay or daemon died. Transient → respawn.
-        let mut err_buf = String::new();
-        if let Some(stderr) = child.stderr.take() {
-            let mut err_reader = BufReader::new(stderr);
-            let _ = timeout(
-                Duration::from_millis(250),
-                err_reader.read_to_string(&mut err_buf),
-            )
-            .await;
+    let n = {
+        let relay = slot.as_mut().expect("relay still held");
+        relay
+            .stdout
+            .read_line(&mut line)
+            .await
+            .map_err(|e| format!("Read failed: {e}"))
+    };
+    let n = match n {
+        Ok(n) => n,
+        Err(err) => {
+            *slot = None;
+            return Err(err);
         }
+    };
+    if n == 0 {
+        let mut err_buf = String::new();
+        if let Some(mut relay) = slot.take() {
+            if let Some(stderr) = relay.child.stderr.take() {
+                let mut err_reader = tokio::io::BufReader::new(stderr);
+                let _ = timeout(
+                    Duration::from_millis(250),
+                    tokio::io::AsyncReadExt::read_to_string(&mut err_reader, &mut err_buf),
+                )
+                .await;
+            }
+        }
+        mark_relay_down();
         return Err(relay_closed_message(&err_buf));
     }
 
-    // child is killed + reaped on drop (kill_on_drop) at function exit.
     let response: JsonRpcResponse =
         serde_json::from_str(&line).map_err(|e| format!("Parse failed: {e}"))?;
 
@@ -547,7 +646,7 @@ async fn rpc_call_once(
 
 #[cfg(test)]
 mod relay_closed_tests {
-    use super::relay_closed_message;
+    use super::{relay_closed_message, relay_spawn_on_cooldown};
 
     #[test]
     fn empty_stderr_points_at_setup() {
@@ -564,5 +663,17 @@ mod relay_closed_tests {
         );
         assert!(msg.starts_with("Relay closed without response"));
         assert!(msg.contains("No such file or directory"));
+    }
+
+    #[test]
+    fn cooldown_skips_spawn_until_deadline() {
+        let start = std::time::Instant::now();
+        let until = Some(start + std::time::Duration::from_secs(20));
+        assert!(relay_spawn_on_cooldown(start, until));
+        assert!(!relay_spawn_on_cooldown(
+            start + std::time::Duration::from_secs(21),
+            until
+        ));
+        assert!(!relay_spawn_on_cooldown(start, None));
     }
 }

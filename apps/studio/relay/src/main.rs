@@ -8,8 +8,9 @@
 //!
 //! The daemon therefore only ever sees an ordinary local Unix-socket
 //! connection — the wire protocol, framing, and handlers are byte-identical
-//! across platforms. Studio's per-call model spawns one relay per request
-//! (mirroring its fresh-`UnixStream`-per-call on native Unix).
+//! across platforms. Windows Studio keeps one relay child and writes many
+//! newline-framed requests on stdin. Native Unix still opens a fresh
+//! `UnixStream` per call.
 //!
 //! Pure std, zero dependencies — a fully-owned, auditable byte pump.
 

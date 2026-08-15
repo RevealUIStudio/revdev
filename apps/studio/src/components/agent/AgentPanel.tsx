@@ -556,7 +556,7 @@ export default function AgentPanel() {
                 ))}
               </div>
             </div>
-          ) : (
+          ) : daemonBanner ? null : (
             <div className="mt-4 rounded border border-edge bg-surface-1/40 px-2.5 py-2 text-[10px] text-fg-subtle">
               Harness daemon offline
             </div>

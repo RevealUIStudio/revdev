@@ -7,6 +7,20 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-08-15
+
+### Fixed
+
+- **One Studio process.** A second launch focuses the existing window
+  instead of opening another copy.
+- **Agent terminal flash.** Windows reuses one hidden WSL relay and does
+  not spawn `wsl.exe` again for 20s after a failed connect. Agent click
+  no longer launches a stack of consoles.
+- **Agent daemon-down copy.** One Setup line. The spawn panel and the
+  offline chip do not repeat it.
+
+[0.2.4]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.4
+
 ## [0.2.3] — 2026-08-14
 
 ### Fixed

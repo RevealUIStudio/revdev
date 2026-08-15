@@ -1,6 +1,6 @@
 //! Windows console programs (`wsl.exe`, `cmd.exe`, `pwsh.exe`) open a visible
-//! terminal unless CREATE_NO_WINDOW is set. Studio polls some of these every
-//! few seconds, so a missing flag looks like terminals flashing forever.
+//! terminal unless CREATE_NO_WINDOW is set. Do not add DETACHED_PROCESS here:
+//! it can drop redirected stdin/stdout, which the WSL relay needs.
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
