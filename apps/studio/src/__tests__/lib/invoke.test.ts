@@ -508,7 +508,14 @@ describe('formatInvokeError', () => {
   it('rewrites relay/daemon failures into one Setup line', async () => {
     const { formatDaemonUnreachable, isDaemonUnreachable } = await import('../../lib/invoke');
     expect(isDaemonUnreachable('Relay closed without response')).toBe(true);
-    expect(formatDaemonUnreachable('Relay closed without response')).toMatch(/Open Setup/);
+    expect(formatDaemonUnreachable('Relay closed without response')).toMatch(
+      /daemon in WSL is not running/,
+    );
+    expect(
+      formatDaemonUnreachable(
+        'Relay closed without response. The agent daemon in WSL is not running. Open Setup from the sidebar, then try Agent again. (revdev-relay: connect /home/x/.local/share/revealui/harness.sock: No such file or directory)',
+      ),
+    ).toMatch(/relay is not installed/);
     expect(formatDaemonUnreachable('permission denied')).toBe('permission denied');
   });
 });

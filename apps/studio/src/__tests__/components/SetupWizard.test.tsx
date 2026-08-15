@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // NOTE: vitest hoists vi.mock above all imports/consts, so the factory must not
@@ -34,10 +34,13 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
 vi.mock('../../lib/invoke', () => ({
   vaultInit: vi.fn(),
   vaultIsInitialized: vi.fn().mockResolvedValue(true),
+  daemonSetup: vi.fn().mockResolvedValue('ok'),
+  invokeErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
 import SetupWizard from '../../components/setup/SetupWizard';
 import { markSetupComplete, useSetup } from '../../hooks/use-setup';
+import { daemonSetup } from '../../lib/invoke';
 
 function renderWizard(overrides?: { onComplete?: () => void; onDismiss?: () => void }) {
   const onComplete = overrides?.onComplete ?? vi.fn();
@@ -49,6 +52,7 @@ function renderWizard(overrides?: { onComplete?: () => void; onDismiss?: () => v
 describe('SetupWizard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(daemonSetup).mockResolvedValue('ok');
   });
 
   it('renders "Setup RevealUI Studio" title', () => {
@@ -83,12 +87,24 @@ describe('SetupWizard', () => {
     expect(completeButton).not.toBeDisabled();
   });
 
-  it('completing setup calls onComplete and markSetupComplete, not onDismiss', () => {
+  it('completing setup installs the WSL relay then marks complete', async () => {
     const { onComplete, onDismiss } = renderWizard();
     fireEvent.click(screen.getByText('Complete Setup'));
-    expect(markSetupComplete).toHaveBeenCalled();
-    expect(onComplete).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(daemonSetup).toHaveBeenCalledTimes(1);
+      expect(markSetupComplete).toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('does not mark complete when relay install fails', async () => {
+    daemonSetup.mockRejectedValueOnce(new Error('wslpath failed'));
+    const { onComplete } = renderWizard();
+    fireEvent.click(screen.getByText('Complete Setup'));
+    expect(await screen.findByText('wslpath failed')).toBeInTheDocument();
+    expect(markSetupComplete).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
   });
 
   it('skipping with all checks passing dismisses directly without a confirm', () => {

@@ -45,6 +45,7 @@
       "icons/icon.ico"
     ],
     "resources": {
+      "wsl/revdev-relay": "wsl/revdev-relay",
       "../../../config/terminal/alacritty-revealui.toml": "terminal/alacritty-revealui.toml",
       "../../../config/terminal/gnome-terminal-revealui.dconf": "terminal/gnome-terminal-revealui.dconf",
       "../../../config/terminal/iterm2-revealui.json": "terminal/iterm2-revealui.json",

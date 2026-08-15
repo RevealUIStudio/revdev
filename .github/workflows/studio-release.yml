@@ -20,7 +20,20 @@ env:
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
 jobs:
+  linux-relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - name: Build WSL revdev-relay
+        run: cargo build --release --manifest-path apps/studio/relay/Cargo.toml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: revdev-relay
+          path: apps/studio/relay/target/release/revdev-relay
+
   build:
+    needs: linux-relay
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +50,14 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: revdev-relay
+          path: apps/studio/src-tauri/wsl
+      - name: Mark relay executable
+        if: matrix.platform != 'windows-latest'
+        run: chmod +x apps/studio/src-tauri/wsl/revdev-relay
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-latest'
