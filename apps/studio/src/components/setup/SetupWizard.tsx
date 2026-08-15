@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { markSetupComplete, useSetup } from '../../hooks/use-setup';
+import { daemonSetup, invokeErrorMessage } from '../../lib/invoke';
 import Button from '../adapters/Button';
 import ConfirmDialog from '../adapters/ConfirmDialog';
 import ErrorAlert from '../adapters/ErrorAlert';
@@ -23,6 +24,8 @@ interface SetupWizardProps {
 export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps) {
   const setup = useSetup();
   const [confirmingDismiss, setConfirmingDismiss] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
 
   const allDone =
     setup.status?.wsl_running &&
@@ -32,8 +35,19 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
     !!setup.status?.git_email;
 
   const handleComplete = () => {
-    markSetupComplete();
-    onComplete();
+    setProvisioning(true);
+    setProvisionError(null);
+    void daemonSetup()
+      .then(() => {
+        markSetupComplete();
+        onComplete();
+      })
+      .catch((err: unknown) => {
+        setProvisionError(invokeErrorMessage(err));
+      })
+      .finally(() => {
+        setProvisioning(false);
+      });
   };
 
   const handleSkip = () => {
@@ -56,7 +70,13 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
             <Button variant="ghost" onClick={handleSkip}>
               Skip
             </Button>
-            <Button variant="primary" size="lg" onClick={handleComplete} disabled={!allDone}>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={handleComplete}
+              disabled={!allDone || provisioning}
+              loading={provisioning}
+            >
               Complete Setup
             </Button>
           </>
@@ -64,14 +84,15 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
       >
         <div className="space-y-4">
           <p className="text-sm leading-relaxed text-fg-muted">
-            This checklist sets up WSL, Nix, DevPod, and git identity. It is optional. Skip to use
-            Studio now. Agent Approvals live under Agent in the sidebar.
+            This checklist sets up WSL, Nix, DevPod, and git identity. Completing Setup installs the
+            agent relay in WSL. Skip hides the wizard for this launch. Agent Approvals live under
+            Agent in the sidebar.
           </p>
           {setup.loading && !setup.status && (
             <p className="text-sm text-fg-muted">Checking environment...</p>
           )}
 
-          <ErrorAlert message={setup.error} />
+          <ErrorAlert message={setup.error ?? provisionError} />
 
           <WslRow setup={setup} />
           <NixRow setup={setup} />

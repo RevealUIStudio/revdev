@@ -7,6 +7,13 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Agent Setup actually installs the WSL relay.** Complete Setup calls
+  `daemon_setup` (it was registered and never invoked). Studio Release
+  bundles the Linux `revdev-relay` so Setup can copy it. A missing relay
+  is no longer described as a down daemon.
+
 ## [0.2.6] — 2026-08-15
 
 ### Fixed

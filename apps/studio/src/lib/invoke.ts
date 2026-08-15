@@ -949,6 +949,7 @@ export function isDaemonUnreachable(message: string): boolean {
     message.startsWith('Relay spawn failed:') ||
     message.startsWith('Harness daemon not running') ||
     message.startsWith('The agent daemon in WSL') ||
+    message.startsWith('The WSL agent relay') ||
     message.startsWith('RPC timeout')
   );
 }
@@ -956,6 +957,9 @@ export function isDaemonUnreachable(message: string): boolean {
 /** One actionable line when the WSL daemon/relay is down. */
 export function formatDaemonUnreachable(message: string): string {
   if (!isDaemonUnreachable(message)) return message;
+  if (message.includes('revdev-relay') || message.includes('No such file or directory')) {
+    return 'The WSL agent relay is not installed. Open Setup from the sidebar, then try Agent again.';
+  }
   return 'The agent daemon in WSL is not running. Open Setup from the sidebar, then try Agent again.';
 }
 
@@ -1051,6 +1055,11 @@ export function readAppLog(name: string, lines?: number): Promise<string> {
 
 export function checkSetup(): Promise<SetupStatus> {
   return invoke<SetupStatus>('check_setup');
+}
+
+/** Stage `revdev-relay`, enable the WSL daemon unit, provision this install's trust entry. */
+export function daemonSetup(): Promise<string> {
+  return invoke<string>('daemon_setup');
 }
 
 export function setGitIdentity(name: string, email: string): Promise<void> {

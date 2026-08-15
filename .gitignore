@@ -12,6 +12,7 @@ target/
 *.tsbuildinfo
 
 # Tauri
+apps/studio/src-tauri/wsl/revdev-relay
 apps/studio/src-tauri/target/
 apps/studio/src-tauri/gen/
 apps/studio/src-tauri/bindings/
