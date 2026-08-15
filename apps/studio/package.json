@@ -1,6 +1,6 @@
 {
   "name": "studio",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Native AI experience — agent coordination hub, local inference management, visual agent dashboard (Tauri 2 + React 19)",
   "private": true,
   "dependencies": {

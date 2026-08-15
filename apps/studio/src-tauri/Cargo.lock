@@ -5085,7 +5085,7 @@ dependencies = [
 
 [[package]]
 name = "revealui-studio"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "age",
  "arboard",
@@ -5121,6 +5121,7 @@ dependencies = [
  "ts-rs",
  "uuid",
  "which",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

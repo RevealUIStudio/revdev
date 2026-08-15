@@ -406,15 +406,12 @@ async fn rpc_call_once(
 
 // ---------------------------------------------------------------------------
 // Windows transport — the daemon runs inside WSL on ext4, so Studio reaches its
-// AF_UNIX socket through a `wsl.exe`-launched `revdev-relay` child that pumps
-// bytes between the socket and its own stdin/stdout (ADR P1). No Windows
-// process ever touches ext4 or the 9P redirector. Signing is transport-
-// agnostic and already applied in `rpc_call`, so only the connection mechanism
-// differs from the Unix path; the retry/timeout policy is identical.
-//
-// Per-call model: one relay child per request (mirrors the Unix fresh-
-// `UnixStream`-per-call), reaped via kill_on_drop. A long-lived multiplexed
-// relay is a possible future optimization if spawn cost becomes material.
+// AF_UNIX socket through one long-lived `revdev-relay` child that pumps bytes
+// between the socket and stdin/stdout (ADR P1). The child is started with
+// `WslLaunch` (wslapi), not `wsl.exe`, so Agent never flashes a console.
+// No Windows process ever touches ext4 or the 9P redirector. Signing is
+// transport-agnostic and already applied in `rpc_call`. The retry/timeout
+// policy matches the Unix path.
 // ---------------------------------------------------------------------------
 
 /// Distro hosting the WSL daemon. Overridable for non-default installs.
@@ -432,9 +429,9 @@ static RELAY_COOLDOWN_UNTIL: std::sync::Mutex<Option<std::time::Instant>> =
 
 #[cfg(not(unix))]
 struct LiveRelay {
-    child: tokio::process::Child,
-    stdin: tokio::process::ChildStdin,
-    stdout: tokio::io::BufReader<tokio::process::ChildStdout>,
+    child: crate::win_process::HiddenWslChild,
+    stdin: tokio::fs::File,
+    stdout: tokio::io::BufReader<tokio::fs::File>,
 }
 
 #[cfg(not(unix))]
@@ -512,40 +509,19 @@ fn is_transient_error(err: &str) -> bool {
 #[cfg(not(unix))]
 async fn spawn_live_relay() -> Result<LiveRelay, String> {
     use tokio::io::BufReader;
-    use tokio::process::Command;
 
-    // `--shell-type none` + `bash -c` (not `-lc`) so WSL does not open a
-    // login console. `$HOME` is still set. CREATE_NO_WINDOW is applied by
-    // hide_tokio. One child is reused for every RPC on this process.
-    let relay_cmd = format!(r#"exec "$HOME/.local/bin/revdev-relay" "$HOME/{SOCKET_REL_PATH}""#);
-    let mut relay = Command::new("wsl.exe");
-    crate::win_process::hide_tokio(&mut relay);
-    let mut child = relay
-        .args([
-            "-d",
-            &wsl_distro(),
-            "--shell-type",
-            "none",
-            "-e",
-            "bash",
-            "-c",
-            &relay_cmd,
-        ])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(false)
-        .spawn()
-        .map_err(|e| format!("Relay spawn failed: {e}"))?;
+    if relay_is_cooling_down() {
+        return Err(relay_closed_message(""));
+    }
 
-    let stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| "Relay spawn failed: stdin unavailable".to_string())?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Relay spawn failed: stdout unavailable".to_string())?;
+    // WslLaunch, not wsl.exe: console-subsystem wsl.exe flashes even with
+    // CREATE_NO_WINDOW. One child is reused for every RPC on this process.
+    let mut child = crate::win_process::spawn_wsl_hidden(
+        &wsl_distro(),
+        &crate::win_process::relay_shell_command(SOCKET_REL_PATH),
+    )?;
+    let stdin = child.take_stdin()?;
+    let stdout = child.take_stdout()?;
     Ok(LiveRelay {
         child,
         stdin,
@@ -622,7 +598,7 @@ async fn rpc_call_once(
     if n == 0 {
         let mut err_buf = String::new();
         if let Some(mut relay) = slot.take() {
-            if let Some(stderr) = relay.child.stderr.take() {
+            if let Some(stderr) = relay.child.take_stderr() {
                 let mut err_reader = tokio::io::BufReader::new(stderr);
                 let _ = timeout(
                     Duration::from_millis(250),
@@ -675,5 +651,13 @@ mod relay_closed_tests {
             until
         ));
         assert!(!relay_spawn_on_cooldown(start, None));
+    }
+
+    #[test]
+    fn relay_command_targets_the_daemon_socket() {
+        let cmd = crate::win_process::relay_shell_command(super::SOCKET_REL_PATH);
+        assert!(cmd.contains("revdev-relay"));
+        assert!(cmd.contains(super::SOCKET_REL_PATH));
+        assert!(cmd.contains("/bin/bash -c"));
     }
 }
