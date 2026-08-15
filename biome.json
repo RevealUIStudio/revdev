@@ -13,6 +13,7 @@
       "!**/node_modules",
       "!**/.next",
       "!**/src-tauri/target",
+      "!**/src-tauri/icons",
       "!**/bindings",
       "!**/pnpm-lock.yaml"
     ]

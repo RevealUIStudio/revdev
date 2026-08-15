@@ -1,23 +1,21 @@
 //! Hide Windows console programs and launch WSL without `wsl.exe`.
 //!
 //! `wsl.exe`, `cmd.exe`, and `pwsh.exe` are console-subsystem binaries. They
-//! flash a terminal unless CREATE_NO_WINDOW and SW_HIDE are both set. Do not
-//! add DETACHED_PROCESS: it can drop redirected stdin/stdout.
+//! flash a terminal unless CREATE_NO_WINDOW is set. Do not add
+//! DETACHED_PROCESS: it can drop redirected stdin/stdout. Do not call
+//! `CommandExt::show_window`: it is still unstable on the rustc CI uses.
 //!
 //! The Agent relay must not spawn `wsl.exe` at all. Use [`spawn_wsl_hidden`]
 //! (`WslLaunch` in wslapi) so the Linux process starts with no console host.
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-#[cfg(windows)]
-const SW_HIDE: u16 = 0;
 
 pub fn hide_std(cmd: &mut std::process::Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.show_window(SW_HIDE);
     }
     let _ = cmd;
 }
@@ -26,9 +24,7 @@ pub fn hide_std(cmd: &mut std::process::Command) {
 pub fn hide_tokio(cmd: &mut tokio::process::Command) {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.as_std_mut().show_window(SW_HIDE);
     }
     let _ = cmd;
 }
