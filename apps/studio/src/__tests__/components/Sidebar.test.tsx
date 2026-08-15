@@ -101,9 +101,10 @@ describe('Sidebar', () => {
     }
   });
 
-  it('renders the R brand icon', () => {
+  it('renders the RevealUI mark, not a letter tile', () => {
     render(<Sidebar currentPage="dashboard" onNavigate={vi.fn()} />);
 
-    expect(screen.getByText('R')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'RevealUI' })).toBeInTheDocument();
+    expect(screen.queryByText('R')).not.toBeInTheDocument();
   });
 });
