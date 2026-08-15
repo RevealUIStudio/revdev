@@ -13,6 +13,9 @@ Dates are ISO 8601 (UTC).
   `daemon_setup` (it was registered and never invoked). Studio Release
   bundles the Linux `revdev-relay` so Setup can copy it. A missing relay
   is no longer described as a down daemon.
+- **Agent ping over a live daemon.** `revdev-relay` now flushes each
+  pipe write. Piped stdout was fully buffered, so Studio never saw a
+  response while the daemon kept the socket open.
 
 ## [0.2.6] — 2026-08-15
 
