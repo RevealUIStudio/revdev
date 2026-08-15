@@ -7,6 +7,20 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-08-14
+
+### Fixed
+
+- **App icon.** Taskbar, window, and tray use the RevealUI Circuit-R mark
+  from the design system, not the default Tauri cube. Sidebar and the
+  intent screen render `RevealUIMark` instead of a letter tile.
+- **Setup Skip hover.** Ghost chrome keeps body ink on hover so Skip stays
+  readable.
+- **Agent errors.** Tauri `{ kind, message }` rejects show the real
+  message, not `[object Object]`. A down WSL daemon is one Setup line.
+
+[0.2.3]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.3
+
 ## [0.2.2] — 2026-08-14
 
 ### Fixed

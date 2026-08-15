@@ -10,6 +10,12 @@ function clickHeadingButton(name: string): void {
 }
 
 describe('IntentScreen', () => {
+  it('renders the RevealUI mark', () => {
+    render(<IntentScreen onSelect={vi.fn()} />);
+
+    expect(screen.getByRole('img', { name: 'RevealUI' })).toBeInTheDocument();
+  });
+
   it('renders a path question and next-step copy', () => {
     render(<IntentScreen onSelect={vi.fn()} />);
 

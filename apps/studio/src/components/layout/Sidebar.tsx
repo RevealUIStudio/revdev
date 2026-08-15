@@ -5,6 +5,7 @@ import {
   IconSettings,
   IconTerminal,
   IconUsers,
+  RevealUIMark,
 } from '@revealui/presentation';
 import { useMemo, useState } from 'react';
 import type { Page } from '../../types';
@@ -101,9 +102,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   return (
     <aside className="flex h-full w-56 flex-col border-r border-edge bg-surface-1">
       <div className="flex items-center gap-2 border-b border-edge px-4 py-4">
-        <div className="size-8 rounded-lg bg-brand flex items-center justify-center text-sm font-bold">
-          R
-        </div>
+        <RevealUIMark className="size-8 shrink-0 text-fg" title="RevealUI" />
         <span className="text-sm font-semibold">RevealUI Studio</span>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3" aria-label="Studio">

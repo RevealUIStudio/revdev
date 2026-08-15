@@ -1,3 +1,4 @@
+import { RevealUIMark } from '@revealui/presentation';
 import { useState } from 'react';
 import Button from '../adapters/Button';
 import ErrorAlert from '../adapters/ErrorAlert';
@@ -28,9 +29,7 @@ export default function IntentScreen({ onSelect }: IntentScreenProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-0">
       <div className="w-full max-w-2xl px-8">
         <div className="mb-10 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-2xl font-bold text-on-brand">
-            R
-          </div>
+          <RevealUIMark className="mx-auto mb-4 size-16 text-fg" title="RevealUI" />
           <h1 className="text-3xl font-bold text-fg">How will you use Studio?</h1>
           <p className="mt-2 text-fg-muted">
             Pick a path. One click opens that workspace. You can change this later in Settings.
