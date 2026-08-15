@@ -7,6 +7,17 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.6] — 2026-08-15
+
+### Fixed
+
+- **Windows release compile.** `SHChangeNotify` takes `i32`.
+  `CommandExt::show_window` is still unstable on CI rustc, so leftover
+  console children keep CREATE_NO_WINDOW only. Agent uses `WslLaunch`.
+- **Quality lint.** Biome no longer treats ICO source SVGs as DOM.
+
+[0.2.6]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.6
+
 ## [0.2.5] — 2026-08-15
 
 ### Fixed
@@ -15,9 +26,8 @@ Dates are ISO 8601 (UTC).
   Explorer to drop the cached Tauri cube. 16/24px icons use the untiled
   mark so the pin is not a smudge.
 - **Agent flash after 0.2.4.** The relay starts with `WslLaunch` (no
-  `wsl.exe` console). Remaining `wsl.exe` / `cmd.exe` / `pwsh.exe`
-  children set SW_HIDE as well as CREATE_NO_WINDOW. Parallel Agent RPCs
-  no longer race past the spawn cooldown.
+  `wsl.exe` console). Parallel Agent RPCs no longer race past the
+  spawn cooldown.
 
 [0.2.5]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.5
 

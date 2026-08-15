@@ -141,7 +141,7 @@ fn notify_shell_icon_changed() {
         };
         unsafe {
             SHChangeNotify(
-                SHCNE_ASSOCCHANGED,
+                SHCNE_ASSOCCHANGED as i32,
                 SHCNF_IDLIST | SHCNF_FLUSH,
                 std::ptr::null(),
                 std::ptr::null(),
