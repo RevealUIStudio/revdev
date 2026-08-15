@@ -1,6 +1,6 @@
 [package]
 name = "revealui-studio"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 license = "LicenseRef-RevealUI-Commercial"
 authors = ["RevealUI Studio <noreply@revealui.com>"]
@@ -59,6 +59,16 @@ ts-rs = { version = "10", features = ["serde-compat"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Pipes",
+  "Win32_System_SubsystemForLinux",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+] }
 
 [dev-dependencies]
 # Integration tests (tests/) drive the async harness client + daemon_ctl

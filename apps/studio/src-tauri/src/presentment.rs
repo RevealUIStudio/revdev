@@ -90,20 +90,15 @@ pub fn present_main_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(), 
         let _ = win.set_title("RevealUI Studio (dev)");
     }
 
-    let monitor = win
-        .current_monitor()
-        .map_err(|err| err.to_string())?
-        .or(win.primary_monitor().map_err(|err| err.to_string())?);
+    let monitor =
+        win.current_monitor()
+            .map_err(|err| err.to_string())?
+            .or(win.primary_monitor().map_err(|err| err.to_string())?);
 
     if let Some(monitor) = monitor {
         let size = monitor.size();
         let weston = std::fs::read_to_string("/mnt/wslg/weston.log").ok();
-        if wsl_display_unpresentable(
-            running_in_wsl(),
-            size.width,
-            size.height,
-            weston.as_deref(),
-        ) {
+        if wsl_display_unpresentable(running_in_wsl(), size.width, size.height, weston.as_deref()) {
             return Err(WSL_UNPRESENTABLE.to_string());
         }
 
@@ -126,9 +121,33 @@ pub fn present_main_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(), 
         }
     }
 
+    // Taskbar/titlebar must use the Circuit-R, not a cached Tauri cube.
+    // Windows pins the shell icon to the AppUserModelID; set_icon updates
+    // the running HWND, and notify_shell_icon_changed busts Explorer.
+    let _ = win.set_icon(tauri::include_image!("icons/128x128.png"));
+    notify_shell_icon_changed();
+
     let _ = win.show();
     let _ = win.set_focus();
     Ok(())
+}
+
+/// Tell Explorer the app icon changed. No-op off Windows.
+fn notify_shell_icon_changed() {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Shell::{
+            SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_FLUSH, SHCNF_IDLIST,
+        };
+        unsafe {
+            SHChangeNotify(
+                SHCNE_ASSOCCHANGED,
+                SHCNF_IDLIST | SHCNF_FLUSH,
+                std::ptr::null(),
+                std::ptr::null(),
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -191,9 +210,6 @@ mod tests {
 
     #[test]
     fn clamp_pins_oversized_window_to_origin() {
-        assert_eq!(
-            clamp_position(86, 107, 1100, 750, 0, 0, 640, 480),
-            (0, 0)
-        );
+        assert_eq!(clamp_position(86, 107, 1100, 750, 0, 0, 640, 480), (0, 0));
     }
 }

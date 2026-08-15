@@ -7,6 +7,20 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-08-15
+
+### Fixed
+
+- **Taskbar icon.** The running window sets the Circuit-R mark and asks
+  Explorer to drop the cached Tauri cube. 16/24px icons use the untiled
+  mark so the pin is not a smudge.
+- **Agent flash after 0.2.4.** The relay starts with `WslLaunch` (no
+  `wsl.exe` console). Remaining `wsl.exe` / `cmd.exe` / `pwsh.exe`
+  children set SW_HIDE as well as CREATE_NO_WINDOW. Parallel Agent RPCs
+  no longer race past the spawn cooldown.
+
+[0.2.5]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.5
+
 ## [0.2.4] — 2026-08-15
 
 ### Fixed
