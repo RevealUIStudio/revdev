@@ -99,7 +99,7 @@ describe('SetupWizard', () => {
   });
 
   it('does not mark complete when relay install fails', async () => {
-    daemonSetup.mockRejectedValueOnce(new Error('wslpath failed'));
+    vi.mocked(daemonSetup).mockRejectedValueOnce(new Error('wslpath failed'));
     const { onComplete } = renderWizard();
     fireEvent.click(screen.getByText('Complete Setup'));
     expect(await screen.findByText('wslpath failed')).toBeInTheDocument();

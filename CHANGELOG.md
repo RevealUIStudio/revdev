@@ -7,6 +7,16 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-08-16
+
+### Fixed
+
+- **Windows NSIS build.** `pnpm build` (`tsc -b`) no longer typechecks
+  `__tests__`. The SetupWizard mock uses `vi.mocked` so a rejected
+  `daemonSetup` is typed.
+
+[0.2.8]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.8
+
 ## [0.2.7] — 2026-08-15
 
 ### Fixed
