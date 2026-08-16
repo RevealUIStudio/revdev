@@ -79,6 +79,15 @@ jobs:
       - name: Satisfy tauri-build frontendDist
         run: mkdir -p apps/studio/dist
 
+      # tauri.conf.json bundles gitignored wsl/revdev-relay. Release CI builds
+      # it; this job must too or tauri-build fails on a missing resource.
+      - name: Build WSL relay payload for tauri-build
+        run: |
+          cargo build --release --manifest-path apps/studio/relay/Cargo.toml
+          mkdir -p apps/studio/src-tauri/wsl
+          cp apps/studio/relay/target/release/revdev-relay apps/studio/src-tauri/wsl/revdev-relay
+          chmod +x apps/studio/src-tauri/wsl/revdev-relay
+
       # --test-threads=1: both test binaries route the harness client through
       # process-global env (REVDEV_TEST_SOCKET / REVDEV_DAEMON_*); parallel
       # tests would race each other's socket overrides.
@@ -180,6 +189,13 @@ jobs:
       # tauri-build's codegen requires the configured frontendDist path to exist.
       - name: Satisfy tauri-build frontendDist
         run: mkdir -p apps/studio/dist
+
+      - name: Build WSL relay payload for tauri-build
+        run: |
+          cargo build --release --manifest-path apps/studio/relay/Cargo.toml
+          mkdir -p apps/studio/src-tauri/wsl
+          cp apps/studio/relay/target/release/revdev-relay apps/studio/src-tauri/wsl/revdev-relay
+          chmod +x apps/studio/src-tauri/wsl/revdev-relay
 
       # Reverts the changed Rust source to base, then runs each changed
       # integration test (`cargo test --test <name>`) and requires >=1 red.

@@ -230,6 +230,12 @@ const MOCK_DATA: Record<string, unknown> = {
   agent_remove: undefined,
   agent_input: undefined,
   agent_resize: undefined,
+  detect_browser_profiles: [] as Array<{
+    directory: string;
+    name: string;
+    browser: string;
+  }>,
+  list_running_processes: [] as string[],
   inference_profile_get: {
     tier: 'idle',
     provider: null,
@@ -1399,6 +1405,22 @@ export function focusWindow(processName: string): Promise<boolean> {
     return Promise.resolve(false);
   }
   return invoke<boolean>('focus_window', { processName });
+}
+
+// ── Tile gallery (trusted-host process / browser profile discovery) ─────────
+
+export interface BrowserProfileRow {
+  directory: string;
+  name: string;
+  browser: string;
+}
+
+export function detectBrowserProfiles(): Promise<BrowserProfileRow[]> {
+  return invoke<BrowserProfileRow[]>('detect_browser_profiles');
+}
+
+export function listRunningProcesses(): Promise<string[]> {
+  return invoke<string[]>('list_running_processes');
 }
 
 // ── Harness Daemon ─────────────────────────────────────────────────────────

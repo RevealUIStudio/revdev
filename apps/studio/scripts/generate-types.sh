@@ -14,6 +14,15 @@ STUDIO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TAURI_DIR="$STUDIO_DIR/src-tauri"
 GENERATED_DIR="$STUDIO_DIR/src/generated"
 
+RELAY_BIN="$TAURI_DIR/wsl/revdev-relay"
+if [ ! -x "$RELAY_BIN" ]; then
+  echo "==> Building gitignored wsl/revdev-relay for tauri-build..."
+  cargo build --release --manifest-path "$STUDIO_DIR/relay/Cargo.toml"
+  mkdir -p "$(dirname "$RELAY_BIN")"
+  cp "$STUDIO_DIR/relay/target/release/revdev-relay" "$RELAY_BIN"
+  chmod +x "$RELAY_BIN"
+fi
+
 echo "==> Running cargo test to generate ts-rs bindings..."
 cd "$TAURI_DIR"
 cargo test --lib

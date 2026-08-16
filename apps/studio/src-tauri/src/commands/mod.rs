@@ -15,5 +15,6 @@ pub mod ssh;
 pub mod status;
 pub mod sync;
 pub mod terminal;
+pub mod tiles;
 pub mod vault;
 pub mod fleet_map;
