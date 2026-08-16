@@ -7,6 +7,16 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.10] — 2026-08-16
+
+### Fixed
+
+- **Windows release ts-rs.** `generate-types.sh` treated a non-executable
+  Linux `revdev-relay` as missing and tried to compile it on Windows
+  (`UnixStream` is Linux-only). Use the downloaded ELF if the file exists.
+
+[0.2.10]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.10
+
 ## [0.2.9] — 2026-08-16
 
 ### Fixed
