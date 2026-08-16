@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  formatDaemonUnreachable,
   harnessCheckFile,
   harnessClaimTask,
   harnessCompleteTask,
@@ -116,7 +117,7 @@ export function useHarness(agentId?: string): UseHarnessReturn {
       setReservations(state.reservations);
       setError(state.connected ? null : 'Harness daemon not running');
     } catch (e) {
-      setError(invokeErrorMessage(e));
+      setError(formatDaemonUnreachable(invokeErrorMessage(e)));
       setConnected(false);
     } finally {
       setLoading(false);

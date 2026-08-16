@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import ConfirmDialog from '../adapters/ConfirmDialog';
 import AgentChat from './AgentChat';
+import AgentConnectBanner from './AgentConnectBanner';
 import ApprovalQueue from './ApprovalQueue';
 import FileReservations from './FileReservations';
 import MessageInbox from './MessageInbox';
@@ -26,6 +27,7 @@ import type { AgentCard } from '../../lib/a2a-api';
 import { fetchAgentCards } from '../../lib/a2a-api';
 import {
   agentReadWorkboard,
+  daemonSetup,
   formatDaemonUnreachable,
   gitDiscardFile,
   gitStageFile,
@@ -320,6 +322,7 @@ export default function AgentPanel() {
 
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [workboardError, setWorkboardError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
   const [gitState, setGitState] = useState<GitStatusResult | null>(null);
   const [gitError, setGitError] = useState<string | null>(null);
@@ -371,6 +374,18 @@ export default function AgentPanel() {
 
   async function refresh() {
     await Promise.all([loadWorkboard(), loadChanges(), loadRemoteAgents()]);
+  }
+
+  async function connectAgent() {
+    setConnecting(true);
+    try {
+      await daemonSetup();
+      await Promise.all([refresh(), harness.refresh()]);
+    } catch (e) {
+      setWorkboardError(formatDaemonUnreachable(invokeErrorMessage(e)));
+    } finally {
+      setConnecting(false);
+    }
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh on mount + path changes
@@ -522,9 +537,11 @@ export default function AgentPanel() {
 
         <div className="max-h-48 flex-1 overflow-y-auto px-2 py-2 md:max-h-none">
           {daemonBanner ? (
-            <div className="mb-2 rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">
-              {daemonBanner}
-            </div>
+            <AgentConnectBanner
+              message={daemonBanner}
+              connecting={connecting}
+              onConnect={() => void connectAgent()}
+            />
           ) : null}
           {workboardError && !isDaemonUnreachable(workboardError) ? (
             <div className="rounded border border-error/40 bg-error-subtle px-2.5 py-2 text-[10px] text-error">

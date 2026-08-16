@@ -25,14 +25,27 @@ const SOCKET_REL_PATH: &str = ".local/share/revealui/harness.sock";
 
 /// User-facing copy when the Windows WSL relay exits before a JSON-RPC line.
 /// Kept off the `not(unix)` gate so Linux CI can lock the wording.
+/// Do not claim the daemon is down here: EOF on the pipe is not a process check.
 #[cfg_attr(unix, allow(dead_code))]
 pub(crate) fn relay_closed_message(stderr: &str) -> String {
     let hint = stderr.trim();
-    let base = "Relay closed without response. The agent daemon in WSL is not running. Open Setup from the sidebar, then try Agent again.";
+    let base = "Relay closed without response.";
     if hint.is_empty() {
         return base.to_string();
     }
     format!("{base} ({hint})")
+}
+
+/// Drop a dead WslLaunch child and clear the spawn cooldown so Connect Agent
+/// can retry immediately. Unix has no relay child.
+pub async fn reset_live_relay() {
+    #[cfg(not(unix))]
+    {
+        *LIVE_RELAY.lock().await = None;
+        if let Ok(mut guard) = RELAY_COOLDOWN_UNTIL.lock() {
+            *guard = None;
+        }
+    }
 }
 
 /// After a failed WSL relay spawn, skip new `wsl.exe` children until `until`.
@@ -624,11 +637,11 @@ mod relay_closed_tests {
     use super::{relay_closed_message, relay_spawn_on_cooldown};
 
     #[test]
-    fn empty_stderr_points_at_setup() {
+    fn empty_stderr_does_not_claim_the_daemon_is_down() {
         let msg = relay_closed_message("  ");
-        assert!(msg.starts_with("Relay closed without response"));
-        assert!(msg.contains("Open Setup from the sidebar"));
-        assert!(!msg.contains('('));
+        assert_eq!(msg, "Relay closed without response.");
+        assert!(!msg.contains("daemon"));
+        assert!(!msg.contains("Open Setup"));
     }
 
     #[test]
