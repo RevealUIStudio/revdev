@@ -505,17 +505,26 @@ describe('formatInvokeError', () => {
     expect(invokeErrorMessage({})).toBe('Studio command failed');
   });
 
-  it('rewrites relay/daemon failures into one Setup line', async () => {
+  it('rewrites relay/daemon failures into a Connect Agent line', async () => {
     const { formatDaemonUnreachable, isDaemonUnreachable } = await import('../../lib/invoke');
     expect(isDaemonUnreachable('Relay closed without response')).toBe(true);
-    expect(formatDaemonUnreachable('Relay closed without response')).toMatch(
-      /daemon in WSL is not running/,
+    expect(formatDaemonUnreachable('Relay closed without response')).toBe(
+      'Studio lost the WSL agent relay. Connect Agent to open it again.',
+    );
+    expect(formatDaemonUnreachable('Relay spawn failed: WslLaunch HRESULT 0x80070002')).toBe(
+      'Studio could not start the WSL agent relay. Connect Agent to try again.',
+    );
+    expect(formatDaemonUnreachable('RPC timeout after 10s: ping')).toBe(
+      'The WSL agent did not answer in time. Connect Agent to try again.',
+    );
+    expect(formatDaemonUnreachable('Harness daemon not running')).toBe(
+      'The agent daemon in WSL is not running. Connect Agent to start it.',
     );
     expect(
       formatDaemonUnreachable(
-        'Relay closed without response. The agent daemon in WSL is not running. Open Setup from the sidebar, then try Agent again. (revdev-relay: connect /home/x/.local/share/revealui/harness.sock: No such file or directory)',
+        'Relay closed without response. (revdev-relay: connect /home/x/.local/share/revealui/harness.sock: No such file or directory)',
       ),
-    ).toMatch(/relay is not installed/);
+    ).toBe('The WSL agent relay is not installed. Connect Agent to install it.');
     expect(formatDaemonUnreachable('permission denied')).toBe('permission denied');
   });
 });

@@ -414,6 +414,9 @@ fn build_trust_anchor_provision_script(agent_id: &str, fp: &str) -> String {
 pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
 
+    // Drop a dead relay and the 20s spawn cooldown so Agent can retry now.
+    crate::harness::reset_live_relay().await;
+
     // Gate: stops here with actionable `wsl --shutdown` guidance if systemd-user
     // isn't available yet.
     wsl::ensure_systemd().await?;
@@ -497,6 +500,7 @@ pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
 #[cfg(unix)]
 #[tauri::command]
 pub async fn daemon_setup(_app: tauri::AppHandle) -> Result<String, String> {
+    crate::harness::reset_live_relay().await;
     Ok("No WSL setup required on this platform.".to_string())
 }
 

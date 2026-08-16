@@ -956,17 +956,29 @@ export function isDaemonUnreachable(message: string): boolean {
     message.startsWith('Harness daemon not running') ||
     message.startsWith('The agent daemon in WSL') ||
     message.startsWith('The WSL agent relay') ||
+    message.startsWith('The WSL agent did not answer') ||
+    message.startsWith('Studio lost the WSL agent relay') ||
+    message.startsWith('Studio could not start the WSL agent relay') ||
     message.startsWith('RPC timeout')
   );
 }
 
-/** One actionable line when the WSL daemon/relay is down. */
+/** One actionable line. Do not send the operator to Setup for a pipe failure. */
 export function formatDaemonUnreachable(message: string): string {
   if (!isDaemonUnreachable(message)) return message;
   if (message.includes('revdev-relay') || message.includes('No such file or directory')) {
-    return 'The WSL agent relay is not installed. Open Setup from the sidebar, then try Agent again.';
+    return 'The WSL agent relay is not installed. Connect Agent to install it.';
   }
-  return 'The agent daemon in WSL is not running. Open Setup from the sidebar, then try Agent again.';
+  if (message.startsWith('Relay spawn failed:') || message.startsWith('Studio could not start')) {
+    return 'Studio could not start the WSL agent relay. Connect Agent to try again.';
+  }
+  if (message.startsWith('Relay closed') || message.startsWith('Studio lost the WSL agent relay')) {
+    return 'Studio lost the WSL agent relay. Connect Agent to open it again.';
+  }
+  if (message.startsWith('RPC timeout') || message.startsWith('The WSL agent did not answer')) {
+    return 'The WSL agent did not answer in time. Connect Agent to try again.';
+  }
+  return 'The agent daemon in WSL is not running. Connect Agent to start it.';
 }
 
 /** Guarded invoke — returns mock data in browser, real IPC in Tauri */
