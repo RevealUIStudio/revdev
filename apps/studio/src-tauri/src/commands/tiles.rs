@@ -233,7 +233,7 @@ fn wsl_windows_userprofile() -> Option<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn windows_path_to_wsl(win: &str) -> Option<PathBuf> {
-    // C:\Users\name → /mnt/c/Users/name
+    // Windows drive letter path → /mnt/<drive>/…
     let bytes = win.as_bytes();
     if bytes.len() < 3 || bytes[1] != b':' || (bytes[2] != b'\\' && bytes[2] != b'/') {
         return None;
@@ -268,7 +268,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn maps_windows_userprofile() {
-        let p = windows_path_to_wsl(r"C:\Users\josh").unwrap();
-        assert_eq!(p, PathBuf::from("/mnt/c/Users/josh"));
+        let p = windows_path_to_wsl(r"C:\Temp\profile").unwrap();
+        assert_eq!(p, PathBuf::from("/mnt/c/Temp/profile"));
     }
 }

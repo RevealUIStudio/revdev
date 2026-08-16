@@ -840,10 +840,7 @@ export class HttpGateway {
 
     // If file doesn't exist, serve index.html (SPA fallback) — still contained.
     const indexPath = resolveStaticPath(this.config.staticDir, 'index.html');
-    const targetPath =
-      existsSync(resolved) && statSync(resolved).isFile()
-        ? resolved
-        : indexPath;
+    const targetPath = existsSync(resolved) && statSync(resolved).isFile() ? resolved : indexPath;
 
     if (!targetPath || !existsSync(targetPath)) {
       res.writeHead(404);
@@ -912,11 +909,7 @@ export function resolveStaticPath(staticDir: string, urlPath: string): string | 
   }
 
   // Reject absolute-looking forms that survived the strip (drive letters, UNC).
-  if (
-    normalized.startsWith('/') ||
-    normalized.startsWith('\\') ||
-    /^[a-zA-Z]:/.test(normalized)
-  ) {
+  if (normalized.startsWith('/') || normalized.startsWith('\\') || /^[a-zA-Z]:/.test(normalized)) {
     return null;
   }
 
