@@ -21,7 +21,8 @@ mod win_process;
 use commands::{
     agent as agent_cmds, apps, config as config_cmds, deploy, fleet_map, git as git_cmds,
     harness as harness_cmds, inference as inference_cmds, launcher, local_shell as shell_cmds,
-    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, vault,
+    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, tiles,
+    vault,
 };
 use config::ConfigState;
 use local_shell::LocalShellState;
@@ -192,6 +193,8 @@ pub fn run() {
             inference_cmds::inference_profile_apply,
             terminal::terminal_detect,
             terminal::terminal_install,
+            tiles::detect_browser_profiles,
+            tiles::list_running_processes,
             launcher::focus_window,
             daemon_ctl::daemon_status,
             daemon_ctl::daemon_start,
