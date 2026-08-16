@@ -7,6 +7,15 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.11] — 2026-08-16
+
+### Fixed
+
+- **Windows release compile.** `spawn_blocking` pipe write/read needs
+  `mut` stdin and stdout. That path is Windows-only so Linux CI missed it.
+
+[0.2.11]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.11
+
 ## [0.2.10] — 2026-08-16
 
 ### Fixed

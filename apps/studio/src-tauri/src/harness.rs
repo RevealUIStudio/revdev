@@ -559,7 +559,7 @@ async fn rpc_call_once(
 
     // WslLaunch anonymous pipes are not overlapped. Drive them with blocking
     // std I/O on a worker so Tokio IOCP does not see EOF / invalid parameter.
-    let stdin = slot
+    let mut stdin = slot
         .as_mut()
         .expect("relay just inserted")
         .stdin
@@ -579,7 +579,7 @@ async fn rpc_call_once(
         return Err(format!("Write failed: {e}"));
     }
 
-    let stdout = slot
+    let mut stdout = slot
         .as_mut()
         .expect("relay still held")
         .stdout
