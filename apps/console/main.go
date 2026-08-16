@@ -32,6 +32,7 @@ import (
 	"github.com/charmbracelet/ssh"
 
 	"github.com/RevealUIStudio/revdev/apps/console/api"
+	"github.com/RevealUIStudio/revdev/apps/console/authz"
 	"github.com/RevealUIStudio/revdev/apps/console/proxy"
 	"github.com/RevealUIStudio/revdev/apps/console/tui"
 )
@@ -54,11 +55,16 @@ func main() {
 			return true // Accept all keys — fingerprint used for account lookup, not auth
 		}),
 		wish.WithMiddleware(
-			// Route to agent proxy or payment TUI based on SSH command
+			// Route to agent proxy or payment TUI based on SSH command.
+			// Payment TUI keeps accept-all public keys (fingerprint lookup).
+			// Agents mode is fail-closed against CONSOLE_AUTHORIZED_KEYS.
 			func(next ssh.Handler) ssh.Handler {
 				return func(s ssh.Session) {
 					cmd := strings.Join(s.Command(), " ")
 					if strings.TrimSpace(cmd) == "agents" || defaultMode == "agents" {
+						if !authorizeAgentsSession(s) {
+							return
+						}
 						termProxy.Handle(s)
 						return
 					}
@@ -98,4 +104,21 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// authorizeAgentsSession fails closed: only keys listed in the OpenSSH
+// authorized_keys file at CONSOLE_AUTHORIZED_KEYS may reach the agent proxy
+// (and therefore any REVEALUI_API_TOKEN attached to API calls).
+func authorizeAgentsSession(s ssh.Session) bool {
+	path := os.Getenv("CONSOLE_AUTHORIZED_KEYS")
+	keys, err := authz.LoadAuthorizedKeys(path)
+	if err != nil || len(keys) == 0 {
+		fmt.Fprintf(s, "\r\nagents mode denied: authorized keys unavailable\r\n")
+		return false
+	}
+	if !authz.KeyAuthorized(s.PublicKey(), keys) {
+		fmt.Fprintf(s, "\r\nagents mode denied: public key not authorized\r\n")
+		return false
+	}
+	return true
 }

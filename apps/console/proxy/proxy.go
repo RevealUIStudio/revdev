@@ -102,10 +102,17 @@ func short(id string) string {
 
 // spawnSession creates a new agent session via the API.
 func (p *Proxy) spawnSession(name string) (string, error) {
-	body := fmt.Sprintf(`{"name":"%s","cols":120,"rows":30}`, name)
+	payload, err := json.Marshal(struct {
+		Name string `json:"name"`
+		Cols int    `json:"cols"`
+		Rows int    `json:"rows"`
+	}{Name: name, Cols: 120, Rows: 30})
+	if err != nil {
+		return "", fmt.Errorf("encode spawn body: %w", err)
+	}
 	endpoint := fmt.Sprintf("%s/api/terminal/sessions", p.apiURL)
 
-	resp, err := p.client.HTTPClient().Post(endpoint, "application/json", strings.NewReader(body))
+	resp, err := p.client.HTTPClient().Post(endpoint, "application/json", strings.NewReader(string(payload)))
 	if err != nil {
 		return "", fmt.Errorf("spawn failed: %w", err)
 	}
