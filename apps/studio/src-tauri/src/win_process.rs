@@ -39,26 +39,26 @@ pub fn relay_shell_command(socket_rel_path: &str) -> String {
 #[cfg(windows)]
 pub struct HiddenWslChild {
     process: isize,
-    stdin: Option<tokio::fs::File>,
-    stdout: Option<tokio::fs::File>,
-    stderr: Option<tokio::fs::File>,
+    stdin: Option<std::fs::File>,
+    stdout: Option<std::fs::File>,
+    stderr: Option<std::fs::File>,
 }
 
 #[cfg(windows)]
 impl HiddenWslChild {
-    pub fn take_stdin(&mut self) -> Result<tokio::fs::File, String> {
+    pub fn take_stdin(&mut self) -> Result<std::fs::File, String> {
         self.stdin
             .take()
             .ok_or_else(|| "Relay spawn failed: stdin unavailable".to_string())
     }
 
-    pub fn take_stdout(&mut self) -> Result<tokio::fs::File, String> {
+    pub fn take_stdout(&mut self) -> Result<std::fs::File, String> {
         self.stdout
             .take()
             .ok_or_else(|| "Relay spawn failed: stdout unavailable".to_string())
     }
 
-    pub fn take_stderr(&mut self) -> Option<tokio::fs::File> {
+    pub fn take_stderr(&mut self) -> Option<std::fs::File> {
         self.stderr.take()
     }
 
@@ -135,9 +135,12 @@ pub fn spawn_wsl_hidden(distro: &str, command: &str) -> Result<HiddenWslChild, S
         Ok(())
     }
 
-    unsafe fn to_tokio(handle: HANDLE) -> tokio::fs::File {
+    // Anonymous CreatePipe handles are not FILE_FLAG_OVERLAPPED. Do not wrap
+    // them in tokio::fs::File; IOCP read/write fails or returns EOF. The
+    // caller drives these with blocking std I/O (spawn_blocking).
+    unsafe fn to_std(handle: HANDLE) -> std::fs::File {
         let owned = OwnedHandle::from_raw_handle(handle as _);
-        tokio::fs::File::from_std(std::fs::File::from(owned))
+        std::fs::File::from(owned)
     }
 
     let distro_w = to_wide(distro);
@@ -198,9 +201,9 @@ pub fn spawn_wsl_hidden(distro: &str, command: &str) -> Result<HiddenWslChild, S
 
     Ok(HiddenWslChild {
         process: process as isize,
-        stdin: Some(unsafe { to_tokio(stdin_w) }),
-        stdout: Some(unsafe { to_tokio(stdout_r) }),
-        stderr: Some(unsafe { to_tokio(stderr_r) }),
+        stdin: Some(unsafe { to_std(stdin_w) }),
+        stdout: Some(unsafe { to_std(stdout_r) }),
+        stderr: Some(unsafe { to_std(stderr_r) }),
     })
 }
 

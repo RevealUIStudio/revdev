@@ -430,8 +430,8 @@ static RELAY_COOLDOWN_UNTIL: std::sync::Mutex<Option<std::time::Instant>> =
 #[cfg(not(unix))]
 struct LiveRelay {
     child: crate::win_process::HiddenWslChild,
-    stdin: tokio::fs::File,
-    stdout: tokio::io::BufReader<tokio::fs::File>,
+    stdin: Option<std::fs::File>,
+    stdout: Option<std::io::BufReader<std::fs::File>>,
 }
 
 #[cfg(not(unix))]
@@ -508,8 +508,6 @@ fn is_transient_error(err: &str) -> bool {
 
 #[cfg(not(unix))]
 async fn spawn_live_relay() -> Result<LiveRelay, String> {
-    use tokio::io::BufReader;
-
     if relay_is_cooling_down() {
         return Err(relay_closed_message(""));
     }
@@ -524,8 +522,8 @@ async fn spawn_live_relay() -> Result<LiveRelay, String> {
     let stdout = child.take_stdout()?;
     Ok(LiveRelay {
         child,
-        stdin,
-        stdout: BufReader::new(stdout),
+        stdin: Some(stdin),
+        stdout: Some(std::io::BufReader::new(stdout)),
     })
 }
 
@@ -538,7 +536,7 @@ async fn rpc_call_once(
     params: &serde_json::Value,
     signature: &Option<String>,
 ) -> Result<serde_json::Value, String> {
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+    use std::io::{BufRead, Write};
 
     let mut slot = LIVE_RELAY.lock().await;
     if slot.is_none() {
@@ -559,56 +557,57 @@ async fn rpc_call_once(
     let mut payload = serde_json::to_vec(&request).map_err(|e| e.to_string())?;
     payload.push(b'\n');
 
-    let write_err = {
-        let relay = slot.as_mut().expect("relay just inserted");
-        relay
-            .stdin
-            .write_all(&payload)
-            .await
-            .err()
-            .map(|e| format!("Write failed: {e}"))
-    };
-    if let Some(err) = write_err {
-        *slot = None;
-        return Err(err);
-    }
+    // WslLaunch anonymous pipes are not overlapped. Drive them with blocking
+    // std I/O on a worker so Tokio IOCP does not see EOF / invalid parameter.
+    let stdin = slot
+        .as_mut()
+        .expect("relay just inserted")
+        .stdin
+        .take()
+        .ok_or_else(|| "Relay spawn failed: stdin unavailable".to_string())?;
+    let (stdin, write_err) = tokio::task::spawn_blocking(move || {
+        let result = stdin.write_all(&payload).and_then(|()| stdin.flush());
+        (stdin, result)
+    })
+    .await
+    .map_err(|e| format!("Write failed: {e}"))?;
     if let Some(relay) = slot.as_mut() {
-        if let Err(e) = relay.stdin.flush().await {
-            *slot = None;
-            return Err(format!("Write failed: {e}"));
-        }
+        relay.stdin = Some(stdin);
+    }
+    if let Err(e) = write_err {
+        *slot = None;
+        return Err(format!("Write failed: {e}"));
     }
 
-    let mut line = String::new();
-    let n = {
-        let relay = slot.as_mut().expect("relay still held");
-        relay
-            .stdout
-            .read_line(&mut line)
-            .await
-            .map_err(|e| format!("Read failed: {e}"))
-    };
+    let stdout = slot
+        .as_mut()
+        .expect("relay still held")
+        .stdout
+        .take()
+        .ok_or_else(|| "Relay spawn failed: stdout unavailable".to_string())?;
+    let (stdout, line, n) = tokio::task::spawn_blocking(move || {
+        let mut line = String::new();
+        let n = stdout.read_line(&mut line);
+        (stdout, line, n)
+    })
+    .await
+    .map_err(|e| format!("Read failed: {e}"))?;
+    if let Some(relay) = slot.as_mut() {
+        relay.stdout = Some(stdout);
+    }
     let n = match n {
         Ok(n) => n,
         Err(err) => {
             *slot = None;
-            return Err(err);
+            return Err(format!("Read failed: {err}"));
         }
     };
     if n == 0 {
-        let mut err_buf = String::new();
-        if let Some(mut relay) = slot.take() {
-            if let Some(stderr) = relay.child.take_stderr() {
-                let mut err_reader = tokio::io::BufReader::new(stderr);
-                let _ = timeout(
-                    Duration::from_millis(250),
-                    tokio::io::AsyncReadExt::read_to_string(&mut err_reader, &mut err_buf),
-                )
-                .await;
-            }
-        }
+        // Do not read stderr here: the anonymous pipe blocks if the child
+        // is still alive with an empty buffer.
+        *slot = None;
         mark_relay_down();
-        return Err(relay_closed_message(&err_buf));
+        return Err(relay_closed_message(""));
     }
 
     let response: JsonRpcResponse =

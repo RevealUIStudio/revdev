@@ -7,6 +7,17 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.9] — 2026-08-16
+
+### Fixed
+
+- **Agent over a live WSL daemon.** `WslLaunch` stdio uses anonymous
+  pipes. Those handles are not overlapped, so `tokio::fs::File` never
+  delivered a ping line. Studio now writes and reads them with blocking
+  std I/O on a worker thread.
+
+[0.2.9]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.9
+
 ## [0.2.8] — 2026-08-16
 
 ### Fixed
