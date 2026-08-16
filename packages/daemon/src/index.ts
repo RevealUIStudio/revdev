@@ -42,6 +42,7 @@ export {
   type HttpGatewayConfig,
   isPreAuthRoute,
   PRE_AUTH_ROUTES,
+  resolveStaticPath,
 } from './http-gateway.js';
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
 export {
