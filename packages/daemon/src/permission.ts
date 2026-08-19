@@ -154,6 +154,15 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['workflow.run', 'consequential'],
   ['skills.list', 'routine'],
   ['skills.invoke', 'routine'],
+  // GAP-349 P5 — local replica reads/writes are routine; hub push is consequential
+  ['graph.status', 'routine'],
+  ['graph.search', 'routine'],
+  ['graph.node', 'routine'],
+  ['graph.neighbors', 'routine'],
+  ['graph.at', 'routine'],
+  ['graph.context', 'routine'],
+  ['graph.addEpisode', 'routine'],
+  ['graph.outbox.push', 'consequential'],
   // Inner tools of skills.invoke (not standalone RPCs). Bash is a shell, so
   // critical: auto mode still requires approval (policy floor). Reads stay routine.
   ['skills.tool.Read', 'routine'],

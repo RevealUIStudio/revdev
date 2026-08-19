@@ -34,6 +34,9 @@ export const MAX_PAYLOAD_SIZE = 100_000;
 /** Maximum memory content length (500KB) */
 export const MAX_MEMORY_LENGTH = 500_000;
 
+/** GAP-349 episode content cap (lockstep with @revealui/mcp kg_add_episode). */
+export const MAX_EPISODE_CONTENT_CHARS = 64_000;
+
 /** Maximum TTL for file reservations (24 hours in seconds) */
 export const MAX_TTL_SECONDS = 86_400;
 

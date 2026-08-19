@@ -172,4 +172,14 @@ export const RPC_METHODS = {
   'skills.list': 'skills.list',
   // GAP-293 Phase C — native workflow generate on product default snap
   'skills.invoke': 'skills.invoke',
+
+  // GAP-349 P5 — local knowledge-graph replica (PGlite) + outbox push to Neon
+  'graph.status': 'graph.status',
+  'graph.search': 'graph.search',
+  'graph.node': 'graph.node',
+  'graph.neighbors': 'graph.neighbors',
+  'graph.at': 'graph.at',
+  'graph.context': 'graph.context',
+  'graph.addEpisode': 'graph.addEpisode',
+  'graph.outbox.push': 'graph.outbox.push',
 } as const;

@@ -175,6 +175,15 @@ const IDENTITY_EXEMPT = new Set([
   'inference.stop',
   'inference.chat',
   'inference.generate',
+  // GAP-349 P5: local graph replica is a 0600-socket diagnostic/query surface
+  // (same class as harness.health / inference.status). Writes still go through
+  // graph.addEpisode / graph.outbox.push which are not identity-exempt.
+  'graph.status',
+  'graph.search',
+  'graph.node',
+  'graph.neighbors',
+  'graph.at',
+  'graph.context',
 ]);
 
 /**

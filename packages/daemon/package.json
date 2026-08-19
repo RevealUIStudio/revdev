@@ -55,6 +55,8 @@
     "@revdev/protocol": "workspace:*",
     "@revealui/contracts": "^1.4.0",
     "@revealui/core": "^0.10.2",
+    "@revealui/db": "^0.10.0",
+    "@revealui/knowledge-graph": "^0.1.8",
     "@revealui/utils": "^0.3.5",
     "drizzle-orm": "^0.45.2",
     "node-pty": "^1.0.0",
