@@ -1,15 +1,15 @@
 ---
 type: spec
 repo: revdev
-last-updated: 2026-06-11
+last-updated: 2026-08-19
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
 
 # RevDev — Spec
 
-**Last Updated:** 2026-06-11
-**Status:** Pre-1.0 — daemon production-grade for internal use; Studio + Console builds clean; no public releases
+**Last Updated:** 2026-08-19
+**Status:** Pre-1.0 — daemon production-grade for internal use; Studio + Console build clean; public tags `studio-v0.2.11` and `console-v0.2.0` exist
 
 > **The single RevDev spec** — surface area, architecture, JSON-RPC contract, license model, identity. [`MASTER_SPEC.md`](./MASTER_SPEC.md) is the stable entry point that references this file. Plan counterpart: [`PLAN.md`](./PLAN.md).
 
@@ -201,7 +201,7 @@ Tier is the pricing axis; principal type is orthogonal — staff-ness is **not**
 
 ## CI surface
 
-`.github/workflows/`: `ci.yml` (quality, typecheck, build, test, Console Go job, secret scanning), `codeql.yml` (js-ts + go), `dependency-review.yml` (PR-only), `promotion-gate.yml` (test→main gate), `backflow.yml` (auto main→test backflow PR, shared reusable workflow), gitleaks via pinned CLI, `studio-release.yml` (tag-triggered Tauri build; defined, not yet cutting public releases), `console-release.yml` (tag-triggered Go release). All third-party actions SHA-pinned.
+`.github/workflows/`: `ci.yml` (quality, typecheck, build, test, Console Go job, secret scanning), `codeql.yml` (js-ts + go), `dependency-review.yml` (PR-only), `promotion-gate.yml` (test→main gate), `backflow.yml` (auto main→test backflow PR, shared reusable workflow), gitleaks via pinned CLI, `studio-release.yml` (tag-triggered Tauri build; latest public tag `studio-v0.2.11`), `console-release.yml` (tag-triggered Go release; public tag `console-v0.2.0`). All third-party actions SHA-pinned.
 
 ---
 

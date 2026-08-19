@@ -66,8 +66,8 @@ Pre-1.0 across the board:
 
 | Component | Status | How to use it today |
 |---|---|---|
-| **Studio** | Buildable, unsigned | `pnpm --filter studio tauri build` → local binary. Signed/notarized auto-update pipeline defined in `.github/workflows/studio-release.yml`; not yet cutting public releases. Dogfooding `@revealui/presentation` Phase 1+2 done; Phase 3+4 in flight. |
-| **Console** | Buildable | `cd apps/console && go build -o ../../rvui .` — no release automation yet. |
+| **Studio** | Buildable, unsigned | Local: `pnpm --filter studio tauri build`. Public GitHub Releases are live — latest `studio-v0.2.11` (2026-08-16; macOS · Linux · Windows). Tag pipeline: `.github/workflows/studio-release.yml`. macOS/Windows OS code-signing is still unsigned/ad-hoc (Tauri updater `.sig` files are not Apple/Microsoft signatures). Dogfooding `@revealui/presentation` Phase 1+2 done; Phase 3+4 in flight. |
+| **Console** | Buildable | `cd apps/console && go build -o ../../rvui .`. Tag pipeline: `.github/workflows/console-release.yml`. Public tag `console-v0.2.0` (2026-07-17). |
 | **Harness Daemon** | Buildable, not published | Build with `pnpm --filter @revdev/daemon build`. `node packages/daemon/dist/cli.js --detach` returns in <1s; child runs in its own session and PGID. Boot survival via `pnpm --filter @revdev/daemon setup:systemd` (systemd-user unit; requires `loginctl enable-linger` on WSL). |
 
 Integration test coverage is thin on the Studio↔daemon Tauri bridge (`vault.rs`, `spawner.rs`, `harness.rs`). Treat Studio as development-preview quality until those land.
@@ -96,8 +96,12 @@ pnpm test
 
 ## License
 
-| Component | License |
-|---|---|
-| Studio | LicenseRef-RevealUI-Commercial |
-| Console | MIT |
-| Harness Daemon | FSL-1.1-MIT (Fair Source, converts to MIT after 2 years) |
+The root [`LICENSE`](./LICENSE) is MIT and is the default for this repository. It does **not** relicense components that declare a different license:
+
+| Component | License | Where declared |
+|---|---|---|
+| Studio | LicenseRef-RevealUI-Commercial | `apps/studio/src-tauri/Cargo.toml` |
+| Console | MIT | root `LICENSE` (no component override) |
+| Harness Daemon | FSL-1.1-MIT (Fair Source, converts to MIT after 2 years) | `packages/daemon/LICENSE` |
+
+`@revdev/bridge` is also FSL-1.1-MIT; `@revdev/protocol` and `@revdev/theme` are MIT.
