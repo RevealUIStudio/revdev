@@ -77,6 +77,8 @@ import './workflow-rpc.js';
 import './skills-rpc.js';
 // GAP-323 — design-pack watch (design.pack.* + auto-watch on start)
 import './design-pack-watch.js';
+// GAP-349 P5 — local knowledge-graph replica + graph.* RPC
+import './graph.js';
 
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 export { SCHEMA_SQL } from './storage/schema.js';

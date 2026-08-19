@@ -19,6 +19,7 @@ import { isValidAgentId } from '@revdev/protocol/did';
 import { z } from 'zod';
 import {
   MAX_BODY_LENGTH,
+  MAX_EPISODE_CONTENT_CHARS,
   MAX_FILE_WRITE_BYTES,
   MAX_IDS_BATCH,
   MAX_MEMORY_LENGTH,
@@ -493,6 +494,68 @@ export const schemas: Record<string, z.ZodType> = {
       actorAgentId,
     })
     .passthrough(),
+
+  // GAP-349 P5 — local knowledge-graph replica
+  'graph.status': z.object({ actorAgentId }).passthrough(),
+  'graph.search': z
+    .object({
+      query: z.string().min(1).max(MAX_NAME_LENGTH),
+      anchor: z.string().min(1).max(1024).optional(),
+      naturalKey: z.string().min(1).max(1024).optional(),
+      kinds: z.array(z.string().max(64)).max(32).optional(),
+      relations: z.array(z.string().max(64)).max(32).optional(),
+      at: z.string().max(64).optional(),
+      limit: z.number().int().min(1).max(MAX_QUERY_LIMIT).optional(),
+      bfsDepth: z.number().int().min(1).max(6).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+  'graph.node': z
+    .object({
+      naturalKey: z.string().min(1).max(1024),
+      at: z.string().max(64).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+  'graph.neighbors': z
+    .object({
+      naturalKey: z.string().min(1).max(1024),
+      depth: z.number().int().min(1).max(6).optional(),
+      relations: z.array(z.string().max(64)).max(32).optional(),
+      at: z.string().max(64).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+  'graph.at': z
+    .object({
+      naturalKey: z.string().min(1).max(1024),
+      at: z.string().min(1).max(64),
+      actorAgentId,
+    })
+    .passthrough(),
+  'graph.context': z
+    .object({
+      naturalKey: z.string().min(1).max(1024),
+      depth: z.number().int().min(1).max(6).optional(),
+      charBudget: z.number().int().min(1).max(200_000).optional(),
+      at: z.string().max(64).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+  'graph.addEpisode': z
+    .object({
+      episodeType: z.string().max(64).optional(),
+      source: z.string().min(1).max(MAX_NAME_LENGTH).optional(),
+      content: z.string().max(MAX_EPISODE_CONTENT_CHARS).optional(),
+      contentRef: z.record(z.string(), z.unknown()).optional(),
+      referenceTime: z.string().max(64).optional(),
+      siteId: z.string().max(MAX_NAME_LENGTH).optional(),
+      nodes: z.array(z.record(z.string(), z.unknown())).max(200).optional(),
+      edges: z.array(z.record(z.string(), z.unknown())).max(400).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+  'graph.outbox.push': z.object({ actorAgentId }).passthrough(),
 
   // -- Health -----------------------------------------------------------------
   // Both handlers (`server.ts:registerHandler('harness.health', ...)` and
