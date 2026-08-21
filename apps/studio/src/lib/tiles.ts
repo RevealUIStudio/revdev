@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-shell';
+import { launchAllowedProgram } from './invoke';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -321,13 +322,13 @@ export async function detectBrowserProfiles(): Promise<BrowserProfile[]> {
 
 // ── Launch ───────────────────────────────────────────────────────────────────
 
-export function launchTile(tile: TileDefinition): void {
+export async function launchTile(tile: TileDefinition): Promise<void> {
   const { action } = tile;
   if (action.type === 'url') {
-    open(action.url);
-  } else {
-    // shell:allow-open only — open the program/path, never arbitrary shell execute.
-    const args = action.args ? [action.program, ...action.args] : [action.program];
-    open(args.join(' '));
+    await open(action.url);
+    return;
   }
+  // Host-exec is allowlisted in Rust — never pass a free-form path to the
+  // shell plugin (no exec-sh, no unscoped open of a program).
+  await launchAllowedProgram(action.program, action.args);
 }

@@ -236,6 +236,7 @@ const MOCK_DATA: Record<string, unknown> = {
     browser: string;
   }>,
   list_running_processes: [] as string[],
+  launch_allowed_program: undefined,
   inference_profile_get: {
     tier: 'idle',
     provider: null,
@@ -1152,17 +1153,11 @@ export function sshBookmarkDelete(id: string): Promise<void> {
 
 // ── Local Shell ─────────────────────────────────────────────────────────────
 
-export function shellOpen(
-  cols: number,
-  rows: number,
-  cwd?: string,
-  shellProgram?: string,
-): Promise<string> {
+export function shellOpen(cols: number, rows: number, cwd?: string): Promise<string> {
   return invoke<string>('shell_open', {
     cols,
     rows,
     cwd: cwd ?? null,
-    shellProgram: shellProgram ?? null,
   });
 }
 
@@ -1433,6 +1428,13 @@ export function detectBrowserProfiles(): Promise<BrowserProfileRow[]> {
 
 export function listRunningProcesses(): Promise<string[]> {
   return invoke<string[]>('list_running_processes');
+}
+
+export function launchAllowedProgram(program: string, args?: string[]): Promise<void> {
+  return invoke<void>('launch_allowed_program', {
+    program,
+    args: args ?? null,
+  });
 }
 
 // ── Harness Daemon ─────────────────────────────────────────────────────────

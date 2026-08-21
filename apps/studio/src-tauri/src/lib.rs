@@ -195,6 +195,7 @@ pub fn run() {
             terminal::terminal_install,
             tiles::detect_browser_profiles,
             tiles::list_running_processes,
+            tiles::launch_allowed_program,
             launcher::focus_window,
             daemon_ctl::daemon_status,
             daemon_ctl::daemon_start,

@@ -168,7 +168,7 @@ export function useTiles(): UseTilesReturn {
     }
 
     // Not running or focus failed — launch normally
-    launchTile(tile);
+    await launchTile(tile);
     const next = recordRecentLaunch(prefs, tile.id);
     updatePrefs(next);
   };
