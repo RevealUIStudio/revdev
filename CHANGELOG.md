@@ -7,6 +7,10 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+### Security
+
+- Bump Studio `jsonwebtoken` 9.3.1 → 10.4.0 (GHSA-h395-gr6q-cpjc / CVE-2026-25537).
+
 ## [0.2.11] — 2026-08-16
 
 ### Fixed
