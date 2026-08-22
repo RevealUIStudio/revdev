@@ -28,7 +28,6 @@ export interface LocalShellOpenParams {
   cols: number;
   rows: number;
   cwd?: string;
-  shellProgram?: string;
 }
 
 export function useLocalShell(options: UseLocalShellOptions = {}) {
@@ -59,7 +58,7 @@ export function useLocalShell(options: UseLocalShellOptions = {}) {
     async (params: LocalShellOpenParams) => {
       setState((prev) => ({ ...prev, opening: true, error: null }));
       try {
-        const id = await shellOpen(params.cols, params.rows, params.cwd, params.shellProgram);
+        const id = await shellOpen(params.cols, params.rows, params.cwd);
         sessionIdRef.current = id;
 
         const unlistenOut = await listen<ShellOutputEventPayload>('shell_output', (event) => {

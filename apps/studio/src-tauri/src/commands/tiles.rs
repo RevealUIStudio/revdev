@@ -1,4 +1,5 @@
-//! Trusted-host tile helpers: browser profile discovery and process listing.
+//! Trusted-host tile helpers: browser profile discovery, process listing,
+//! and allowlisted program launch.
 //! These replace frontend `shell:allow-execute` / `Command.create('exec-sh')`.
 
 use std::fs;
@@ -8,6 +9,64 @@ use std::process::Command;
 use serde::Serialize;
 
 use super::error::StudioError;
+
+/// Basenames the frontend may ask the host to start. Paths, separators, and
+/// unknown names are rejected — this is not a general exec surface.
+const ALLOWED_TILE_PROGRAMS: &[&str] = &[
+    "zed",
+    "wt.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "tmux",
+    "open",
+    "gnome-terminal",
+    "google-chrome",
+];
+
+/// True when `program` is an allowlisted basename (no path, no separators).
+pub fn is_allowed_tile_program(program: &str) -> bool {
+    if program.is_empty()
+        || program.contains('/')
+        || program.contains('\\')
+        || program.contains('\0')
+    {
+        return false;
+    }
+    let name = std::path::Path::new(program)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(program);
+    if name != program {
+        return false;
+    }
+    ALLOWED_TILE_PROGRAMS
+        .iter()
+        .any(|allowed| allowed.eq_ignore_ascii_case(program))
+}
+
+/// Launch an allowlisted tile program. Rejects free-form paths and unknown bins.
+#[tauri::command]
+pub fn launch_allowed_program(
+    program: String,
+    args: Option<Vec<String>>,
+) -> Result<(), StudioError> {
+    if !is_allowed_tile_program(&program) {
+        return Err(StudioError::Other(format!(
+            "program not allowlisted: {program}"
+        )));
+    }
+    let mut cmd = Command::new(&program);
+    if let Some(args) = args {
+        cmd.args(args);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        crate::win_process::hide_std(&mut cmd);
+    }
+    cmd.spawn()
+        .map_err(|e| StudioError::Process(e.to_string()))?;
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -125,7 +184,13 @@ fn native_process_list() -> Result<String, StudioError> {
 
 fn parse_process_names(raw: &str) -> Vec<String> {
     // CSV tasklist on Windows: "Image Name","PID",...
-    if raw.contains("\",\"") || raw.lines().next().map(|l| l.starts_with('"')).unwrap_or(false) {
+    if raw.contains("\",\"")
+        || raw
+            .lines()
+            .next()
+            .map(|l| l.starts_with('"'))
+            .unwrap_or(false)
+    {
         return parse_tasklist_csv(raw);
     }
     raw.lines()
@@ -159,14 +224,8 @@ fn browser_data_dirs() -> Vec<(&'static str, PathBuf)> {
     {
         if let Ok(profile) = std::env::var("USERPROFILE") {
             let base = PathBuf::from(profile);
-            dirs.push((
-                "chrome",
-                base.join("AppData/Local/Google/Chrome/User Data"),
-            ));
-            dirs.push((
-                "edge",
-                base.join("AppData/Local/Microsoft/Edge/User Data"),
-            ));
+            dirs.push(("chrome", base.join("AppData/Local/Google/Chrome/User Data")));
+            dirs.push(("edge", base.join("AppData/Local/Microsoft/Edge/User Data")));
         }
     }
 
@@ -249,6 +308,29 @@ fn windows_path_to_wsl(win: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_unknown_and_path_programs() {
+        assert!(!is_allowed_tile_program(""));
+        assert!(!is_allowed_tile_program("/bin/bash"));
+        assert!(!is_allowed_tile_program(r"C:\Windows\System32\cmd.exe"));
+        assert!(!is_allowed_tile_program("../zed"));
+        assert!(!is_allowed_tile_program("zed/evil"));
+        assert!(!is_allowed_tile_program("curl"));
+        assert!(!is_allowed_tile_program("exec-sh"));
+    }
+
+    #[test]
+    fn accepts_allowlisted_basenames() {
+        assert!(is_allowed_tile_program("zed"));
+        assert!(is_allowed_tile_program("tmux"));
+        assert!(is_allowed_tile_program("chrome.exe"));
+        assert!(is_allowed_tile_program("wt.exe"));
+        assert!(is_allowed_tile_program("google-chrome"));
+        assert!(is_allowed_tile_program("gnome-terminal"));
+        assert!(is_allowed_tile_program("open"));
+        assert!(is_allowed_tile_program("msedge.exe"));
+    }
 
     #[test]
     fn parse_ps_comm_lines() {

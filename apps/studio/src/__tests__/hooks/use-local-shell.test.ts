@@ -39,7 +39,7 @@ describe('useLocalShell', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('opens the shell with platform defaults when shellProgram is omitted', async () => {
+  it('opens the shell with host-selected platform defaults', async () => {
     vi.mocked(shellOpen).mockResolvedValueOnce('shell-session-1');
 
     const { result } = renderHook(() => useLocalShell());
@@ -48,13 +48,13 @@ describe('useLocalShell', () => {
       await result.current.open({ cols: 80, rows: 24 });
     });
 
-    expect(shellOpen).toHaveBeenCalledWith(80, 24, undefined, undefined);
+    expect(shellOpen).toHaveBeenCalledWith(80, 24, undefined);
     expect(result.current.sessionId).toBe('shell-session-1');
     expect(result.current.isOpen).toBe(true);
     expect(result.current.error).toBeNull();
   });
 
-  it('passes through explicit shellProgram and cwd', async () => {
+  it('passes cwd and never a free-form shell program', async () => {
     vi.mocked(shellOpen).mockResolvedValueOnce('shell-session-2');
 
     const { result } = renderHook(() => useLocalShell());
@@ -64,11 +64,13 @@ describe('useLocalShell', () => {
         cols: 120,
         rows: 40,
         cwd: '/home/user/proj',
-        shellProgram: 'wsl.exe',
       });
     });
 
-    expect(shellOpen).toHaveBeenCalledWith(120, 40, '/home/user/proj', 'wsl.exe');
+    expect(shellOpen).toHaveBeenCalledWith(120, 40, '/home/user/proj');
+    expect(shellOpen).toHaveBeenCalledTimes(1);
+    const args = vi.mocked(shellOpen).mock.calls[0];
+    expect(args).toHaveLength(3);
   });
 
   it('records the error message when shell_open rejects', async () => {
