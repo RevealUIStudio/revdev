@@ -163,6 +163,7 @@ export const METHOD_ACTION_CLASS = new Map<string, ActionClass>([
   ['graph.context', 'routine'],
   ['graph.addEpisode', 'routine'],
   ['graph.outbox.push', 'consequential'],
+  ['graph.sync.pull', 'consequential'],
   // Inner tools of skills.invoke (not standalone RPCs). Bash is a shell, so
   // critical: auto mode still requires approval (policy floor). Reads stay routine.
   ['skills.tool.Read', 'routine'],

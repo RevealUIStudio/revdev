@@ -146,6 +146,7 @@ const EXEMPT_METHODS = new Set([
   'graph.at',
   'graph.context',
   'graph.addEpisode',
+  // graph.sync.pull / graph.outbox.push contact the hub — Pro floor.
 ]);
 
 /**
@@ -183,7 +184,7 @@ export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
  */
 export const LICENSE_TIER_HELP = `License tiers (method gate; source: EXEMPT_METHODS + METHOD_MIN_TIER):
   free         Sessions, single-repo file/git, local inference run, harness.health, graph.* replica (except outbox.push)
-  pro          Multi-agent coordination (mail, tasks, files.*, goal.*, agent.*, merge.*, worktree, events, harness.prune, graph.outbox.push, …)
+  pro          Multi-agent coordination (mail, tasks, files.*, goal.*, agent.*, merge.*, worktree, events, harness.prune, graph.outbox.push, graph.sync.pull, …)
   max          + full AI memory (memory.*) and local-model management (inference.pull/delete/start/stop)
   enterprise   Same method surface as max; commercial terms differ (founder daily-driver JWT for goal spine)`;
 
