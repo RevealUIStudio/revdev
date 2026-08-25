@@ -556,6 +556,13 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
   'graph.outbox.push': z.object({ actorAgentId }).passthrough(),
+  'graph.sync.pull': z
+    .object({
+      repos: z.array(z.string().max(128)).max(32).optional(),
+      scope: z.enum(['all']).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
 
   // -- Health -----------------------------------------------------------------
   // Both handlers (`server.ts:registerHandler('harness.health', ...)` and

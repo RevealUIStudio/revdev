@@ -4,7 +4,8 @@
  * GAP-349 P5 / spec §8.2: local kg_* tables + kg_outbox; reads and
  * ingestEpisode run against PGlite. graph.outbox.push replays unpushed ops
  * to the Neon hub when POSTGRES_URL is set (class-1/2 merge, no extra CRDT
- * library). Communities and Electric down-sync stay later P5 slices.
+ * library). P5b: Electric down-sync + hub anti-entropy live in graph-sync.ts.
+ * Communities and Layer-3 reconcile stay later P5 slices.
  *
  * Extends `@revealui/knowledge-graph` (published 0.1.8; 0.1.9 pulls unpublished
  * `@revealui/ts-strada`). Do not fork DDL.
@@ -31,6 +32,7 @@ import {
 } from '@revealui/knowledge-graph';
 import { resolveNaturalKey } from '@revealui/knowledge-graph/ingest';
 import { createLogger } from '@revealui/utils/logger';
+import { ensureGraphSiteId, graphSyncPull } from './graph-sync.js';
 import { resolvePostgresUrl } from './neon.js';
 import { registerHandler } from './server.js';
 
@@ -84,9 +86,11 @@ export async function graphStatus(db: PGlite): Promise<{
   episodes: number;
   outboxPending: number;
   hubConfigured: boolean;
+  electricConfigured: boolean;
   siteId: string;
 }> {
   const exec = kgExecutorFromPglite(db);
+  const siteId = await ensureGraphSiteId(db);
   const [nodes, edges, episodes, pending] = await Promise.all([
     exec.query<{ n: number }>('SELECT count(*)::int AS n FROM kg_nodes'),
     exec.query<{ n: number }>('SELECT count(*)::int AS n FROM kg_edges'),
@@ -108,7 +112,10 @@ export async function graphStatus(db: PGlite): Promise<{
     episodes: episodes[0]?.n ?? 0,
     outboxPending: pending[0]?.n ?? 0,
     hubConfigured: Boolean(resolvePostgresUrl()),
-    siteId: resolveGraphSiteId({}),
+    electricConfigured: Boolean(
+      process.env.ELECTRIC_SERVICE_URL?.trim() || process.env.ELECTRIC_URL?.trim(),
+    ),
+    siteId,
   };
 }
 
@@ -444,7 +451,9 @@ registerHandler('graph.at', async (params, db) => graphAt(db, params));
 registerHandler('graph.context', async (params, db) => graphContext(db, params));
 
 registerHandler('graph.addEpisode', async (params, db, ctx) =>
-  graphAddEpisode(db, params, resolveGraphSiteId(params, ctx)),
+  graphAddEpisode(db, params, await ensureGraphSiteId(db, resolveGraphSiteId(params, ctx))),
 );
 
 registerHandler('graph.outbox.push', async (_params, db) => graphOutboxPush(db));
+
+registerHandler('graph.sync.pull', async (params, db) => graphSyncPull(db, params));

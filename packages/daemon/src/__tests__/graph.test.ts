@@ -39,8 +39,8 @@ describe('knowledge-graph replica (GAP-349 P5)', () => {
     'migration 0014 creates kg_* tables on a full migrate()',
     async () => {
       db = await boot();
-      expect(MIGRATIONS.at(-1)?.version).toBe(14);
-      expect(MIGRATIONS.at(-1)?.name).toBe('knowledge-graph-replica');
+      expect(MIGRATIONS.at(-1)?.version).toBe(15);
+      expect(MIGRATIONS.at(-1)?.name).toBe('graph-sync-site');
       const tables = await db.query<{ table_name: string }>(
         `SELECT table_name FROM information_schema.tables
          WHERE table_schema = 'public' AND table_name LIKE 'kg_%'
@@ -53,7 +53,14 @@ describe('knowledge-graph replica (GAP-349 P5)', () => {
         'kg_node_aliases',
         'kg_nodes',
         'kg_outbox',
+        'kg_shape_cursors',
       ]);
+      const meta = await db.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name IN ('graph_site', 'kg_shape_cursors')
+         ORDER BY table_name`,
+      );
+      expect(meta.rows.map((r) => r.table_name)).toEqual(['graph_site', 'kg_shape_cursors']);
     },
     DB_TEST_TIMEOUT,
   );
