@@ -99,6 +99,12 @@ describe('invoke bridge (browser mode)', () => {
     expect(result).toHaveProperty('git_email');
   });
 
+  it('daemonSetup returns mock string in browser mode', async () => {
+    const { daemonSetup } = await import('../../lib/invoke');
+    const result = await daemonSetup();
+    expect(typeof result).toBe('string');
+  });
+
   it('setGitIdentity resolves void', async () => {
     const { setGitIdentity } = await import('../../lib/invoke');
     await expect(setGitIdentity('Test', 'test@example.com')).resolves.toBeUndefined();

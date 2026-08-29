@@ -27,6 +27,9 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
   const [provisioning, setProvisioning] = useState(false);
   const [provisionError, setProvisionError] = useState<string | null>(null);
 
+  // Checklist rows are environment hints, not a gate. Linux/macOS check_setup
+  // never reports wsl_running or a mounted Studio drive, so requiring allDone
+  // made Complete Setup unreachable on a Tauri daily-driver.
   const allDone =
     setup.status?.wsl_running &&
     setup.status?.nix_installed &&
@@ -74,7 +77,7 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
               variant="primary"
               size="lg"
               onClick={handleComplete}
-              disabled={!allDone || provisioning}
+              disabled={provisioning}
               loading={provisioning}
             >
               Complete Setup
@@ -84,9 +87,10 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
       >
         <div className="space-y-4">
           <p className="text-sm leading-relaxed text-fg-muted">
-            This checklist sets up WSL, Nix, DevPod, and git identity. Completing Setup installs the
-            agent relay in WSL. Skip hides the wizard for this launch. Agent Approvals live under
-            Agent in the sidebar.
+            Completing Setup installs the agent relay (no-op on native Unix) and continues into
+            Studio. WSL, Nix, DevPod, and git identity are optional checks — they do not block
+            Complete. Skip hides the wizard for this launch. Agent Approvals live under Agent in the
+            sidebar.
           </p>
           {setup.loading && !setup.status && (
             <p className="text-sm text-fg-muted">Checking environment...</p>

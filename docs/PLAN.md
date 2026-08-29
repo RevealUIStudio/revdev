@@ -107,14 +107,14 @@ Phases 0–4 are shipped: best-effort daemon→Neon dual-write for sessions/mail
 
 ### W4 — Studio dogfood: adopt `@revealui/presentation`
 
-Phase 1 (token foundation) shipped 2026-05-16 via [#67](https://github.com/RevealUIStudio/revdev/pull/67)/[#68](https://github.com/RevealUIStudio/revdev/pull/68). Phase 2 shims landed on `test` (PR series through [#297](https://github.com/RevealUIStudio/revdev/pull/297)): shadow `components/ui/*` are thin wrappers over `@revealui/presentation` ^0.9.1 (StatusDot, PanelHeader, Tooltip, ErrorAlert, Badge, Button, Card, Input, Dialog, Modal; ConfirmDialog is Studio-local).
+Phase 1 (token foundation) shipped 2026-05-16 via [#67](https://github.com/RevealUIStudio/revdev/pull/67)/[#68](https://github.com/RevealUIStudio/revdev/pull/68). Phase 2 shims landed on `test` (PR series through [#297](https://github.com/RevealUIStudio/revdev/pull/297)). Phase 4 relocated those wrappers to `src/components/adapters/` and banned `components/ui` via Studio-only Biome `noRestrictedImports` ([#347](https://github.com/RevealUIStudio/revdev/pull/347)): StatusDot, PanelHeader, Tooltip, ErrorAlert, Badge, Button, Card, Input, Dialog, Modal; ConfirmDialog stays a Studio composition over Modal.
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Token foundation (`tokens.css`) | ✅ **SHIPPED** |
 | 2 | Shim shadow primitives over `@revealui/presentation` | ✅ **SHIPPED** (2026-07) |
 | 3 | Sweep residual `orange-*` in render code (tip: terminal cursor only) to semantic tokens | **OPEN** (small) |
-| 4 | Delete the shadow library + Biome `noRestrictedImports` guard | **OPEN** (after Phase 3) |
+| 4 | Relocate shadow library to `components/adapters` + Biome `noRestrictedImports` guard | ✅ **SHIPPED** ([#347](https://github.com/RevealUIStudio/revdev/pull/347)) |
 
 Carve-outs that stay: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (terminal). Operational sequencing: internal `studio-dogfood` lane (membership under frontend-excellence initiative for brand; daily-driver program does not dual-claim the lane).
 
