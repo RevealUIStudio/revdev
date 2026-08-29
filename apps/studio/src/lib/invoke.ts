@@ -135,6 +135,7 @@ const MOCK_DATA: Record<string, unknown> = {
   // Void / string commands return simple defaults
   mount_devbox: 'Mounted (mock)',
   unmount_devbox: 'Unmounted (mock)',
+  daemon_setup: 'Relay installed (mock)',
   start_app: 'Started (mock)',
   stop_app: 'Stopped (mock)',
   ssh_connect: 'mock-session-id',

@@ -7,9 +7,30 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.12] — 2026-08-29
+
 ### Security
 
 - Bump Studio `jsonwebtoken` 9.3.1 → 10.4.0 (GHSA-h395-gr6q-cpjc / CVE-2026-25537).
+
+### Fixed
+
+- **Complete Setup is reachable.** The wizard no longer waits for WSL + Nix +
+  DevPod + git identity before Complete. Linux/macOS `check_setup` never
+  reports those as green, so a Tauri daily-driver could only Skip (session
+  dismiss) and never persist into a real session. Complete still calls
+  `daemon_setup` (real IPC in Tauri; Vite `MOCK_DATA` stays browser-only).
+- **Agent connect no longer dumps to Setup.** Pipe EOF / spawn failures used
+  to say the daemon was down and send the operator back to Setup. Connect
+  Agent restages the relay and retries.
+
+### Changed
+
+- Studio-dogfood Phase 4: shadow `components/ui` lives under
+  `components/adapters` with a Studio-only Biome `noRestrictedImports` ban
+  ([#347](https://github.com/RevealUIStudio/revdev/pull/347)).
+
+[0.2.12]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.12
 
 ## [0.2.11] — 2026-08-16
 

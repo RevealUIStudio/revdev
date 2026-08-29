@@ -66,7 +66,7 @@ Pre-1.0 across the board:
 
 | Component | Status | How to use it today |
 |---|---|---|
-| **Studio** | Buildable, unsigned | Local: `pnpm --filter studio tauri build`. Public GitHub Releases are live — latest `studio-v0.2.11` (2026-08-16; macOS · Linux · Windows). Tag pipeline: `.github/workflows/studio-release.yml`. macOS/Windows OS code-signing is still unsigned/ad-hoc (Tauri updater `.sig` files are not Apple/Microsoft signatures). Dogfooding `@revealui/presentation` Phase 1+2 done; Phase 3+4 in flight. |
+| **Studio** | Buildable, unsigned | Local: `pnpm --filter studio tauri build`. Public GitHub Releases are live — latest `studio-v0.2.11` (2026-08-16; macOS · Linux · Windows). `test` is at untagged 0.2.12 (tag waits for the operator). Tag pipeline: `.github/workflows/studio-release.yml`. macOS/Windows OS code-signing is still unsigned/ad-hoc (Tauri updater `.sig` files are not Apple/Microsoft signatures). Dogfooding `@revealui/presentation` Phase 1+2+4 done; Phase 3 residual `orange-*` sweep still open. |
 | **Console** | Buildable | `cd apps/console && go build -o ../../rvui .`. Tag pipeline: `.github/workflows/console-release.yml`. Public tag `console-v0.2.0` (2026-07-17). |
 | **Harness Daemon** | Buildable, not published | Build with `pnpm --filter @revdev/daemon build`. `node packages/daemon/dist/cli.js --detach` returns in <1s; child runs in its own session and PGID. Boot survival via `pnpm --filter @revdev/daemon setup:systemd` (systemd-user unit; requires `loginctl enable-linger` on WSL). |
 
