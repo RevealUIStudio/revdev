@@ -9,17 +9,20 @@ mod harness_watcher;
 mod inference;
 mod local_shell;
 mod platform;
+mod presentment;
 pub mod signing;
 mod spawner;
 pub mod ssh;
 mod state;
 mod tray;
 mod updater;
+mod win_process;
 
 use commands::{
-    agent as agent_cmds, apps, config as config_cmds, deploy, git as git_cmds,
+    agent as agent_cmds, apps, config as config_cmds, deploy, fleet_map, git as git_cmds,
     harness as harness_cmds, inference as inference_cmds, launcher, local_shell as shell_cmds,
-    fleet_map, mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, vault,
+    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, tiles,
+    vault,
 };
 use config::ConfigState;
 use local_shell::LocalShellState;
@@ -36,6 +39,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, _event| {
@@ -55,6 +65,10 @@ pub fn run() {
         .setup(|app| {
             tray::setup_tray(&app.handle())?;
             harness_watcher::start(app.handle().clone());
+            presentment::present_main_window(&app.handle()).map_err(|err| {
+                eprintln!("{err}");
+                Box::<dyn std::error::Error>::from(err)
+            })?;
 
             // Register the tile-gallery hotkey dynamically so registration
             // failures (e.g. a stale WSLg compositor claim) degrade to a
@@ -119,6 +133,7 @@ pub fn run() {
             deploy::stripe::stripe_catalog_sync,
             deploy::email::resend_send_test,
             deploy::email::smtp_send_test,
+            deploy::email::gmail_send_test,
             deploy::health::health_check,
             git_cmds::git_status,
             git_cmds::git_diff_file,
@@ -178,6 +193,9 @@ pub fn run() {
             inference_cmds::inference_profile_apply,
             terminal::terminal_detect,
             terminal::terminal_install,
+            tiles::detect_browser_profiles,
+            tiles::list_running_processes,
+            tiles::launch_allowed_program,
             launcher::focus_window,
             daemon_ctl::daemon_status,
             daemon_ctl::daemon_start,

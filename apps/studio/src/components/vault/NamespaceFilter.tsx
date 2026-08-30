@@ -1,3 +1,5 @@
+import Button from '../adapters/Button';
+
 interface NamespaceFilterProps {
   namespaces: string[];
   active: string | null;
@@ -10,30 +12,28 @@ export default function NamespaceFilter({ namespaces, active, onChange }: Namesp
       <p className="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-fg-subtle">
         Namespaces
       </p>
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => onChange(null)}
-        className={`rounded px-2 py-1.5 text-left text-sm transition-colors ${
-          active === null
-            ? 'bg-surface-2 text-fg'
-            : 'text-fg-muted hover:bg-surface-3 hover:text-fg'
+        className={`justify-start rounded px-2 py-1.5 text-left text-sm ${
+          active === null ? 'bg-surface-2 text-fg' : 'text-fg-muted'
         }`}
       >
         All
-      </button>
+      </Button>
       {namespaces.map((ns) => (
-        <button
+        <Button
           key={ns}
           type="button"
+          variant="ghost"
           onClick={() => onChange(ns)}
-          className={`rounded px-2 py-1.5 text-left text-sm transition-colors ${
-            active === ns
-              ? 'bg-surface-2 text-fg'
-              : 'text-fg-muted hover:bg-surface-3 hover:text-fg'
+          className={`justify-start rounded px-2 py-1.5 text-left text-sm ${
+            active === ns ? 'bg-surface-2 text-fg' : 'text-fg-muted'
           }`}
         >
           {ns}
-        </button>
+        </Button>
       ))}
       {namespaces.length === 0 && <p className="px-2 py-1 text-xs text-fg-subtle">No namespaces</p>}
     </div>

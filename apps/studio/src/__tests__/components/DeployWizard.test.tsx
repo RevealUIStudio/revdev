@@ -11,11 +11,26 @@ const MOCK_CONFIG: StudioConfig = {
   develop: null,
 };
 
+function mockUseConfigReturn(
+  overrides: { config?: StudioConfig | null; loading?: boolean; error?: string | null } = {},
+) {
+  return {
+    config: null as StudioConfig | null,
+    loading: true,
+    error: null as string | null,
+    reload: vi.fn(),
+    updateConfig: vi.fn(),
+    setIntent: vi.fn(),
+    ...overrides,
+  };
+}
+
 vi.mock('../../hooks/use-config', () => ({
   useConfig: vi.fn().mockReturnValue({
     config: null,
     loading: true,
     error: null,
+    reload: vi.fn(),
     updateConfig: vi.fn(),
     setIntent: vi.fn(),
   }),
@@ -78,14 +93,22 @@ describe('DeployWizard', () => {
     expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
+  it('shows retry when config failed to load', () => {
+    vi.mocked(useConfig).mockReturnValue(
+      mockUseConfigReturn({ config: null, loading: false, error: 'disk error' }),
+    );
+
+    render(<DeployWizard onComplete={vi.fn()} />);
+
+    expect(screen.getByText('Could not load deploy config')).toBeInTheDocument();
+    expect(screen.getByText('disk error')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
   it('renders wizard title and step navigation when config is loaded', () => {
-    vi.mocked(useConfig).mockReturnValue({
-      config: MOCK_CONFIG,
-      loading: false,
-      error: null,
-      updateConfig: vi.fn(),
-      setIntent: vi.fn(),
-    });
+    vi.mocked(useConfig).mockReturnValue(
+      mockUseConfigReturn({ config: MOCK_CONFIG, loading: false }),
+    );
 
     render(<DeployWizard onComplete={vi.fn()} />);
 
@@ -96,13 +119,9 @@ describe('DeployWizard', () => {
   });
 
   it('renders the current step component', () => {
-    vi.mocked(useConfig).mockReturnValue({
-      config: MOCK_CONFIG,
-      loading: false,
-      error: null,
-      updateConfig: vi.fn(),
-      setIntent: vi.fn(),
-    });
+    vi.mocked(useConfig).mockReturnValue(
+      mockUseConfigReturn({ config: MOCK_CONFIG, loading: false }),
+    );
 
     render(<DeployWizard onComplete={vi.fn()} />);
 
@@ -110,13 +129,9 @@ describe('DeployWizard', () => {
   });
 
   it('shows step counter', () => {
-    vi.mocked(useConfig).mockReturnValue({
-      config: MOCK_CONFIG,
-      loading: false,
-      error: null,
-      updateConfig: vi.fn(),
-      setIntent: vi.fn(),
-    });
+    vi.mocked(useConfig).mockReturnValue(
+      mockUseConfigReturn({ config: MOCK_CONFIG, loading: false }),
+    );
 
     render(<DeployWizard onComplete={vi.fn()} />);
 
@@ -124,13 +139,9 @@ describe('DeployWizard', () => {
   });
 
   it('disables Back button on first step', () => {
-    vi.mocked(useConfig).mockReturnValue({
-      config: MOCK_CONFIG,
-      loading: false,
-      error: null,
-      updateConfig: vi.fn(),
-      setIntent: vi.fn(),
-    });
+    vi.mocked(useConfig).mockReturnValue(
+      mockUseConfigReturn({ config: MOCK_CONFIG, loading: false }),
+    );
 
     render(<DeployWizard onComplete={vi.fn()} />);
 

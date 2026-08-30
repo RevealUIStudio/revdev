@@ -212,14 +212,16 @@ export default function FleetMapPanel() {
                   {free.slice(0, 20).map((row) => (
                     <tr key={row.id} className="border-t border-edge">
                       <td className="px-3 py-2 font-mono text-xs">
-                        <button
+                        <Button
                           type="button"
-                          className="text-left hover:underline"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto p-0 text-left font-mono text-xs hover:underline"
                           title="Copy gap id"
                           onClick={() => void copyId(row.id)}
                         >
                           {row.id}
-                        </button>
+                        </Button>
                       </td>
                       <td className="px-3 py-2">{row.priority ?? '—'}</td>
                       <td className="px-3 py-2 font-mono text-xs">{row.initiativeId ?? '—'}</td>

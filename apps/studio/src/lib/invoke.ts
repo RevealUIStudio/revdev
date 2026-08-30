@@ -135,6 +135,7 @@ const MOCK_DATA: Record<string, unknown> = {
   // Void / string commands return simple defaults
   mount_devbox: 'Mounted (mock)',
   unmount_devbox: 'Unmounted (mock)',
+  daemon_setup: 'Relay installed (mock)',
   start_app: 'Started (mock)',
   stop_app: 'Stopped (mock)',
   ssh_connect: 'mock-session-id',
@@ -157,6 +158,7 @@ const MOCK_DATA: Record<string, unknown> = {
     completedSteps: [],
     deploy: null,
     develop: null,
+    wizardDraft: undefined,
   } satisfies StudioConfig,
   set_config: undefined,
   reset_config: undefined,
@@ -229,6 +231,13 @@ const MOCK_DATA: Record<string, unknown> = {
   agent_remove: undefined,
   agent_input: undefined,
   agent_resize: undefined,
+  detect_browser_profiles: [] as Array<{
+    directory: string;
+    name: string;
+    browser: string;
+  }>,
+  list_running_processes: [] as string[],
+  launch_allowed_program: undefined,
   inference_profile_get: {
     tier: 'idle',
     provider: null,
@@ -907,11 +916,80 @@ async function httpRpc<T>(method: string, params: Record<string, unknown>): Prom
   return body.result as T;
 }
 
+function extractInvokeMessage(err: unknown, depth = 0): string | null {
+  if (depth > 4) return null;
+  if (typeof err === 'string') {
+    const trimmed = err.trim();
+    if (trimmed.length > 0 && trimmed !== '[object Object]') return trimmed;
+    return null;
+  }
+  if (err instanceof Error) {
+    if (err.message && err.message !== '[object Object]') return err.message;
+    return extractInvokeMessage((err as { cause?: unknown }).cause, depth + 1);
+  }
+  if (err && typeof err === 'object') {
+    const rec = err as Record<string, unknown>;
+    for (const key of ['message', 'error', 'msg'] as const) {
+      const nested = extractInvokeMessage(rec[key], depth + 1);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+/** Turn a Tauri/IPC reject value into an Error with a readable message. */
+export function formatInvokeError(err: unknown): Error {
+  if (err instanceof Error && err.message && err.message !== '[object Object]') {
+    return err;
+  }
+  const message = extractInvokeMessage(err);
+  return new Error(message ?? 'Studio command failed');
+}
+
+/** String form for UI catch sites. Never returns `[object Object]`. */
+export function invokeErrorMessage(err: unknown): string {
+  return formatInvokeError(err).message;
+}
+
+export function isDaemonUnreachable(message: string): boolean {
+  return (
+    message.startsWith('Relay closed') ||
+    message.startsWith('Relay spawn failed:') ||
+    message.startsWith('Harness daemon not running') ||
+    message.startsWith('The agent daemon in WSL') ||
+    message.startsWith('The WSL agent relay') ||
+    message.startsWith('The WSL agent did not answer') ||
+    message.startsWith('Studio lost the WSL agent relay') ||
+    message.startsWith('Studio could not start the WSL agent relay') ||
+    message.startsWith('RPC timeout')
+  );
+}
+
+/** One actionable line. Do not send the operator to Setup for a pipe failure. */
+export function formatDaemonUnreachable(message: string): string {
+  if (!isDaemonUnreachable(message)) return message;
+  if (message.includes('revdev-relay') || message.includes('No such file or directory')) {
+    return 'The WSL agent relay is not installed. Connect Agent to install it.';
+  }
+  if (message.startsWith('Relay spawn failed:') || message.startsWith('Studio could not start')) {
+    return 'Studio could not start the WSL agent relay. Connect Agent to try again.';
+  }
+  if (message.startsWith('Relay closed') || message.startsWith('Studio lost the WSL agent relay')) {
+    return 'Studio lost the WSL agent relay. Connect Agent to open it again.';
+  }
+  if (message.startsWith('RPC timeout') || message.startsWith('The WSL agent did not answer')) {
+    return 'The WSL agent did not answer in time. Connect Agent to try again.';
+  }
+  return 'The agent daemon in WSL is not running. Connect Agent to start it.';
+}
+
 /** Guarded invoke — returns mock data in browser, real IPC in Tauri */
 function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   // Tauri native mode — use IPC
   if (isTauri()) {
-    return tauriInvoke<T>(cmd, args);
+    return tauriInvoke<T>(cmd, args).catch((err: unknown) => {
+      throw formatInvokeError(err);
+    });
   }
 
   // Browser mode with remote daemon — route harness commands over HTTP
@@ -999,6 +1077,11 @@ export function checkSetup(): Promise<SetupStatus> {
   return invoke<SetupStatus>('check_setup');
 }
 
+/** Stage `revdev-relay`, enable the WSL daemon unit, provision this install's trust entry. */
+export function daemonSetup(): Promise<string> {
+  return invoke<string>('daemon_setup');
+}
+
 export function setGitIdentity(name: string, email: string): Promise<void> {
   return invoke<void>('set_git_identity', { name, email });
 }
@@ -1071,17 +1154,11 @@ export function sshBookmarkDelete(id: string): Promise<void> {
 
 // ── Local Shell ─────────────────────────────────────────────────────────────
 
-export function shellOpen(
-  cols: number,
-  rows: number,
-  cwd?: string,
-  shellProgram?: string,
-): Promise<string> {
+export function shellOpen(cols: number, rows: number, cwd?: string): Promise<string> {
   return invoke<string>('shell_open', {
     cols,
     rows,
     cwd: cwd ?? null,
-    shellProgram: shellProgram ?? null,
   });
 }
 
@@ -1336,6 +1413,29 @@ export function focusWindow(processName: string): Promise<boolean> {
     return Promise.resolve(false);
   }
   return invoke<boolean>('focus_window', { processName });
+}
+
+// ── Tile gallery (trusted-host process / browser profile discovery) ─────────
+
+export interface BrowserProfileRow {
+  directory: string;
+  name: string;
+  browser: string;
+}
+
+export function detectBrowserProfiles(): Promise<BrowserProfileRow[]> {
+  return invoke<BrowserProfileRow[]>('detect_browser_profiles');
+}
+
+export function listRunningProcesses(): Promise<string[]> {
+  return invoke<string[]>('list_running_processes');
+}
+
+export function launchAllowedProgram(program: string, args?: string[]): Promise<void> {
+  return invoke<void>('launch_allowed_program', {
+    program,
+    args: args ?? null,
+  });
 }
 
 // ── Harness Daemon ─────────────────────────────────────────────────────────

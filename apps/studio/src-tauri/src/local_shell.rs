@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 
-use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use serde::Serialize;
 use tauri::Emitter;
@@ -44,10 +44,10 @@ impl Default for LocalShellState {
     }
 }
 
-/// Pick the default shell program for the current OS when the caller hasn't
-/// specified one. On Windows we default to `wsl.exe` so users land in their
-/// WSL environment (RevDev's daily driver) instead of CMD. On other
-/// platforms we honour `$SHELL`, falling back to `/bin/bash`.
+/// Pick the login shell for the current OS. The frontend cannot override this.
+/// On Windows we default to `wsl.exe` so users land in their WSL environment
+/// (RevDev's daily driver) instead of CMD. On other platforms we honour
+/// `$SHELL`, falling back to `/bin/bash`.
 fn default_shell_program() -> String {
     if cfg!(target_os = "windows") {
         // `wsl.exe` is on PATH on every Windows 10/11 install that has WSL
@@ -67,15 +67,18 @@ fn wants_login_flag(shell: &str) -> bool {
         .and_then(|s| s.to_str())
         .unwrap_or(shell)
         .to_ascii_lowercase();
-    matches!(name.as_str(), "bash" | "zsh" | "sh" | "dash" | "ksh" | "fish")
+    matches!(
+        name.as_str(),
+        "bash" | "zsh" | "sh" | "dash" | "ksh" | "fish"
+    )
 }
 
 /// Open a local PTY shell. Returns session ID.
+/// The program is always host-selected — callers cannot pass a binary path.
 pub fn open(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
-    shell_program: Option<String>,
     app_handle: tauri::AppHandle,
     state: Arc<Mutex<HashMap<String, LocalShellSession>>>,
 ) -> Result<String, String> {
@@ -93,7 +96,7 @@ pub fn open(
         .openpty(size)
         .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
-    let shell = shell_program.unwrap_or_else(default_shell_program);
+    let shell = default_shell_program();
     let mut cmd = CommandBuilder::new(&shell);
     if wants_login_flag(&shell) {
         cmd.arg("--login");
@@ -120,9 +123,7 @@ pub fn open(
 
     // Store session
     {
-        let mut sessions = state
-            .lock()
-            .map_err(|e| format!("Lock poisoned: {e}"))?;
+        let mut sessions = state.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
         sessions.insert(
             session_id.clone(),
             LocalShellSession {
@@ -170,4 +171,31 @@ pub fn open(
     });
 
     Ok(session_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_shell_is_host_selected_not_empty() {
+        let shell = default_shell_program();
+        assert!(!shell.is_empty(), "host must pick a login shell");
+        if cfg!(target_os = "windows") {
+            assert_eq!(shell, "wsl.exe");
+        } else {
+            assert!(
+                !shell.contains('\0'),
+                "login shell must be a real program path"
+            );
+        }
+    }
+
+    #[test]
+    fn wants_login_flag_only_for_posix_shells() {
+        assert!(wants_login_flag("/bin/bash"));
+        assert!(wants_login_flag("zsh"));
+        assert!(!wants_login_flag("wsl.exe"));
+        assert!(!wants_login_flag("powershell.exe"));
+    }
 }

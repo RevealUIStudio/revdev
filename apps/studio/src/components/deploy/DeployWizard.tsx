@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { IconCheck } from '@revealui/presentation';
+import { useEffect, useState } from 'react';
 import { useConfig } from '../../hooks/use-config';
 import { useDeployWizard } from '../../hooks/use-deploy-wizard';
 import type { WizardData } from '../../types';
@@ -39,21 +40,49 @@ const EMPTY_WIZARD_DATA: WizardData = {
   brandLogo: undefined,
 };
 
+function draftToWizardData(draft: Record<string, unknown> | undefined): WizardData {
+  if (!draft) return EMPTY_WIZARD_DATA;
+  return { ...EMPTY_WIZARD_DATA, ...(draft as Partial<WizardData>) };
+}
+
 export default function DeployWizard({ onComplete }: DeployWizardProps) {
-  const { config, updateConfig } = useConfig();
+  const { config, updateConfig, reload, loading, error } = useConfig();
   const [data, setData] = useState<WizardData>(EMPTY_WIZARD_DATA);
-  const wizard = useDeployWizard(config);
+  const [hydrated, setHydrated] = useState(false);
+  const wizard = useDeployWizard(config, { reload });
+
+  useEffect(() => {
+    if (!config || hydrated) return;
+    setData(draftToWizardData(config.wizardDraft));
+    setHydrated(true);
+  }, [config, hydrated]);
 
   if (!config) {
     return (
-      <div className="flex h-screen items-center justify-center bg-surface-0">
-        <div className="text-fg-muted">Loading...</div>
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-surface-0">
+        <div className="text-fg-muted">
+          {loading ? 'Loading...' : 'Could not load deploy config'}
+        </div>
+        {error && <p className="max-w-md text-center text-sm text-error">{error}</p>}
+        {!loading && (
+          <Button variant="secondary" onClick={() => void reload()}>
+            Retry
+          </Button>
+        )}
       </div>
     );
   }
 
+  const persistDraft = (next: WizardData) => {
+    void updateConfig({ wizardDraft: next as unknown as Record<string, unknown> });
+  };
+
   const updateData = (updates: Partial<WizardData>) => {
-    setData((prev) => ({ ...prev, ...updates }));
+    setData((prev) => {
+      const next = { ...prev, ...updates };
+      persistDraft(next);
+      return next;
+    });
   };
 
   const stepComponents: Record<string, React.ReactNode> = {
@@ -105,12 +134,13 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
             const done = wizard.isStepDone(s.id);
             const active = i === wizard.currentStep;
             return (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 key={s.id}
                 onClick={() => wizard.goTo(i)}
                 aria-current={active ? 'step' : undefined}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                className={`flex h-auto w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
                   active
                     ? 'bg-surface-2 text-fg'
                     : done
@@ -127,22 +157,10 @@ export default function DeployWizard({ onComplete }: DeployWizardProps) {
                         : 'border border-edge-strong text-fg-subtle'
                   }`}
                 >
-                  {done ? (
-                    <svg viewBox="0 0 16 16" fill="none" className="size-3.5" aria-hidden="true">
-                      <path
-                        d="M3 8l3.5 3.5L13 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : (
-                    i + 1
-                  )}
+                  {done ? <IconCheck size="sm" className="size-3.5" /> : i + 1}
                 </span>
                 {s.label}
-              </button>
+              </Button>
             );
           })}
         </nav>

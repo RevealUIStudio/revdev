@@ -99,6 +99,12 @@ describe('invoke bridge (browser mode)', () => {
     expect(result).toHaveProperty('git_email');
   });
 
+  it('daemonSetup returns mock string in browser mode', async () => {
+    const { daemonSetup } = await import('../../lib/invoke');
+    const result = await daemonSetup();
+    expect(typeof result).toBe('string');
+  });
+
   it('setGitIdentity resolves void', async () => {
     const { setGitIdentity } = await import('../../lib/invoke');
     await expect(setGitIdentity('Test', 'test@example.com')).resolves.toBeUndefined();
@@ -473,5 +479,83 @@ describe('pairWithDaemon (GAP-397 challenge-response)', () => {
       /Invalid pairing response/,
     );
     expect(localStorage.getItem('revdev-daemon-token')).toBeNull();
+  });
+});
+
+describe('formatInvokeError', () => {
+  it('keeps a real Error', async () => {
+    const { formatInvokeError } = await import('../../lib/invoke');
+    const err = new Error('already an error');
+    expect(formatInvokeError(err)).toBe(err);
+  });
+
+  it('unwraps StudioError { kind, message }', async () => {
+    const { invokeErrorMessage } = await import('../../lib/invoke');
+    expect(invokeErrorMessage({ kind: 'Other', message: 'git status failed' })).toBe(
+      'git status failed',
+    );
+  });
+
+  it('unwraps a nested Tauri { message: StudioError } envelope', async () => {
+    const { invokeErrorMessage } = await import('../../lib/invoke');
+    expect(
+      invokeErrorMessage({
+        message: { kind: 'Process', message: 'Relay closed without response' },
+      }),
+    ).toBe('Relay closed without response');
+  });
+
+  it('never renders [object Object]', async () => {
+    const { invokeErrorMessage } = await import('../../lib/invoke');
+    expect(invokeErrorMessage({ kind: 'Io' })).toBe('Studio command failed');
+    expect(invokeErrorMessage({})).toBe('Studio command failed');
+  });
+
+  it('rewrites relay/daemon failures into a Connect Agent line', async () => {
+    const { formatDaemonUnreachable, isDaemonUnreachable } = await import('../../lib/invoke');
+    expect(isDaemonUnreachable('Relay closed without response')).toBe(true);
+    expect(formatDaemonUnreachable('Relay closed without response')).toBe(
+      'Studio lost the WSL agent relay. Connect Agent to open it again.',
+    );
+    expect(formatDaemonUnreachable('Relay spawn failed: WslLaunch HRESULT 0x80070002')).toBe(
+      'Studio could not start the WSL agent relay. Connect Agent to try again.',
+    );
+    expect(formatDaemonUnreachable('RPC timeout after 10s: ping')).toBe(
+      'The WSL agent did not answer in time. Connect Agent to try again.',
+    );
+    expect(formatDaemonUnreachable('Harness daemon not running')).toBe(
+      'The agent daemon in WSL is not running. Connect Agent to start it.',
+    );
+    expect(
+      formatDaemonUnreachable(
+        'Relay closed without response. (revdev-relay: connect /home/x/.local/share/revealui/harness.sock: No such file or directory)',
+      ),
+    ).toBe('The WSL agent relay is not installed. Connect Agent to install it.');
+    expect(formatDaemonUnreachable('permission denied')).toBe('permission denied');
+  });
+});
+
+describe('invoke bridge (Tauri reject payload)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.restoreAllMocks();
+  });
+
+  it('throws Error.message from a StudioError object reject', async () => {
+    const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
+    vi.mocked(tauriInvoke).mockRejectedValue({
+      kind: 'Other',
+      message: 'Relay closed without response',
+    });
+
+    const { gitStatus } = await import('../../lib/invoke');
+    await expect(gitStatus('/repo')).rejects.toSatisfy((err: unknown) => {
+      return err instanceof Error && err.message === 'Relay closed without response';
+    });
   });
 });

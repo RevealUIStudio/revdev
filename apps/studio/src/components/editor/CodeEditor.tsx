@@ -18,9 +18,11 @@ import { rust } from '@codemirror/lang-rust';
 import type { Extension } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorView, keymap } from '@codemirror/view';
+import { IconChevronLeft } from '@revealui/presentation';
 import { basicSetup } from 'codemirror';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { gitReadFile, gitWriteFile } from '../../lib/invoke';
+import Button from '../adapters/Button';
 
 interface Props {
   repoPath: string;
@@ -151,23 +153,17 @@ export default function CodeEditor({ repoPath, filePath, onClose }: Props) {
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
         {onClose && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={onClose}
             className="rounded p-1 text-fg-subtle hover:bg-surface-2 hover:text-fg-muted"
             title="Close editor"
+            aria-label="Close editor"
           >
-            <svg
-              className="size-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
+            <IconChevronLeft size="sm" />
+          </Button>
         )}
 
         {/* Breadcrumb */}
@@ -192,15 +188,17 @@ export default function CodeEditor({ repoPath, filePath, onClose }: Props) {
         {saveStatus === 'saved' && <span className="text-xs text-success">Saved</span>}
         {saveStatus === 'error' && <span className="text-xs text-error">Save failed</span>}
 
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => void save()}
           disabled={!isDirty || saveStatus === 'saving'}
-          className="rounded bg-surface-2 px-2.5 py-1 text-xs text-fg-muted hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded px-2.5 py-1 text-xs"
           title="Save (Ctrl+S)"
         >
           Save
-        </button>
+        </Button>
       </div>
 
       {/* Editor or error */}

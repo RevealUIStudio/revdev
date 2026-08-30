@@ -114,10 +114,10 @@ pub struct HarnessReserveResult {
 
 #[tauri::command]
 pub async fn harness_ping() -> Result<bool, StudioError> {
-    match harness::rpc_call("ping", serde_json::json!({})).await {
-        Ok(_) => Ok(true),
-        Err(_) => Ok(false),
-    }
+    harness::rpc_call("ping", serde_json::json!({}))
+        .await
+        .map(|_| true)
+        .map_err(StudioError::Other)
 }
 
 // ── Sessions ────────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
+import { IconChevronRight } from '@revealui/presentation';
 import type { CategoryWithTiles } from '../../hooks/use-tiles';
 import type { TileDefinition } from '../../lib/tiles';
+import Button from '../adapters/Button';
 import Tile from './Tile';
 
 interface CategorySectionProps {
@@ -24,26 +26,21 @@ export default function CategorySection({
 
   return (
     <section>
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={onToggleCollapse}
-        className="flex w-full items-center gap-2 py-2 text-left"
+        className="flex h-auto w-full items-center gap-2 py-2 text-left"
       >
-        <svg
+        <IconChevronRight
+          size="sm"
           className={`size-3.5 shrink-0 text-fg-subtle transition-transform ${collapsed ? '' : 'rotate-90'}`}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2.5}
-          aria-hidden="true"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        />
         <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">
           {category.label}
         </h2>
         <span className="text-xs text-fg-subtle">{tileCount}</span>
-      </button>
+      </Button>
 
       {!collapsed && (
         <div className="grid grid-cols-2 gap-2 pb-4 sm:grid-cols-3 lg:grid-cols-4">

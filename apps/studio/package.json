@@ -1,6 +1,6 @@
 {
   "name": "studio",
-  "version": "0.2.0",
+  "version": "0.2.12",
   "description": "Native AI experience — agent coordination hub, local inference management, visual agent dashboard (Tauri 2 + React 19)",
   "private": true,
   "dependencies": {
@@ -18,7 +18,7 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/inter-tight": "^5.2.7",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "@revealui/presentation": "^0.12.1",
+    "@revealui/presentation": "^0.13.1",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-shell": "^2.3.5",
@@ -39,7 +39,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "jsdom": "29.1.1",
     "tailwindcss": "^4.3.2",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vite": "^8.1.3",
     "vitest": "^4.1.10"
   },

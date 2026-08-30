@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import StepEmail from '../../components/deploy/StepEmail';
 import type { StudioConfig, WizardData } from '../../types';
 
+const mockGmailSendTest = vi.fn();
+vi.mock('../../lib/deploy', () => ({
+  gmailSendTest: (...args: unknown[]) => mockGmailSendTest(...args),
+}));
+
 const MOCK_CONFIG: StudioConfig = {
   intent: 'deploy',
   setupComplete: true,
@@ -45,6 +50,7 @@ function renderStep(overrides?: Partial<WizardData>) {
 describe('StepEmail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGmailSendTest.mockResolvedValue({ messageId: 'msg-1', sentAt: '1' });
   });
 
   it('renders Gmail configuration fields', () => {
@@ -57,16 +63,16 @@ describe('StepEmail', () => {
     expect(screen.getByPlaceholderText('noreply@yourdomain.com')).toBeInTheDocument();
   });
 
-  it('surfaces an honest note that in-wizard test send is not wired', () => {
-    renderStep();
-
-    expect(screen.getByText(/test send is not wired/i)).toBeInTheDocument();
-  });
-
-  it('disables Next until credentials are configured', () => {
+  it('disables Next until a real test send succeeds', () => {
     renderStep();
 
     expect(screen.getByText('Next')).toBeDisabled();
+  });
+
+  it('enables Next when emailVerified is already true', () => {
+    renderStep({ emailVerified: true });
+
+    expect(screen.getByText('Next')).not.toBeDisabled();
   });
 
   it('disables Save Config when credentials are empty', () => {
@@ -87,6 +93,10 @@ describe('StepEmail', () => {
       target: { value: 'test-private-key-fixture' },
     });
 
+    fireEvent.change(screen.getByPlaceholderText('noreply@yourdomain.com'), {
+      target: { value: 'noreply@example.com' },
+    });
+
     expect(screen.getByText('Save Config')).not.toBeDisabled();
   });
 
@@ -101,6 +111,9 @@ describe('StepEmail', () => {
       // gitleaks:allow
       target: { value: 'test-private-key-fixture' },
     });
+    fireEvent.change(screen.getByPlaceholderText('noreply@yourdomain.com'), {
+      target: { value: 'noreply@example.com' },
+    });
     fireEvent.click(screen.getByText('Save Config'));
 
     await waitFor(() => {
@@ -108,7 +121,7 @@ describe('StepEmail', () => {
         emailProvider: 'gmail',
         googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
         googlePrivateKey: 'test-private-key-fixture',
-        emailFrom: '',
+        emailFrom: 'noreply@example.com',
       });
     });
     expect(onUpdateConfig).toHaveBeenCalled();
@@ -152,5 +165,59 @@ describe('StepEmail', () => {
     expect(screen.getByPlaceholderText('noreply@yourdomain.com')).toHaveValue(
       'noreply@existing.com',
     );
+  });
+
+  it('keeps Send test email disabled until a recipient is set', () => {
+    renderStep({
+      googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
+      googlePrivateKey: 'test-private-key-fixture',
+      emailFrom: 'noreply@example.com',
+    });
+
+    expect(screen.getByRole('button', { name: /send test email/i })).toBeDisabled();
+  });
+
+  it('records a message id after a successful probe', async () => {
+    const { onUpdateData } = renderStep({
+      googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
+      googlePrivateKey: 'test-private-key-fixture',
+      emailFrom: 'noreply@example.com',
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('you@yourdomain.com'), {
+      target: { value: 'you@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send test email/i }));
+
+    await waitFor(() => {
+      expect(mockGmailSendTest).toHaveBeenCalledWith(
+        'sa@project.iam.gserviceaccount.com',
+        'test-private-key-fixture',
+        'noreply@example.com',
+        'you@example.com',
+      );
+    });
+    expect(onUpdateData).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: true }));
+    expect(screen.getByText(/Gmail message id msg-1/)).toBeInTheDocument();
+  });
+
+  it('surfaces a probe failure and does not mark verified', async () => {
+    mockGmailSendTest.mockRejectedValueOnce(new Error('Delegation failed (HTTP 401)'));
+    const { onUpdateData } = renderStep({
+      googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
+      googlePrivateKey: 'test-private-key-fixture',
+      emailFrom: 'noreply@example.com',
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('you@yourdomain.com'), {
+      target: { value: 'you@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send test email/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Delegation failed/)).toBeInTheDocument();
+    });
+    expect(onUpdateData).toHaveBeenCalledWith({ emailVerified: false });
+    expect(screen.getByText('Next')).toBeDisabled();
   });
 });

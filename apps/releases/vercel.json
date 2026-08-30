@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/studio/:target/:arch/latest.json",
+      "destination": "/api/latest"
+    }
+  ]
+}

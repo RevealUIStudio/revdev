@@ -102,23 +102,26 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
                 key={b.id}
                 className="group flex items-center justify-between rounded-md border border-edge bg-surface-3 px-3 py-2"
               >
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => handleSelectBookmark(b)}
-                  className="flex-1 text-left"
+                  className="h-auto flex-1 justify-start p-0 text-left"
                 >
                   <span className="text-sm text-fg">{b.label}</span>
                   <span className="ml-2 text-xs text-fg-subtle">
                     :{b.port} ({b.auth_method})
                   </span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setPendingDeleteBookmark(b)}
-                  className="ml-2 text-xs text-fg-subtle opacity-0 transition-opacity hover:text-error group-hover:opacity-100"
+                  className="ml-2 h-auto p-0 text-xs text-fg-subtle opacity-0 transition-opacity hover:text-error group-hover:opacity-100"
                 >
                   remove
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -173,8 +176,10 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
           <div>
             <span className="mb-2 block text-xs font-medium text-fg-muted">Authentication</span>
             <div className="flex gap-1 rounded-md border border-edge bg-surface-2 p-1">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setAuthMethod('key')}
                 className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                   authMethod === 'key'
@@ -183,9 +188,11 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
                 }`}
               >
                 SSH Key
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setAuthMethod('password')}
                 className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                   authMethod === 'password'
@@ -194,7 +201,7 @@ export default function ConnectForm({ onConnect, connecting }: ConnectFormProps)
                 }`}
               >
                 Password
-              </button>
+              </Button>
             </div>
           </div>
 

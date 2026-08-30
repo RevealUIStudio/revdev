@@ -42,6 +42,7 @@ export {
   type HttpGatewayConfig,
   isPreAuthRoute,
   PRE_AUTH_ROUTES,
+  resolveStaticPath,
 } from './http-gateway.js';
 export { checkLicense, LICENSE_TIERS, type LicenseTier } from './license.js';
 export {
@@ -73,6 +74,11 @@ import './spawn.js';
 import './gateway-rpc.js';
 // GAP-474 — workflow.list / workflow.run over operational-workflow registry
 import './workflow-rpc.js';
+import './skills-rpc.js';
+// GAP-323 — design-pack watch (design.pack.* + auto-watch on start)
+import './design-pack-watch.js';
+// GAP-349 P5 — local knowledge-graph replica + graph.* RPC
+import './graph.js';
 
 export { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 export { SCHEMA_SQL } from './storage/schema.js';

@@ -1,10 +1,11 @@
 import { Input as PresentationInput } from '@revealui/presentation';
-import type { ComponentProps, InputHTMLAttributes } from 'react';
+import type { ComponentProps, InputHTMLAttributes, Ref } from 'react';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   hint?: string;
   mono?: boolean;
+  ref?: Ref<HTMLInputElement>;
 }
 
 /**
@@ -27,6 +28,7 @@ export default function Input({
   id,
   className,
   type,
+  ref,
   ...props
 }: InputProps) {
   return (
@@ -39,6 +41,7 @@ export default function Input({
       )}
       <PresentationInput
         id={id}
+        ref={ref}
         type={type as ComponentProps<typeof PresentationInput>['type']}
         className={
           [mono && '[&_input]:font-mono', className].filter(Boolean).join(' ') || undefined

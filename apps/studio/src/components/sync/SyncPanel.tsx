@@ -1,3 +1,4 @@
+import { IconRefresh } from '@revealui/presentation';
 import { useSync } from '../../hooks/use-sync';
 import Button from '../adapters/Button';
 import ErrorAlert from '../adapters/ErrorAlert';
@@ -42,16 +43,7 @@ export default function SyncPanel() {
       {results.length === 0 && !anySyncing && (
         <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
           <div className="flex size-10 items-center justify-center rounded-lg bg-surface-2">
-            <svg
-              className="size-5 text-fg-subtle"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-              strokeWidth={1.5}
-            >
-              <path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
-            </svg>
+            <IconRefresh size="md" className="text-fg-subtle" />
           </div>
           <p className="text-sm text-fg-subtle">
             Click "Sync All" to fetch and sync all registered repos.

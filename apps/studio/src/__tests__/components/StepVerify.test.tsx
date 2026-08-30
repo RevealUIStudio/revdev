@@ -47,6 +47,7 @@ const BASE_DATA: WizardData = {
   googleServiceAccountEmail: 'sa@project.iam.gserviceaccount.com',
   googlePrivateKey: '-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----',
   emailFrom: 'noreply@example.com',
+  emailVerified: true,
   blobToken: 'blob_test',
   revealuiSecret: 'secret_test',
   revealuiKek: 'kek_test',
@@ -261,7 +262,7 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Gmail configured')).toBeInTheDocument();
+      expect(screen.getByText('Test email sent')).toBeInTheDocument();
     });
 
     expect(mockHealthCheck).toHaveBeenCalledTimes(4);
@@ -328,9 +329,14 @@ describe('StepVerify', () => {
 
   // -- Email delivery — Gmail provider ------------------------------------
 
-  it('marks email as validated in email step when no Gmail credentials', async () => {
+  it('fails email delivery when no test send has succeeded', async () => {
     renderStep({
-      data: { emailProvider: 'gmail', googleServiceAccountEmail: '', googlePrivateKey: '' },
+      data: {
+        emailProvider: 'gmail',
+        googleServiceAccountEmail: 'sa@x.com',
+        googlePrivateKey: 'key',
+        emailVerified: false,
+      },
     });
 
     fireEvent.change(screen.getByLabelText('Admin Email'), {
@@ -342,8 +348,37 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Validated in email step')).toBeInTheDocument();
+      expect(screen.getByText(/Not verified/)).toBeInTheDocument();
     });
+    expect(screen.getByRole('button', { name: /complete setup/i })).toBeDisabled();
+  });
+
+  it('fails loudly when the API project id is missing', async () => {
+    renderStep({
+      config: {
+        deploy: {
+          vercelTeamId: null,
+          domain: null,
+          neonProjectId: null,
+          emailProvider: null,
+          apps: { api: '', admin: 'a', marketing: 'm' },
+        },
+      },
+    });
+
+    fireEvent.change(screen.getByLabelText('Admin Email'), {
+      target: { value: 'admin@test.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Admin Password'), {
+      target: { value: 'securepassword123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/API project id is missing/)).toBeInTheDocument();
+    });
+    expect(mockVercelSetEnv).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /complete setup/i })).toBeDisabled();
   });
 
   // -- Health check flow — failures --------------------------------------
@@ -441,7 +476,7 @@ describe('StepVerify', () => {
 
   // -- Vercel env var edge cases ------------------------------------------
 
-  it('skips env var push when no API project ID in config', async () => {
+  it('does not push env vars or pass checks when no API project ID in config', async () => {
     renderStep({ config: { deploy: undefined } });
 
     fireEvent.change(screen.getByLabelText('Admin Email'), {
@@ -453,10 +488,11 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/All checks passed/)).toBeInTheDocument();
+      expect(screen.getByText(/API project id is missing/)).toBeInTheDocument();
     });
 
     expect(mockVercelSetEnv).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /complete setup/i })).toBeDisabled();
   });
 
   it('shows error when vercelSetEnv throws', async () => {

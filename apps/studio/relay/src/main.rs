@@ -8,16 +8,32 @@
 //!
 //! The daemon therefore only ever sees an ordinary local Unix-socket
 //! connection — the wire protocol, framing, and handlers are byte-identical
-//! across platforms. Studio's per-call model spawns one relay per request
-//! (mirroring its fresh-`UnixStream`-per-call on native Unix).
+//! across platforms. Windows Studio keeps one relay child and writes many
+//! newline-framed requests on stdin. Native Unix still opens a fresh
+//! `UnixStream` per call.
 //!
 //! Pure std, zero dependencies — a fully-owned, auditable byte pump.
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 use std::thread;
+
+/// Copy `from` to `to`, flushing after every read. Piped stdout is fully
+/// buffered; `io::copy` would hold a daemon line until the socket closed.
+fn pump_and_flush(mut from: impl Read, mut to: impl Write) -> io::Result<()> {
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = from.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        to.write_all(&buf[..n])?;
+        to.flush()?;
+    }
+    Ok(())
+}
 
 fn main() -> ExitCode {
     let socket_path = match std::env::args().nth(1) {
@@ -46,19 +62,18 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let mut from_socket = stream;
+    let from_socket = stream;
 
     let pump_in = thread::spawn(move || {
-        let mut stdin = io::stdin().lock();
-        let _ = io::copy(&mut stdin, &mut to_socket);
+        let stdin = io::stdin().lock();
+        let _ = pump_and_flush(stdin, &mut to_socket);
         // Half-close so the daemon observes EOF and can finish responding even
         // if the client closed its stdin right after sending the request.
         let _ = to_socket.shutdown(Shutdown::Write);
     });
 
-    let mut stdout = io::stdout().lock();
-    let _ = io::copy(&mut from_socket, &mut stdout);
-    let _ = stdout.flush();
+    let stdout = io::stdout().lock();
+    let _ = pump_and_flush(from_socket, stdout);
     let _ = pump_in.join();
 
     ExitCode::SUCCESS

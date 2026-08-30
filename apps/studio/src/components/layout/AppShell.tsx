@@ -1,6 +1,8 @@
+import { IconMenu } from '@revealui/presentation';
 import { type ReactNode, useState } from 'react';
 import { StatusContext, useStatus } from '../../hooks/use-status';
 import type { Page } from '../../types';
+import Button from '../adapters/Button';
 import DegradedBanner from './DegradedBanner';
 import Sidebar from './Sidebar';
 import StatusBar from './StatusBar';
@@ -33,9 +35,10 @@ export default function AppShell({ currentPage, onNavigate, children, padless }:
         {/* Mobile sidebar: overlay + slide-in, only rendered when open */}
         {sidebarOpen && (
           <>
-            <button
+            <Button
               type="button"
-              className="fixed inset-0 z-30 bg-black/50 md:hidden"
+              variant="ghost"
+              className="fixed inset-0 z-30 h-auto rounded-none bg-black/50 md:hidden"
               onClick={() => setSidebarOpen(false)}
               aria-label="Close sidebar"
             />
@@ -51,23 +54,16 @@ export default function AppShell({ currentPage, onNavigate, children, padless }:
 
           {/* Mobile top bar with hamburger */}
           <div className="flex items-center gap-3 border-b border-edge bg-surface-1 px-3 py-2 md:hidden">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg"
+              className="p-1.5 text-fg-muted"
               aria-label="Open menu"
             >
-              <svg
-                className="size-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-                aria-hidden="true"
-              >
-                <path d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+              <IconMenu size="md" />
+            </Button>
             <span className="text-sm font-semibold text-fg">RevealUI Studio</span>
           </div>
 

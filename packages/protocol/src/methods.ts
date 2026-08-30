@@ -48,6 +48,12 @@ export const RPC_METHODS = {
   'files.release': 'files.release',
   'files.list': 'files.list',
 
+  // GAP-323 — design-pack filesystem watch (native pair of GAP-322 advisory)
+  'design.pack.status': 'design.pack.status',
+  'design.pack.watch': 'design.pack.watch',
+  'design.pack.unwatch': 'design.pack.unwatch',
+  'design.pack.scan': 'design.pack.scan',
+
   // Task coordination
   'tasks.create': 'tasks.create',
   'tasks.claim': 'tasks.claim',
@@ -161,4 +167,20 @@ export const RPC_METHODS = {
   // GAP-474 — operational workflows (registry under REVDEV_JV_ROOT / workflows)
   'workflow.list': 'workflow.list',
   'workflow.run': 'workflow.run',
+
+  // GAP-293 Phase B — read-only skill catalog (no execution)
+  'skills.list': 'skills.list',
+  // GAP-293 Phase C — native workflow generate on product default snap
+  'skills.invoke': 'skills.invoke',
+
+  // GAP-349 P5 — local knowledge-graph replica (PGlite) + outbox push to Neon
+  'graph.status': 'graph.status',
+  'graph.search': 'graph.search',
+  'graph.node': 'graph.node',
+  'graph.neighbors': 'graph.neighbors',
+  'graph.at': 'graph.at',
+  'graph.context': 'graph.context',
+  'graph.addEpisode': 'graph.addEpisode',
+  'graph.outbox.push': 'graph.outbox.push',
+  'graph.sync.pull': 'graph.sync.pull',
 } as const;

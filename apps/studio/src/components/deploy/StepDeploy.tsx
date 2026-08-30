@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { vercelDeploy, vercelGetDeployment, vercelSetEnv } from '../../lib/deploy';
 import type { StudioConfig, WizardData } from '../../types';
 import Button from '../adapters/Button';
@@ -124,18 +124,22 @@ async function deployApp(
   projectId: string,
   envVars: Record<string, string>,
   onStatus: (status: AppStatus) => void,
+  isCancelled: () => boolean,
 ): Promise<string> {
   // Push env vars first (RC-6)
   onStatus('pushing-env');
   await pushEnvVars(token, projectId, envVars);
+  if (isCancelled()) throw new Error('Cancelled');
 
   // Deploy
   onStatus('deploying');
   const deploymentId = await vercelDeploy(token, projectId);
+  if (isCancelled()) throw new Error('Cancelled');
 
   // Poll until ready
   onStatus('polling');
   for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+    if (isCancelled()) throw new Error('Cancelled');
     const deployment = await vercelGetDeployment(token, deploymentId);
     if (deployment.state === 'READY') {
       return deployment.url ?? deploymentId;
@@ -169,6 +173,7 @@ export default function StepDeploy({ config, data, onNext }: StepDeployProps) {
   });
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
 
   const allReady =
     apps.api.status === 'ready' &&
@@ -183,7 +188,14 @@ export default function StepDeploy({ config, data, onNext }: StepDeployProps) {
     setApps((prev) => ({ ...prev, [name]: { ...prev[name], ...update } }));
   }
 
+  function handleCancel() {
+    cancelledRef.current = true;
+    setError('Deploy cancelled. In-flight Vercel builds may still finish.');
+    setDeploying(false);
+  }
+
   async function handleDeploy() {
+    cancelledRef.current = false;
     setDeploying(true);
     setError(null);
 
@@ -211,8 +223,12 @@ export default function StepDeploy({ config, data, onNext }: StepDeployProps) {
     const results = await Promise.allSettled(
       deployments.map(async ({ name, projectId, envVars }) => {
         try {
-          const url = await deployApp(token, projectId, envVars, (status) =>
-            updateApp(name, { status }),
+          const url = await deployApp(
+            token,
+            projectId,
+            envVars,
+            (status) => updateApp(name, { status }),
+            () => cancelledRef.current,
           );
           updateApp(name, { status: 'ready', url });
         } catch (err) {
@@ -240,16 +256,23 @@ export default function StepDeploy({ config, data, onNext }: StepDeployProps) {
           ))}
         </div>
 
-        {!allReady && (
-          <Button
-            variant="primary"
-            onClick={handleDeploy}
-            loading={deploying}
-            disabled={deploying || allReady}
-          >
-            {hasErrors ? 'Retry Failed' : 'Deploy All'}
-          </Button>
-        )}
+        <div className="flex gap-3">
+          {!allReady && (
+            <Button
+              variant="primary"
+              onClick={() => void handleDeploy()}
+              loading={deploying}
+              disabled={deploying || allReady}
+            >
+              {hasErrors ? 'Retry Failed' : 'Deploy All'}
+            </Button>
+          )}
+          {deploying && (
+            <Button variant="secondary" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
+        </div>
 
         <Button variant="primary" onClick={onNext} disabled={!allReady} className="mt-2 self-end">
           Next

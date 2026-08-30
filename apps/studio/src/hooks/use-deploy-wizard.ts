@@ -14,14 +14,24 @@ const DEPLOY_STEPS: { id: DeployStep; label: string }[] = [
   { id: 'verify', label: 'Verify' },
 ];
 
-export function useDeployWizard(config: StudioConfig | null) {
+function firstOpenIndex(config: StudioConfig | null): number {
+  if (!config) return 0;
+  const idx = DEPLOY_STEPS.findIndex((s) => !isStepComplete(config, s.id));
+  return idx === -1 ? DEPLOY_STEPS.length - 1 : idx;
+}
+
+export function useDeployWizard(
+  config: StudioConfig | null,
+  options: { reload?: () => Promise<void> } = {},
+) {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [hasResumed, setHasResumed] = useState(false);
+  const reload = options.reload;
 
   // Auto-resume to first incomplete step once config loads
   useEffect(() => {
     if (!config || hasResumed) return;
-    const idx = DEPLOY_STEPS.findIndex((s) => !isStepComplete(config, s.id));
+    const idx = firstOpenIndex(config);
     if (idx > 0) setCurrentStep(idx);
     setHasResumed(true);
   }, [config, hasResumed]);
@@ -33,6 +43,7 @@ export function useDeployWizard(config: StudioConfig | null) {
   const markComplete = async () => {
     if (step) {
       await completeStep(step.id);
+      if (reload) await reload();
     }
   };
 
@@ -46,6 +57,8 @@ export function useDeployWizard(config: StudioConfig | null) {
   };
 
   const goTo = (index: number) => {
+    const max = firstOpenIndex(config);
+    if (index < 0 || index > max) return;
     setCurrentStep(index);
   };
 

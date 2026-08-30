@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,5 +77,44 @@ func TestSpawnSession_Succeeds(t *testing.T) {
 	}
 	if id != "abc123xyz" {
 		t.Errorf("sessionID = %q, want %q", id, "abc123xyz")
+	}
+}
+
+func TestSpawnSession_NameWithQuoteIsValidJSON(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		gotBody = string(raw)
+		fmt.Fprint(w, `{"sessionId":"quoted-ok"}`)
+	}))
+	defer srv.Close()
+
+	name := `evil","cols":1,"x":"`
+	id, err := newTestProxy(srv.URL).spawnSession(name)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "quoted-ok" {
+		t.Errorf("sessionID = %q, want quoted-ok", id)
+	}
+
+	// Body must be valid JSON with the name as a single string field — not
+	// broken open by sprintf injection.
+	var body struct {
+		Name string `json:"name"`
+		Cols int    `json:"cols"`
+		Rows int    `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(gotBody), &body); err != nil {
+		t.Fatalf("request body is not valid JSON: %v\nbody=%q", err, gotBody)
+	}
+	if body.Name != name {
+		t.Errorf("name = %q, want %q", body.Name, name)
+	}
+	if body.Cols != 120 || body.Rows != 30 {
+		t.Errorf("cols/rows = %d/%d, want 120/30", body.Cols, body.Rows)
 	}
 }

@@ -41,6 +41,7 @@ import './spawn.js';
 import './gateway-rpc.js';
 // GAP-474 — workflow.list / workflow.run (same registry as Studio /ops).
 import './workflow-rpc.js';
+import './skills-rpc.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { LICENSE_TIER_HELP, LicenseConfigError, LicenseExpiredError } from './license.js';
 import { startDaemon } from './server.js';
@@ -90,6 +91,8 @@ Environment:
   REVDEV_DAEMON_SHUTDOWN_GRACE_MS  Max wait for in-flight handlers during close() (default: ${DAEMON_DEFAULTS.shutdownGracePeriodMs} ms = ${DAEMON_DEFAULTS.shutdownGracePeriodMs / 1000} s)
   REVDEV_PERMISSION_MODE       GAP-294 mode: shadow (default) | manual | auto | agent-scoped
                                shadow = would_* events only (no block). Flip only after soak review.
+  REVDEV_SKILLS_INVOKE_TIMEOUT_MS  Override skills.invoke wall-clock (default: prompt-sized, min 300s; completion is also capped at 2048 tokens)
+  INFERENCE_SNAPS_BASE_URL     OpenAI-compat snap base (default: http://localhost:9090/v1)
 
 ${LICENSE_TIER_HELP}
 `);
@@ -203,10 +206,19 @@ console.log('');
 console.log('  RevDev Daemon v0.1.0');
 console.log('  ────────────────────');
 
+// Write the PID file BEFORE listen. Studio liveness is the pid file
+// (`daemon_status.running`). startDaemon accepts ping as soon as the
+// socket binds, so a post-listen write races: start returns, status
+// reads a missing pid, CI reports "daemon should be running".
+await mkdir(dirname(pidFile), { recursive: true });
+await writeFile(pidFile, String(process.pid));
+console.log(`[daemon] PID ${process.pid} written to ${pidFile}`);
+
 let daemon: Awaited<ReturnType<typeof startDaemon>>;
 try {
   daemon = await startDaemon(config);
 } catch (err) {
+  await unlink(pidFile).catch(() => {});
   // Fail-closed license errors are operator-actionable, not crashes:
   // initLicenseGuard already logged the CRITICAL detail for an expired
   // license; surface a config error then exit non-zero with no stack trace.
@@ -219,11 +231,6 @@ try {
   }
   throw err;
 }
-
-// Write PID file so supervisors and Studio can find us
-await mkdir(dirname(pidFile), { recursive: true });
-await writeFile(pidFile, String(process.pid));
-console.log(`[daemon] PID ${process.pid} written to ${pidFile}`);
 
 // Graceful shutdown — clean up PID file and socket
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

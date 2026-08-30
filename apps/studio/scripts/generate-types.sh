@@ -14,6 +14,23 @@ STUDIO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TAURI_DIR="$STUDIO_DIR/src-tauri"
 GENERATED_DIR="$STUDIO_DIR/src/generated"
 
+RELAY_BIN="$TAURI_DIR/wsl/revdev-relay"
+# Existence, not -x: the Linux ELF from Studio Release is not executable
+# on Windows, and cargo-building the relay there fails (UnixStream).
+if [ ! -f "$RELAY_BIN" ]; then
+  if [ "$(uname -s)" != "Linux" ]; then
+    echo "error: $RELAY_BIN is missing and this host cannot build the Linux ELF."
+    echo "       On Linux: cargo build --release --manifest-path apps/studio/relay/Cargo.toml"
+    echo "       On Windows release: the linux-relay job must download it first."
+    exit 1
+  fi
+  echo "==> Building gitignored wsl/revdev-relay for tauri-build..."
+  cargo build --release --manifest-path "$STUDIO_DIR/relay/Cargo.toml"
+  mkdir -p "$(dirname "$RELAY_BIN")"
+  cp "$STUDIO_DIR/relay/target/release/revdev-relay" "$RELAY_BIN"
+  chmod +x "$RELAY_BIN"
+fi
+
 echo "==> Running cargo test to generate ts-rs bindings..."
 cd "$TAURI_DIR"
 cargo test --lib

@@ -1,3 +1,4 @@
+import { IconLock, IconPlus } from '@revealui/presentation';
 import { useState } from 'react';
 import { useVault } from '../../hooks/use-vault';
 import Button from '../adapters/Button';
@@ -38,17 +39,7 @@ export default function VaultPanel() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <div className="flex size-12 items-center justify-center rounded-xl bg-surface-2">
-          <svg
-            className="size-6 text-fg-muted"
-            aria-hidden="true"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
+          <IconLock size="lg" className="text-fg-muted" />
         </div>
         <div className="text-center">
           <h3 className="text-base font-semibold text-fg">Vault not initialized</h3>
@@ -72,16 +63,7 @@ export default function VaultPanel() {
           <SearchBar query={searchQuery} onChange={setSearchQuery} />
         </div>
         <Button variant="primary" onClick={() => setShowCreate(true)}>
-          <svg
-            className="mr-1.5 size-4"
-            aria-hidden="true"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <IconPlus size="sm" className="mr-1.5" />
           New Secret
         </Button>
       </div>

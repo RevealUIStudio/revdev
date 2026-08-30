@@ -1,15 +1,15 @@
 ---
 type: plan
 repo: revdev
-last-updated: 2026-07-21
+last-updated: 2026-08-30
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
 
 # RevDev — Plan
 
-**Last Updated:** 2026-07-21 (Phase 0 honesty pass — W4/W8–W13 + dogfood re-verified against `origin/test` code; earlier body below still carries 2026-06-11 detail where unchanged)
-**Status:** Pre-1.0 — Studio + Console + harness daemon buildable; tags `v0.1.1` / `v0.2.0` exist; auto-update customer loop still gated on H4
+**Last Updated:** 2026-08-30 (docs honesty: public `studio-v0.2.12` / `console-v0.2.0` exist; earlier body below still carries 2026-06-11 / 2026-07-21 detail where unchanged)
+**Status:** Pre-1.0 — Studio + Console + harness daemon buildable; public tags `studio-v0.2.12` and `console-v0.2.0` exist; auto-update customer loop still gated on H4 (`releases.revealui.com` 404s)
 **Owner:** RevealUI Studio
 
 > **The single RevDev plan.** [`MASTER_PLAN.md`](./MASTER_PLAN.md) is the stable entry point that references this file; the spec counterpart is [`SPEC.md`](./SPEC.md) (referenced by [`MASTER_SPEC.md`](./MASTER_SPEC.md)). This file absorbs and supersedes the former `PRODUCTION_LAUNCH_PLAN.md` (removed 2026-06-11) with every task status re-verified.
@@ -20,8 +20,8 @@ staleness-status: FRESH
 
 | Component | Status | How to get it today |
 |---|---|---|
-| Studio | Buildable; signing configured | `pnpm --filter studio tauri build` — local binary. `studio-release.yml` defined; updater pubkey + signing secrets configured 2026-06-11 (H1); no public releases cut yet — remaining gates are the H4 release endpoint + first `studio-v*` tag. |
-| Console | Buildable | `cd apps/console && go build -o ../../rvui .` — no root `go.mod`; module lives under `apps/console/`. `console-release.yml` defined; no releases cut. |
+| Studio | Buildable; OS-unsigned | Local: `pnpm --filter studio tauri build`. `studio-release.yml` is cutting public tags — latest `studio-v0.2.12` (2026-08-30). Updater pubkey + signing secrets configured 2026-06-11 (H1). Remaining: H4 custom-domain mirror (`releases.revealui.com` still 404s) and Apple/Microsoft OS code-signing (H7/H8). |
+| Console | Buildable | `cd apps/console && go build -o ../../rvui .` — no root `go.mod`; module lives under `apps/console/`. `console-release.yml` has cut public tag `console-v0.2.0` (2026-07-17). |
 | Harness daemon | Buildable, not published | `pnpm --filter @revdev/daemon build`; CLI at `packages/daemon/dist/cli.js`. Runs locally under systemd-user. |
 
 What is true today (each item verified, not carried forward):
@@ -61,7 +61,7 @@ Everything between today and the first commercial sale. Split agent-executable v
 | H1 | Generate Tauri updater signing keypair | ✅ **DONE 2026-06-11** | Keypair generated in tmpfs (never on persistent disk) and vaulted at `revdev/tauri-signing-{private-key,private-key-password,public-key}`; public key embedded in `tauri.conf.json` → `plugins.updater.pubkey`; `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` repo secrets set. Re-running the generator ROTATES the key — existing installs would reject updates signed by a new key, so don't regenerate casually. Runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) §1. |
 | H2 | Generate license signing keypair (Ed25519) | ✅ **DONE 2026-06-10** | Canonical pair lives at `revdev/license-signing-{private,public}-key`; prod env carries it. Remaining tail: embed the public key in the Studio binary (resource or `tauri.conf.json`) and mirror to CI if integration tests need Pro+ gating. Runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md). |
 | H3 | Issue first customer licenses | **READY — awaiting first sale** | `pnpm exec tsx scripts/issue-license.ts --tier pro --customer "<name>" --days 365` (or `--perpetual`). Output is an Ed25519-signed JWT; customer sets it as `REVEALUI_LICENSE_KEY`. (The old `RVUI.v2.…` wording in the retired launch plan was wrong — the daemon rejects that format.) | <!-- doclint:allow-legacy-format -->
-| H4 | Release endpoint for auto-update | **OPEN — P1** | Pick GitHub Releases (simplest) vs S3/CloudFront vs edge proxy; `tauri.conf.json` already points at `releases.revealui.com/studio/{{target}}/{{arch}}/latest.json`. |
+| H4 | Release endpoint for auto-update | **CODE SHIPPED — DNS mirror open** | Bundles now emit updater artifacts. Endpoints: `releases.revealui.com/studio/{{target}}/{{arch}}/latest.json` then GitHub `studio-latest/latest.json`. Tag `studio-v*` publishes the feed. Owner: alias `releases.revealui.com` to that JSON (domain currently 404s). |
 | H5 | CI secrets for signed builds | **PARTIAL — Tauri set done 2026-06-11** | `TAURI_SIGNING_PRIVATE_KEY{,_PASSWORD}` set (H1). Remaining: the Apple cert/notarization set (from H7) for macOS builds. Linux/Windows signed builds work today. |
 | H6 | Daemon service on dev machine | ✅ **DONE** | systemd-user unit installed + running (closed 2026-04-28 via [#27](https://github.com/RevealUIStudio/revdev/pull/27) + [#23](https://github.com/RevealUIStudio/revdev/pull/23)). |
 | H7 | Apple Developer account + certs | **OPEN — P2, blocks macOS distribution** | Developer ID cert, app-specific password, .p12 into the vault. |
@@ -107,14 +107,14 @@ Phases 0–4 are shipped: best-effort daemon→Neon dual-write for sessions/mail
 
 ### W4 — Studio dogfood: adopt `@revealui/presentation`
 
-Phase 1 (token foundation) shipped 2026-05-16 via [#67](https://github.com/RevealUIStudio/revdev/pull/67)/[#68](https://github.com/RevealUIStudio/revdev/pull/68). Phase 2 shims landed on `test` (PR series through [#297](https://github.com/RevealUIStudio/revdev/pull/297)): shadow `components/ui/*` are thin wrappers over `@revealui/presentation` ^0.9.1 (StatusDot, PanelHeader, Tooltip, ErrorAlert, Badge, Button, Card, Input, Dialog, Modal; ConfirmDialog is Studio-local).
+Phase 1 (token foundation) shipped 2026-05-16 via [#67](https://github.com/RevealUIStudio/revdev/pull/67)/[#68](https://github.com/RevealUIStudio/revdev/pull/68). Phase 2 shims landed on `test` (PR series through [#297](https://github.com/RevealUIStudio/revdev/pull/297)). Phase 4 relocated those wrappers to `src/components/adapters/` and banned `components/ui` via Studio-only Biome `noRestrictedImports` ([#347](https://github.com/RevealUIStudio/revdev/pull/347)): StatusDot, PanelHeader, Tooltip, ErrorAlert, Badge, Button, Card, Input, Dialog, Modal; ConfirmDialog stays a Studio composition over Modal.
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Token foundation (`tokens.css`) | ✅ **SHIPPED** |
 | 2 | Shim shadow primitives over `@revealui/presentation` | ✅ **SHIPPED** (2026-07) |
 | 3 | Sweep residual `orange-*` in render code (tip: terminal cursor only) to semantic tokens | **OPEN** (small) |
-| 4 | Delete the shadow library + Biome `noRestrictedImports` guard | **OPEN** (after Phase 3) |
+| 4 | Relocate shadow library to `components/adapters` + Biome `noRestrictedImports` guard | ✅ **SHIPPED** ([#347](https://github.com/RevealUIStudio/revdev/pull/347)) |
 
 Carve-outs that stay: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (terminal). Operational sequencing: internal `studio-dogfood` lane (membership under frontend-excellence initiative for brand; daily-driver program does not dual-claim the lane).
 

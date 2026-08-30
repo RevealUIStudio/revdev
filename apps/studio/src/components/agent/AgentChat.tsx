@@ -5,8 +5,10 @@
  * modes with model selection. Renders tool call badges inline with text output.
  */
 
+import { Textarea } from '@revealui/presentation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsContext } from '../../hooks/use-settings';
+import Button from '../adapters/Button';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,16 +181,18 @@ function ToolBadge({
 
   return (
     <div className="my-1">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => result && setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] font-medium ${statusColor} ${result ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}`}
+        className={`inline-flex h-auto items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] font-medium ${statusColor} ${result ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}`}
       >
         {status === 'running' ? (
           <span className="size-1.5 animate-pulse rounded-full bg-info" />
         ) : null}
         {label}
-      </button>
+      </Button>
       {expanded && result ? (
         <pre className="mt-1 max-h-32 overflow-auto rounded border border-edge bg-surface-0 p-2 text-[10px] text-fg-muted">
           {result}
@@ -357,8 +361,10 @@ export default function AgentChat() {
       <div className="border-t border-edge px-3 py-2.5">
         <div className="mb-2 flex items-center gap-2">
           <div className="flex items-center rounded border border-edge">
-            <button
+            <Button
               type="button"
+              variant={mode === 'coding' ? 'primary' : 'ghost'}
+              size="sm"
               onClick={() => setMode('coding')}
               disabled={stream.isStreaming}
               className={`rounded-l px-2 py-0.5 text-[10px] font-medium transition-colors ${
@@ -368,9 +374,11 @@ export default function AgentChat() {
               }`}
             >
               Coding
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant={mode === 'content' ? 'primary' : 'ghost'}
+              size="sm"
               onClick={() => setMode('content')}
               disabled={stream.isStreaming}
               className={`rounded-r px-2 py-0.5 text-[10px] font-medium transition-colors ${
@@ -380,7 +388,7 @@ export default function AgentChat() {
               }`}
             >
               admin
-            </button>
+            </Button>
           </div>
           <span className="text-[10px] text-fg-subtle">
             {mode === 'coding' ? 'Code + admin tools' : 'admin tools only'}
@@ -388,7 +396,7 @@ export default function AgentChat() {
         </div>
 
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
-          <textarea
+          <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -396,24 +404,29 @@ export default function AgentChat() {
             rows={1}
             placeholder={mode === 'coding' ? 'Ask about code...' : 'Ask the assistant...'}
             disabled={stream.isStreaming}
-            className="flex-1 resize-none rounded-lg border border-edge bg-surface-2 px-3 py-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-brand"
+            resizable={false}
+            className="flex-1"
           />
           {stream.isStreaming ? (
-            <button
+            <Button
               type="button"
+              variant="danger"
+              size="sm"
               onClick={stream.abort}
-              className="shrink-0 rounded-lg bg-error px-3 py-2 text-xs font-medium text-on-brand hover:brightness-110"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium"
             >
               Stop
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="submit"
+              variant="primary"
+              size="sm"
               disabled={!input.trim()}
-              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-medium text-on-brand hover:bg-brand-hover disabled:opacity-40"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium"
             >
               Send
-            </button>
+            </Button>
           )}
         </form>
         <p className="mt-1.5 text-center text-[10px] text-fg-subtle">

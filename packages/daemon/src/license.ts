@@ -128,6 +128,25 @@ const EXEMPT_METHODS = new Set([
   // GAP-474: local operational workflows (same class as /ops; Studio daily driver)
   'workflow.list',
   'workflow.run',
+  // GAP-293 Phase B: catalog read is a daily-driver inspect (no execution)
+  'skills.list',
+  'skills.invoke',
+  // GAP-323: design-pack advisory (native pair of GAP-322 SessionStart warn).
+  // Free-tier daily-driver surface — no multi-agent coordination required.
+  'design.pack.status',
+  'design.pack.watch',
+  'design.pack.unwatch',
+  'design.pack.scan',
+  // GAP-349 P5: local graph replica is a daily-driver inspect/write surface
+  // (query-before-grep). Hub replay (graph.outbox.push) stays Pro-floor.
+  'graph.status',
+  'graph.search',
+  'graph.node',
+  'graph.neighbors',
+  'graph.at',
+  'graph.context',
+  'graph.addEpisode',
+  // graph.sync.pull / graph.outbox.push contact the hub — Pro floor.
 ]);
 
 /**
@@ -164,8 +183,8 @@ export const METHOD_MIN_TIER = new Map<string, LicenseTier>([
  * free-file/git claims so help cannot re-drift (INIT-002 Phase 0).
  */
 export const LICENSE_TIER_HELP = `License tiers (method gate; source: EXEMPT_METHODS + METHOD_MIN_TIER):
-  free         Sessions, single-repo file/git, local inference run, harness.health
-  pro          Multi-agent coordination (mail, tasks, files.*, goal.*, agent.*, merge.*, worktree, events, harness.prune, …)
+  free         Sessions, single-repo file/git, local inference run, harness.health, graph.* replica (except outbox.push)
+  pro          Multi-agent coordination (mail, tasks, files.*, goal.*, agent.*, merge.*, worktree, events, harness.prune, graph.outbox.push, graph.sync.pull, …)
   max          + full AI memory (memory.*) and local-model management (inference.pull/delete/start/stop)
   enterprise   Same method surface as max; commercial terms differ (founder daily-driver JWT for goal spine)`;
 

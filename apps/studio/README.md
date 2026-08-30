@@ -1,6 +1,8 @@
 # RevealUI Studio
 
-> **Status:** Functional — connects to the harness daemon, 506 frontend tests passing. **Prebuilt binaries are published** on [GitHub Releases](https://github.com/RevealUIStudio/revdev/releases) (first release `studio-v0.1.0`, 2026-07-02; macOS · Linux · Windows). macOS builds are currently **unsigned / ad-hoc**, so Gatekeeper blocks the first launch — **right-click the app → Open** (or `System Settings → Privacy & Security → Open Anyway`) once to run it. In-app auto-update is **configured but not yet live** (the `releases.revealui.com` update endpoint is not serving manifests yet), so update by downloading the latest release manually for now. To run from source instead: `pnpm tauri:dev`.
+> **Status:** Functional — connects to the harness daemon, 506 frontend tests passing. **Prebuilt binaries are published** on [GitHub Releases](https://github.com/RevealUIStudio/revdev/releases) (first release `studio-v0.1.0`, 2026-07-02; macOS · Linux · Windows). macOS builds are currently **unsigned / ad-hoc**, so Gatekeeper blocks the first launch — **right-click the app → Open** (or `System Settings → Privacy & Security → Open Anyway`) once to run it. In-app auto-update is **configured**. New `studio-v*` tags publish a `latest.json` feed to the `studio-latest` GitHub release. `releases.revealui.com` is still a 404 (owner DNS/Vercel alias); the GitHub feed is the fallback. macOS/Windows OS code-signing is still unsigned (GAP-273).
+>
+> Two launch paths, two binaries. The Windows Start Menu app is the last installed release. `pnpm tauri:dev` in WSL is this source tree. They do not share UI. On WSL, Studio refuses to start if WSLg cannot put a window on the Windows desktop (RDP/msrdc down, or a 640x480 stub display).
 
 Native AI experience — agent coordination hub, local inference management, visual agent dashboard, DevPod manager, and secret vault.
 

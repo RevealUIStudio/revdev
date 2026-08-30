@@ -13,5 +13,13 @@ export default defineConfig({
   clean: true,
   target: 'node24',
   banner: { js: '' },
-  external: ['@electric-sql/pglite'],
+  external: [
+    '@electric-sql/pglite',
+    /^@revealui\/ai/,
+    '@revealui/knowledge-graph',
+    '@revealui/knowledge-graph/ddl',
+    '@revealui/knowledge-graph/ingest',
+    '@revealui/db',
+    '@revealui/db/pool',
+  ],
 });

@@ -15,6 +15,10 @@ pub struct StudioConfig {
     pub deploy: Option<DeployConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub develop: Option<DevelopConfig>,
+    /// In-progress deploy wizard payload (tokens, generated secrets). Local config only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "Record<string, unknown>")]
+    pub wizard_draft: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -54,6 +58,7 @@ impl Default for StudioConfig {
             completed_steps: Vec::new(),
             deploy: None,
             develop: None,
+            wizard_draft: None,
         }
     }
 }
@@ -92,5 +97,10 @@ pub fn save_config(config: &StudioConfig) -> Result<(), String> {
     }
     let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
     Ok(())
 }

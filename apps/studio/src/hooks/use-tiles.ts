@@ -1,6 +1,5 @@
-import { Command } from '@tauri-apps/plugin-shell';
 import { useCallback, useEffect, useState } from 'react';
-import { focusWindow } from '../lib/invoke';
+import { focusWindow, listRunningProcesses } from '../lib/invoke';
 import {
   type BrowserProfile,
   CATEGORIES,
@@ -55,22 +54,9 @@ async function detectRunningProcesses(): Promise<Set<string>> {
   const running = new Set<string>();
 
   try {
-    // On WSL, use tasklist.exe to detect Windows processes + pgrep for Linux
-    const [winResult, linuxResult] = await Promise.allSettled([
-      Command.create('exec-sh', ['-c', 'tasklist.exe /FO CSV /NH 2>/dev/null']).execute(),
-      Command.create('exec-sh', ['-c', 'ps -eo comm 2>/dev/null']).execute(),
-    ]);
-
-    const winProcesses =
-      winResult.status === 'fulfilled' && winResult.value.code === 0
-        ? winResult.value.stdout.toLowerCase()
-        : '';
-    const linuxProcesses =
-      linuxResult.status === 'fulfilled' && linuxResult.value.code === 0
-        ? linuxResult.value.stdout.toLowerCase()
-        : '';
-
-    const combined = `${winProcesses}\n${linuxProcesses}`;
+    // Trusted-host process list (Rust command — no shell:allow-execute).
+    const names = await listRunningProcesses();
+    const combined = names.join('\n').toLowerCase();
 
     for (const [tileId, processNames] of Object.entries(PROCESS_NAMES)) {
       for (const name of processNames) {
@@ -182,7 +168,7 @@ export function useTiles(): UseTilesReturn {
     }
 
     // Not running or focus failed — launch normally
-    launchTile(tile);
+    await launchTile(tile);
     const next = recordRecentLaunch(prefs, tile.id);
     updatePrefs(next);
   };

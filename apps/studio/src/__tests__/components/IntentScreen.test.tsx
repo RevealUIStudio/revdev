@@ -10,48 +10,46 @@ function clickHeadingButton(name: string): void {
 }
 
 describe('IntentScreen', () => {
-  it('renders welcome heading and description', () => {
+  it('renders the RevealUI mark', () => {
     render(<IntentScreen onSelect={vi.fn()} />);
 
-    expect(screen.getByText('Welcome to RevealUI Studio')).toBeInTheDocument();
-    expect(screen.getByText('How would you like to use RevealUI?')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'RevealUI' })).toBeInTheDocument();
   });
 
-  it('renders Deploy and Develop options', () => {
+  it('renders a path question and next-step copy', () => {
+    render(<IntentScreen onSelect={vi.fn()} />);
+
+    expect(screen.getByText('How will you use Studio?')).toBeInTheDocument();
+    expect(screen.getByText(/Pick a path. One click opens that workspace/)).toBeInTheDocument();
+    expect(screen.getByText(/open Agent in the sidebar/)).toBeInTheDocument();
+  });
+
+  it('renders Develop and Deploy options', () => {
     render(<IntentScreen onSelect={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Deploy' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Develop' })).toBeInTheDocument();
   });
 
-  it('Continue button is disabled when nothing is selected', () => {
-    render(<IntentScreen onSelect={vi.fn()} />);
-
-    expect(screen.getByText('Continue')).toBeDisabled();
-  });
-
-  it('enables Continue after selecting Deploy', () => {
-    render(<IntentScreen onSelect={vi.fn()} />);
-
-    clickHeadingButton('Deploy');
-    expect(screen.getByText('Continue')).not.toBeDisabled();
-  });
-
-  it('calls onSelect with "deploy" when Deploy is selected and Continue clicked', () => {
-    const onSelect = vi.fn();
-    render(<IntentScreen onSelect={onSelect} />);
-
-    clickHeadingButton('Deploy');
-    fireEvent.click(screen.getByText('Continue'));
-    expect(onSelect).toHaveBeenCalledWith('deploy');
-  });
-
-  it('calls onSelect with "develop" when Develop is selected and Continue clicked', () => {
+  it('calls onSelect with "develop" when the Develop card is clicked', () => {
     const onSelect = vi.fn();
     render(<IntentScreen onSelect={onSelect} />);
 
     clickHeadingButton('Develop');
-    fireEvent.click(screen.getByText('Continue'));
     expect(onSelect).toHaveBeenCalledWith('develop');
+  });
+
+  it('calls onSelect with "deploy" when the Deploy card is clicked', () => {
+    const onSelect = vi.fn();
+    render(<IntentScreen onSelect={onSelect} />);
+
+    clickHeadingButton('Deploy');
+    expect(onSelect).toHaveBeenCalledWith('deploy');
+  });
+
+  it('does not leave a disabled Continue trap', () => {
+    render(<IntentScreen onSelect={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
   });
 });

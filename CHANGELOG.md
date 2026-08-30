@@ -7,6 +7,170 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+## [0.2.12] — 2026-08-29
+
+### Security
+
+- Bump Studio `jsonwebtoken` 9.3.1 → 10.4.0 (GHSA-h395-gr6q-cpjc / CVE-2026-25537).
+
+### Fixed
+
+- **Complete Setup is reachable.** The wizard no longer waits for WSL + Nix +
+  DevPod + git identity before Complete. Linux/macOS `check_setup` never
+  reports those as green, so a Tauri daily-driver could only Skip (session
+  dismiss) and never persist into a real session. Complete still calls
+  `daemon_setup` (real IPC in Tauri; Vite `MOCK_DATA` stays browser-only).
+- **Agent connect no longer dumps to Setup.** Pipe EOF / spawn failures used
+  to say the daemon was down and send the operator back to Setup. Connect
+  Agent restages the relay and retries.
+
+### Changed
+
+- Studio-dogfood Phase 4: shadow `components/ui` lives under
+  `components/adapters` with a Studio-only Biome `noRestrictedImports` ban
+  ([#347](https://github.com/RevealUIStudio/revdev/pull/347)).
+
+[0.2.12]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.12
+
+## [0.2.11] — 2026-08-16
+
+### Fixed
+
+- **Windows release compile.** `spawn_blocking` pipe write/read needs
+  `mut` stdin and stdout. That path is Windows-only so Linux CI missed it.
+
+[0.2.11]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.11
+
+## [0.2.10] — 2026-08-16
+
+### Fixed
+
+- **Windows release ts-rs.** `generate-types.sh` treated a non-executable
+  Linux `revdev-relay` as missing and tried to compile it on Windows
+  (`UnixStream` is Linux-only). Use the downloaded ELF if the file exists.
+
+[0.2.10]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.10
+
+## [0.2.9] — 2026-08-16
+
+### Fixed
+
+- **Agent over a live WSL daemon.** `WslLaunch` stdio uses anonymous
+  pipes. Those handles are not overlapped, so `tokio::fs::File` never
+  delivered a ping line. Studio now writes and reads them with blocking
+  std I/O on a worker thread.
+
+[0.2.9]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.9
+
+## [0.2.8] — 2026-08-16
+
+### Fixed
+
+- **Windows NSIS build.** `pnpm build` (`tsc -b`) no longer typechecks
+  `__tests__`. The SetupWizard mock uses `vi.mocked` so a rejected
+  `daemonSetup` is typed.
+
+[0.2.8]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.8
+
+## [0.2.7] — 2026-08-15
+
+### Fixed
+
+- **Agent Setup actually installs the WSL relay.** Complete Setup calls
+  `daemon_setup` (it was registered and never invoked). Studio Release
+  bundles the Linux `revdev-relay` so Setup can copy it. A missing relay
+  is no longer described as a down daemon.
+- **Agent ping over a live daemon.** `revdev-relay` now flushes each
+  pipe write. Piped stdout was fully buffered, so Studio never saw a
+  response while the daemon kept the socket open.
+
+[0.2.7]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.7
+
+## [0.2.6] — 2026-08-15
+
+### Fixed
+
+- **Windows release compile.** `SHChangeNotify` takes `i32`.
+  `CommandExt::show_window` is still unstable on CI rustc, so leftover
+  console children keep CREATE_NO_WINDOW only. Agent uses `WslLaunch`.
+- **Quality lint.** Biome no longer treats ICO source SVGs as DOM.
+
+[0.2.6]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.6
+
+## [0.2.5] — 2026-08-15
+
+### Fixed
+
+- **Taskbar icon.** The running window sets the Circuit-R mark and asks
+  Explorer to drop the cached Tauri cube. 16/24px icons use the untiled
+  mark so the pin is not a smudge.
+- **Agent flash after 0.2.4.** The relay starts with `WslLaunch` (no
+  `wsl.exe` console). Parallel Agent RPCs no longer race past the
+  spawn cooldown.
+
+[0.2.5]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.5
+
+## [0.2.4] — 2026-08-15
+
+### Fixed
+
+- **One Studio process.** A second launch focuses the existing window
+  instead of opening another copy.
+- **Agent terminal flash.** Windows reuses one hidden WSL relay and does
+  not spawn `wsl.exe` again for 20s after a failed connect. Agent click
+  no longer launches a stack of consoles.
+- **Agent daemon-down copy.** One Setup line. The spawn panel and the
+  offline chip do not repeat it.
+
+[0.2.4]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.4
+
+## [0.2.3] — 2026-08-14
+
+### Fixed
+
+- **App icon.** Taskbar, window, and tray use the RevealUI Circuit-R mark
+  from the design system, not the default Tauri cube. Sidebar and the
+  intent screen render `RevealUIMark` instead of a letter tile.
+- **Setup Skip hover.** Ghost chrome keeps body ink on hover so Skip stays
+  readable.
+- **Agent errors.** Tauri `{ kind, message }` rejects show the real
+  message, not `[object Object]`. A down WSL daemon is one Setup line.
+
+[0.2.3]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.3
+
+## [0.2.2] — 2026-08-14
+
+### Fixed
+
+- **Console flashes after close.** Window X quits the process instead of
+  hiding to the tray. Windows `wsl.exe` / `cmd` / `pwsh` spawns use
+  `CREATE_NO_WINDOW` so daemon polls do not flash a terminal.
+
+[0.2.2]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.2
+
+## [0.2.1] — 2026-08-14
+
+### Added
+
+- **Auto-update feed.** Studio bundles updater artifacts. New `studio-v*` tags
+  publish `latest.json` to the rolling `studio-latest` GitHub release. The
+  client tries `releases.revealui.com` first, then that GitHub feed.
+- **Deploy-wizard Gmail probe (revdev#15).** Send-test uses the service account
+  and domain-wide delegation, returns a Gmail message id, and rate-limits at
+  5/min. Next stays disabled until the send succeeds.
+
+### Fixed
+
+- **Deploy wizard honesty.** Draft (including generated secrets) persists in
+  local config (mode 0600). Sidebar cannot skip past the first incomplete
+  step. Verify fails when email was not probed or the API project id is
+  missing. Deploy poll can be cancelled. Config load failure shows Retry.
+- **First-run and WSLg.** Local-first first-run and refuse-to-start when WSLg
+  cannot present a window (revdev#405, #406), included in this desktop tag.
+
+[0.2.1]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.1
+
+
 ### Added
 
 - **GAP-269 spawned agent identity.** `agent.spawn` mints a distinct
@@ -34,6 +198,9 @@ Dates are ISO 8601 (UTC).
   reject-with-receipt (`-32004`, `pending_approvals` queue). `permission.pending`
   + signed `permission.decide` (no self-approval). Migration 0007. Default remains
   shadow until the operator sets the env.
+- **GAP-294 skill-tool enforce.** `skills.invoke` inner tools use the same
+  queue. `skills.tool.Read` / `Grep` / `Glob` are routine. `skills.tool.Bash`
+  is critical (auto still requires approval). Install default stays shadow.
 
 ### Fixed
 

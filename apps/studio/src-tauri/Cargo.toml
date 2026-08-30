@@ -1,6 +1,6 @@
 [package]
 name = "revealui-studio"
-version = "0.2.0"
+version = "0.2.12"
 edition = "2021"
 license = "LicenseRef-RevealUI-Commercial"
 authors = ["RevealUI Studio <noreply@revealui.com>"]
@@ -23,6 +23,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 revvault-core = { git = "https://github.com/RevealUIStudio/revvault.git", package = "revvault-core" }
@@ -31,10 +32,10 @@ secrecy = "0.10"
 dirs = "6"
 which = "7"
 arboard = "3"
-russh = "0.62"
+russh = "0.62.5"
 # "process" + "time" power the Windows wsl.exe relay transport (harness.rs);
 # "time" also backs the shared retry/timeout loop on every platform.
-tokio = { version = "1", features = ["sync", "net", "io-util", "time", "process"] }
+tokio = { version = "1", features = ["sync", "net", "io-util", "time", "process", "rt"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 sha2 = "0.10"
@@ -49,6 +50,9 @@ ed25519-dalek = "2"
 bs58 = "0.5"
 rsa = { version = "0.9", features = ["pem"] }
 lettre = { version = "0.11", features = ["tokio1-rustls-tls", "smtp-transport", "builder"], default-features = false }
+# 10.3.0+ closes GHSA-h395-gr6q-cpjc / CVE-2026-25537 (exp/nbf type confusion).
+# 10.x requires an explicit crypto backend; rust_crypto matches the rustls stack.
+jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 # git2 removed (zero-9P P2): all git/file I/O now routes through the WSL daemon
 # RPC surface; no in-process libgit2 / ext4 access from the Windows app.
 similar = "2"
@@ -57,6 +61,16 @@ ts-rs = { version = "10", features = ["serde-compat"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Pipes",
+  "Win32_System_SubsystemForLinux",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+] }
 
 [dev-dependencies]
 # Integration tests (tests/) drive the async harness client + daemon_ctl

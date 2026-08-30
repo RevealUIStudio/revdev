@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { dirname, extname, join, normalize } from 'node:path';
+import { dirname, extname, normalize, resolve, sep } from 'node:path';
 import type { PGlite } from '@electric-sql/pglite';
 import {
   findValidToken,
@@ -831,26 +831,18 @@ export class HttpGateway {
       return;
     }
 
-    // Default to index.html for SPA routing
-    const filePath = urlPath === '/' ? '/index.html' : urlPath;
-
-    // Security: prevent directory traversal
-    const normalized = normalize(filePath);
-    if (normalized.includes('..')) {
+    const resolved = resolveStaticPath(this.config.staticDir, urlPath);
+    if (!resolved) {
       res.writeHead(400);
       res.end('Bad request');
       return;
     }
 
-    const fullPath = join(this.config.staticDir, normalized);
+    // If file doesn't exist, serve index.html (SPA fallback) — still contained.
+    const indexPath = resolveStaticPath(this.config.staticDir, 'index.html');
+    const targetPath = existsSync(resolved) && statSync(resolved).isFile() ? resolved : indexPath;
 
-    // If file doesn't exist, serve index.html (SPA fallback)
-    const targetPath =
-      existsSync(fullPath) && statSync(fullPath).isFile()
-        ? fullPath
-        : join(this.config.staticDir, 'index.html');
-
-    if (!existsSync(targetPath)) {
+    if (!targetPath || !existsSync(targetPath)) {
       res.writeHead(404);
       res.end('Not found');
       return;
@@ -866,6 +858,67 @@ export class HttpGateway {
   private logAuth(message: string): void {
     process.stderr.write(`[http-gateway auth] ${message}\n`);
   }
+}
+
+/**
+ * Resolve a URL path to a file under staticDir, or null if it escapes.
+ *
+ * Node's `join(staticDir, '/etc/passwd')` replaces the base with the absolute
+ * segment — so every path is treated as relative-only (leading slashes stripped),
+ * NUL/`..` segments are rejected, and the final resolved path must stay under
+ * `resolve(staticDir)`.
+ */
+export function resolveStaticPath(staticDir: string, urlPath: string): string | null {
+  if (!staticDir || urlPath.includes('\0')) {
+    return null;
+  }
+
+  let relative = urlPath;
+  // Drop query/hash if a raw URL ever lands here.
+  const q = relative.indexOf('?');
+  if (q !== -1) relative = relative.slice(0, q);
+  const h = relative.indexOf('#');
+  if (h !== -1) relative = relative.slice(0, h);
+
+  // Relative only — strip every leading slash so join/resolve cannot reset.
+  while (relative.startsWith('/') || relative.startsWith('\\')) {
+    relative = relative.slice(1);
+  }
+
+  if (relative === '' || relative === '.') {
+    relative = 'index.html';
+  }
+
+  // Reject .. segments before and after normalize (Windows + POSIX separators).
+  const rawSegments = relative.split(/[/\\]/);
+  if (rawSegments.some((seg) => seg === '..')) {
+    return null;
+  }
+
+  const normalized = normalize(relative);
+  if (
+    normalized === '..' ||
+    normalized.startsWith(`..${sep}`) ||
+    normalized.startsWith('../') ||
+    normalized.startsWith('..\\') ||
+    normalized.includes(`${sep}..${sep}`) ||
+    normalized.includes('/../') ||
+    normalized.includes('\\..\\')
+  ) {
+    return null;
+  }
+
+  // Reject absolute-looking forms that survived the strip (drive letters, UNC).
+  if (normalized.startsWith('/') || normalized.startsWith('\\') || /^[a-zA-Z]:/.test(normalized)) {
+    return null;
+  }
+
+  const base = resolve(staticDir);
+  const fullPath = resolve(base, normalized);
+  if (fullPath !== base && !fullPath.startsWith(base + sep)) {
+    return null;
+  }
+  return fullPath;
 }
 
 /** SHA-256 hex digest of a string. */

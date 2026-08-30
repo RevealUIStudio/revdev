@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { markSetupComplete, useSetup } from '../../hooks/use-setup';
+import { daemonSetup, invokeErrorMessage } from '../../lib/invoke';
 import Button from '../adapters/Button';
 import ConfirmDialog from '../adapters/ConfirmDialog';
 import ErrorAlert from '../adapters/ErrorAlert';
@@ -23,7 +24,12 @@ interface SetupWizardProps {
 export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps) {
   const setup = useSetup();
   const [confirmingDismiss, setConfirmingDismiss] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
 
+  // Checklist rows are environment hints, not a gate. Linux/macOS check_setup
+  // never reports wsl_running or a mounted Studio drive, so requiring allDone
+  // made Complete Setup unreachable on a Tauri daily-driver.
   const allDone =
     setup.status?.wsl_running &&
     setup.status?.nix_installed &&
@@ -32,8 +38,19 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
     !!setup.status?.git_email;
 
   const handleComplete = () => {
-    markSetupComplete();
-    onComplete();
+    setProvisioning(true);
+    setProvisionError(null);
+    void daemonSetup()
+      .then(() => {
+        markSetupComplete();
+        onComplete();
+      })
+      .catch((err: unknown) => {
+        setProvisionError(invokeErrorMessage(err));
+      })
+      .finally(() => {
+        setProvisioning(false);
+      });
   };
 
   const handleSkip = () => {
@@ -56,18 +73,30 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
             <Button variant="ghost" onClick={handleSkip}>
               Skip
             </Button>
-            <Button variant="primary" size="lg" onClick={handleComplete} disabled={!allDone}>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={handleComplete}
+              disabled={provisioning}
+              loading={provisioning}
+            >
               Complete Setup
             </Button>
           </>
         }
       >
         <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-fg-muted">
+            Completing Setup installs the agent relay (no-op on native Unix) and continues into
+            Studio. WSL, Nix, DevPod, and git identity are optional checks — they do not block
+            Complete. Skip hides the wizard for this launch. Agent Approvals live under Agent in the
+            sidebar.
+          </p>
           {setup.loading && !setup.status && (
             <p className="text-sm text-fg-muted">Checking environment...</p>
           )}
 
-          <ErrorAlert message={setup.error} />
+          <ErrorAlert message={setup.error ?? provisionError} />
 
           <WslRow setup={setup} />
           <NixRow setup={setup} />
@@ -83,7 +112,7 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
       <ConfirmDialog
         open={confirmingDismiss}
         title="Dismiss setup?"
-        body="Setup isn't finished. Dismiss anyway? You can reopen setup later."
+        body="Setup is not finished. Dismiss anyway? You can reopen Setup from the sidebar. Agent Approvals are under Agent."
         confirmLabel="Dismiss setup"
         cancelLabel="Keep going"
         onConfirm={() => {

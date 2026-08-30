@@ -20,7 +20,20 @@ env:
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
 jobs:
+  linux-relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - name: Build WSL revdev-relay
+        run: cargo build --release --manifest-path apps/studio/relay/Cargo.toml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: revdev-relay
+          path: apps/studio/relay/target/release/revdev-relay
+
   build:
+    needs: linux-relay
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +50,14 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: revdev-relay
+          path: apps/studio/src-tauri/wsl
+      - name: Mark relay executable
+        if: matrix.platform != 'windows-latest'
+        run: chmod +x apps/studio/src-tauri/wsl/revdev-relay
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-latest'
@@ -93,5 +114,31 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "RevealUI Studio ${{ github.ref_name }}"
           releaseBody: "See the [changelog](https://github.com/RevealUIStudio/revdev/blob/main/CHANGELOG.md) for details."
-          releaseDraft: ${{ github.event.inputs.draft || true }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
           prerelease: false
+          includeUpdaterJson: true
+
+  # Stable updater feed. Shipped binaries also try releases.revealui.com first;
+  # this GitHub release is the durable fallback and the source that domain should
+  # mirror. Tag is rolling (assets only) so /releases/latest can stay a version tag.
+  publish-updater:
+    needs: build
+    if: github.event_name == 'push' || inputs.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish latest.json to studio-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release download "$tag" -R RevealUIStudio/revdev -p 'latest.json' -p 'latest*.json'
+          test -f latest.json
+          if ! gh release view studio-latest -R RevealUIStudio/revdev >/dev/null 2>&1; then
+            gh release create studio-latest -R RevealUIStudio/revdev \
+              --title "Studio updater feed" \
+              --notes "Rolling Tauri updater manifest. Install a studio-v* release, not this tag."
+          fi
+          gh release upload studio-latest latest.json -R RevealUIStudio/revdev --clobber

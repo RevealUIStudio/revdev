@@ -5,13 +5,17 @@
  * permission.decide. Also offers per-session mode override (permission.setMode).
  */
 
+import { Select } from '@revealui/presentation';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  formatDaemonUnreachable,
   harnessPermissionDecide,
   harnessPermissionPending,
   harnessPermissionSetMode,
+  invokeErrorMessage,
 } from '../../lib/invoke';
 import type { HarnessApproval, HarnessSession } from '../../types';
+import Button from '../adapters/Button';
 
 const POLL_MS = 5_000;
 
@@ -61,7 +65,7 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
       setApprovals(rows);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setLoading(false);
     }
@@ -82,7 +86,7 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
       await refresh();
       onChanged?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setBusyId(null);
     }
@@ -104,7 +108,7 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
       );
       onChanged?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatDaemonUnreachable(invokeErrorMessage(e)));
     } finally {
       setModeBusy(false);
     }
@@ -137,13 +141,15 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
             {blocked.length} blocked
           </span>
         ) : null}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => void refresh()}
           className="ml-auto rounded px-2 py-1 text-[10px] text-fg-subtle hover:bg-surface-2 hover:text-fg-muted"
         >
           Refresh
-        </button>
+        </Button>
       </div>
 
       {error ? (
@@ -182,22 +188,26 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-col gap-1">
-                    <button
+                    <Button
                       type="button"
+                      variant="success"
+                      size="sm"
                       disabled={busyId === a.id}
                       onClick={() => void decide(a.id, 'approved')}
                       className="rounded bg-success-subtle px-2 py-1 text-[10px] font-medium text-success hover:bg-success-subtle/70 disabled:opacity-40"
                     >
                       Approve
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="danger"
+                      size="sm"
                       disabled={busyId === a.id}
                       onClick={() => void decide(a.id, 'denied')}
                       className="rounded bg-error-subtle px-2 py-1 text-[10px] font-medium text-error hover:bg-error-subtle/70 disabled:opacity-40"
                     >
                       Deny
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </li>
@@ -215,10 +225,10 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
           Operator-only. Cannot set Studio&apos;s own mode. Clears to daemon default when empty.
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <Select
             value={modeAgent}
             onChange={(e) => setModeAgent(e.target.value)}
-            className="min-w-0 flex-1 rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-fg"
+            className="min-w-0 flex-1"
           >
             <option value="">Target session…</option>
             {liveSessions.map((s) => (
@@ -228,26 +238,24 @@ export default function ApprovalQueue({ sessions, connected, onChanged }: Approv
                 {s.activity_state === 'blocked' ? ' [blocked]' : ''}
               </option>
             ))}
-          </select>
-          <select
-            value={modeValue}
-            onChange={(e) => setModeValue(e.target.value)}
-            className="rounded border border-edge bg-surface-2 px-2 py-1 text-[11px] text-fg"
-          >
+          </Select>
+          <Select value={modeValue} onChange={(e) => setModeValue(e.target.value)}>
             {MODE_OPTIONS.map((o) => (
               <option key={o.value || 'default'} value={o.value}>
                 {o.label}
               </option>
             ))}
-          </select>
-          <button
+          </Select>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             disabled={modeBusy || !modeAgent}
             onClick={() => void applyMode()}
             className="rounded bg-info-subtle px-2 py-1 text-[10px] font-medium text-info hover:bg-info-subtle/70 disabled:opacity-40"
           >
             {modeBusy ? '…' : 'Apply'}
-          </button>
+          </Button>
         </div>
         {modeMsg ? <p className="mt-1.5 text-[10px] text-success">{modeMsg}</p> : null}
       </div>

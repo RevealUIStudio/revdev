@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-shell';
+import { launchAllowedProgram } from './invoke';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -303,82 +304,31 @@ export interface BrowserProfile {
 }
 
 export async function detectBrowserProfiles(): Promise<BrowserProfile[]> {
-  const { Command } = await import('@tauri-apps/plugin-shell');
-  const platform = detectPlatform();
-  const profiles: BrowserProfile[] = [];
-
-  // Resolve the browser data directory per platform
-  let baseDirs: { name: 'chrome' | 'edge'; path: string }[] = [];
-
-  if (platform === 'windows') {
-    // WSL: convert Windows path to WSL mount
-    const whoami = await Command.create('exec-sh', [
-      '-c',
-      'cmd.exe /c "echo %USERPROFILE%" 2>/dev/null',
-    ]).execute();
-    if (whoami.code !== 0) return profiles;
-    const winProfile = whoami.stdout.trim().replace(/\r/g, '');
-    const wslBase = winProfile
-      .replace(/^([A-Z]):\\/, (_m, drive: string) => `/mnt/${drive.toLowerCase()}/`)
-      .split('\\')
-      .join('/');
-    baseDirs = [
-      { name: 'chrome', path: `${wslBase}/AppData/Local/Google/Chrome/User Data` },
-      { name: 'edge', path: `${wslBase}/AppData/Local/Microsoft/Edge/User Data` },
-    ];
-  } else if (platform === 'macos') {
-    const home = (await Command.create('exec-sh', ['-c', 'echo $HOME']).execute()).stdout.trim();
-    baseDirs = [
-      { name: 'chrome', path: `${home}/Library/Application Support/Google/Chrome` },
-      { name: 'edge', path: `${home}/Library/Application Support/Microsoft Edge` },
-    ];
-  } else {
-    const home = (await Command.create('exec-sh', ['-c', 'echo $HOME']).execute()).stdout.trim();
-    baseDirs = [
-      { name: 'chrome', path: `${home}/.config/google-chrome` },
-      { name: 'edge', path: `${home}/.config/microsoft-edge` },
-    ];
+  // Trusted-host discovery via Tauri command (no shell:allow-execute).
+  const { detectBrowserProfiles: invokeDetect } = await import('./invoke');
+  try {
+    const rows = await invokeDetect();
+    return rows
+      .filter((r): r is BrowserProfile => r.browser === 'chrome' || r.browser === 'edge')
+      .map((r) => ({
+        directory: r.directory,
+        name: r.name,
+        browser: r.browser,
+      }));
+  } catch {
+    return [];
   }
-
-  for (const browser of baseDirs) {
-    const lsResult = await Command.create('exec-sh', [
-      '-c',
-      `ls -d "${browser.path}"/Default "${browser.path}"/Profile\\ * 2>/dev/null`,
-    ]).execute();
-    if (lsResult.code !== 0) continue;
-
-    const dirs = lsResult.stdout.trim().split('\n').filter(Boolean);
-    for (const dir of dirs) {
-      const catResult = await Command.create('exec-sh', [
-        '-c',
-        `cat "${dir}/Preferences" 2>/dev/null`,
-      ]).execute();
-      if (catResult.code !== 0) continue;
-      try {
-        const prefs = JSON.parse(catResult.stdout);
-        const name = prefs?.profile?.name;
-        if (name) {
-          const directory = dir.split('/').pop() ?? 'Default';
-          profiles.push({ directory, name, browser: browser.name });
-        }
-      } catch {
-        // Skip unparseable profiles
-      }
-    }
-  }
-
-  return profiles;
 }
 
 // ── Launch ───────────────────────────────────────────────────────────────────
 
-export function launchTile(tile: TileDefinition): void {
+export async function launchTile(tile: TileDefinition): Promise<void> {
   const { action } = tile;
   if (action.type === 'url') {
-    open(action.url);
-  } else {
-    // shell:allow-execute is enabled in capabilities/default.json
-    const args = action.args ? [action.program, ...action.args] : [action.program];
-    open(args.join(' '));
+    await open(action.url);
+    return;
   }
+  // Host-exec is allowlisted in Rust — never pass a free-form path to the
+  // shell plugin (no exec-sh, no unscoped open of a program).
+  await launchAllowedProgram(action.program, action.args);
 }

@@ -61,7 +61,9 @@ pub fn read_app_log(name: String, lines: Option<u32>) -> Result<String, StudioEr
 
     #[cfg(target_os = "windows")]
     {
-        let output = Command::new("wsl.exe")
+        let mut cmd = Command::new("wsl.exe");
+        crate::win_process::hide_std(&mut cmd);
+        let output = cmd
             .args(["-e", "tail", "-n", &n.to_string(), &log_path])
             .output()
             .map_err(|e| StudioError::Process(format!("Failed to read log: {e}")))?;
