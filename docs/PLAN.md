@@ -1,15 +1,15 @@
 ---
 type: plan
 repo: revdev
-last-updated: 2026-08-19
+last-updated: 2026-08-30
 owner: RevealUI Studio
 staleness-status: FRESH
 ---
 
 # RevDev — Plan
 
-**Last Updated:** 2026-08-19 (docs honesty: public `studio-v0.2.11` / `console-v0.2.0` exist; earlier body below still carries 2026-06-11 / 2026-07-21 detail where unchanged)
-**Status:** Pre-1.0 — Studio + Console + harness daemon buildable; public tags `studio-v0.2.11` and `console-v0.2.0` exist; auto-update customer loop still gated on H4 (`releases.revealui.com` 404s)
+**Last Updated:** 2026-08-30 (docs honesty: public `studio-v0.2.12` / `console-v0.2.0` exist; earlier body below still carries 2026-06-11 / 2026-07-21 detail where unchanged)
+**Status:** Pre-1.0 — Studio + Console + harness daemon buildable; public tags `studio-v0.2.12` and `console-v0.2.0` exist; auto-update customer loop still gated on H4 (`releases.revealui.com` 404s)
 **Owner:** RevealUI Studio
 
 > **The single RevDev plan.** [`MASTER_PLAN.md`](./MASTER_PLAN.md) is the stable entry point that references this file; the spec counterpart is [`SPEC.md`](./SPEC.md) (referenced by [`MASTER_SPEC.md`](./MASTER_SPEC.md)). This file absorbs and supersedes the former `PRODUCTION_LAUNCH_PLAN.md` (removed 2026-06-11) with every task status re-verified.
@@ -20,7 +20,7 @@ staleness-status: FRESH
 
 | Component | Status | How to get it today |
 |---|---|---|
-| Studio | Buildable; OS-unsigned | Local: `pnpm --filter studio tauri build`. `studio-release.yml` is cutting public tags — latest `studio-v0.2.11` (2026-08-16). Updater pubkey + signing secrets configured 2026-06-11 (H1). Remaining: H4 custom-domain mirror (`releases.revealui.com` still 404s) and Apple/Microsoft OS code-signing (H7/H8). |
+| Studio | Buildable; OS-unsigned | Local: `pnpm --filter studio tauri build`. `studio-release.yml` is cutting public tags — latest `studio-v0.2.12` (2026-08-30). Updater pubkey + signing secrets configured 2026-06-11 (H1). Remaining: H4 custom-domain mirror (`releases.revealui.com` still 404s) and Apple/Microsoft OS code-signing (H7/H8). |
 | Console | Buildable | `cd apps/console && go build -o ../../rvui .` — no root `go.mod`; module lives under `apps/console/`. `console-release.yml` has cut public tag `console-v0.2.0` (2026-07-17). |
 | Harness daemon | Buildable, not published | `pnpm --filter @revdev/daemon build`; CLI at `packages/daemon/dist/cli.js`. Runs locally under systemd-user. |
 
