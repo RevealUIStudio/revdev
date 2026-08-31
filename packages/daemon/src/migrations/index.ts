@@ -31,6 +31,7 @@ import { MIGRATION_0012 } from './0012-session-fidelity-snapshots.js';
 import { MIGRATION_0013 } from './0013-goals.js';
 import { MIGRATION_0014 } from './0014-knowledge-graph-replica.js';
 import { MIGRATION_0015 } from './0015-graph-sync-site.js';
+import { MIGRATION_0016 } from './0016-graph-communities.js';
 
 export const MIGRATIONS: readonly Migration[] = [
   MIGRATION_0001,
@@ -48,4 +49,5 @@ export const MIGRATIONS: readonly Migration[] = [
   MIGRATION_0013,
   MIGRATION_0014,
   MIGRATION_0015,
+  MIGRATION_0016,
 ];
