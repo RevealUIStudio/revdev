@@ -1,11 +1,20 @@
 # Changelog
 
-All notable changes to RevealUI Studio are documented in this file.
+All notable changes to RevDev are documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
+
+### Changed
+
+- Desktop app display name is **RevDev** (was “RevealUI Studio”) so the native
+  app is not confused with the company (RevealUI Studio). Window title, tray,
+  Start Menu / NSIS / MSI DisplayName, `productName`, about, login, sidebar,
+  setup, and terminal chrome now say RevDev. Bundle identifier
+  `dev.revealui.studio` and updater endpoints are unchanged so 0.2.12 installs
+  can still update. No version bump, no GitHub Release, no OS signing.
 
 ## [0.2.12] — 2026-08-29
 

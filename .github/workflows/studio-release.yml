@@ -112,7 +112,7 @@ jobs:
           tauriScript: pnpm tauri
           args: --target ${{ matrix.rust_target }}
           tagName: ${{ github.ref_name }}
-          releaseName: "RevealUI Studio ${{ github.ref_name }}"
+          releaseName: "RevDev ${{ github.ref_name }}"
           releaseBody: "See the [changelog](https://github.com/RevealUIStudio/revdev/blob/main/CHANGELOG.md) for details."
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
           prerelease: false

@@ -49,7 +49,7 @@ describe('LoginScreen', () => {
   it('leads with local work, not a cloud login wall', () => {
     renderGate();
 
-    expect(screen.getByText('RevealUI Studio')).toBeInTheDocument();
+    expect(screen.getByText('RevDev')).toBeInTheDocument();
     expect(screen.getByText(/start locally without an account/)).toBeInTheDocument();
     expect(screen.getByText('Work on this machine')).toBeInTheDocument();
     expect(screen.getByText('Sign in with email')).toBeInTheDocument();

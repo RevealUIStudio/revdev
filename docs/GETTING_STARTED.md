@@ -1,6 +1,6 @@
-# Getting Started with RevDev Studio
+# Getting Started with RevDev
 
-RevDev Studio is a native desktop app for AI agent coordination. It connects to the RevDev Harness Daemon for multi-agent session management, file reservations, task coordination, and local inference.
+RevDev is a native desktop app for AI agent coordination. It connects to the RevDev Harness Daemon for multi-agent session management, file reservations, task coordination, and local inference.
 
 ---
 

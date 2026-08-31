@@ -102,7 +102,7 @@ export default function LoginScreen() {
       <div className="flex h-screen w-screen items-center justify-center bg-surface-0">
         <div className="w-full max-w-md space-y-6 rounded-xl border border-edge bg-surface-1 p-8">
           <div className="text-center">
-            <h1 className="text-lg font-semibold text-fg">RevealUI Studio</h1>
+            <h1 className="text-lg font-semibold text-fg">RevDev</h1>
             <p className="mt-2 text-sm leading-relaxed text-fg-muted">
               Studio is the desktop app for the RevDev daemon on this machine. You can start locally
               without an account.
@@ -157,7 +157,7 @@ export default function LoginScreen() {
     <div className="flex h-screen w-screen items-center justify-center bg-surface-0">
       <div className="w-full max-w-sm space-y-6 rounded-xl border border-edge bg-surface-1 p-8">
         <div className="text-center">
-          <h1 className="text-lg font-semibold text-fg">RevealUI Studio</h1>
+          <h1 className="text-lg font-semibold text-fg">RevDev</h1>
           <p className="mt-1 text-sm text-fg-muted">
             {showOtp ? 'Enter the 6-digit code from your email' : 'Sign in to a RevealUI account'}
           </p>

@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and fixes for RevDev Studio and the Harness Daemon.
+Common issues and fixes for RevDev and the Harness Daemon.
 
 ---
 
@@ -216,12 +216,12 @@ Look for `revdev_daemon_rpc_duration_seconds` histogram — if p99 > 1s, the dat
 
 ## macOS-Specific Issues
 
-### "RevealUI Studio is damaged and can't be opened"
+### "RevDev is damaged and can't be opened"
 
 The app needs to be notarized. If you downloaded from GitHub Releases and see this:
 
 ```bash
-xattr -cr /Applications/RevealUI\ Studio.app
+xattr -cr /Applications/RevDev.app
 ```
 
 ### Daemon doesn't start via launchd

@@ -206,7 +206,7 @@ pub fn run() {
             updater::install_update,
         ])
         .build(tauri::generate_context!())
-        .expect("error while running RevealUI Studio")
+        .expect("error while running RevDev")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 spawner::kill_all(app.state::<SpawnerState>().sessions.clone());
