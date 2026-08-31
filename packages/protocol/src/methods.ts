@@ -183,4 +183,6 @@ export const RPC_METHODS = {
   'graph.addEpisode': 'graph.addEpisode',
   'graph.outbox.push': 'graph.outbox.push',
   'graph.sync.pull': 'graph.sync.pull',
+  'graph.communities': 'graph.communities',
+  'graph.reconcile': 'graph.reconcile',
 } as const;

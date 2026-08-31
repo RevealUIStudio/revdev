@@ -5,7 +5,7 @@
  * ingestEpisode run against PGlite. graph.outbox.push replays unpushed ops
  * to the Neon hub when POSTGRES_URL is set (class-1/2 merge, no extra CRDT
  * library). P5b: Electric down-sync + hub anti-entropy live in graph-sync.ts.
- * Communities and Layer-3 reconcile stay later P5 slices.
+ * P5 leftover: kg_communities + Layer-3 shared_facts reconcile.
  *
  * Extends `@revealui/knowledge-graph` (published 0.1.8; 0.1.9 pulls unpublished
  * `@revealui/ts-strada`). Do not fork DDL.
@@ -32,6 +32,8 @@ import {
 } from '@revealui/knowledge-graph';
 import { resolveNaturalKey } from '@revealui/knowledge-graph/ingest';
 import { createLogger } from '@revealui/utils/logger';
+import { graphCommunities } from './graph-communities.js';
+import { graphReconcile } from './graph-reconcile.js';
 import { ensureGraphSiteId, graphSyncPull } from './graph-sync.js';
 import { resolvePostgresUrl } from './neon.js';
 import { registerHandler } from './server.js';
@@ -106,6 +108,7 @@ export async function graphStatus(db: PGlite): Promise<{
       'kg_edge_episodes',
       'kg_node_aliases',
       'kg_outbox',
+      'kg_communities',
     ],
     nodes: nodes[0]?.n ?? 0,
     edges: edges[0]?.n ?? 0,
@@ -457,3 +460,7 @@ registerHandler('graph.addEpisode', async (params, db, ctx) =>
 registerHandler('graph.outbox.push', async (_params, db) => graphOutboxPush(db));
 
 registerHandler('graph.sync.pull', async (params, db) => graphSyncPull(db, params));
+
+registerHandler('graph.communities', async (params, db) => graphCommunities(db, params));
+
+registerHandler('graph.reconcile', async (params, db) => graphReconcile(db, params));

@@ -146,7 +146,8 @@ const EXEMPT_METHODS = new Set([
   'graph.at',
   'graph.context',
   'graph.addEpisode',
-  // graph.sync.pull / graph.outbox.push contact the hub — Pro floor.
+  'graph.communities',
+  // graph.sync.pull / graph.outbox.push / graph.reconcile contact the hub — Pro floor.
 ]);
 
 /**
