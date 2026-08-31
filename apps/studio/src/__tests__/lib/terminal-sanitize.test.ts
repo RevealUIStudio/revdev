@@ -3,7 +3,7 @@ import { sanitizeTerminalLine } from '../../lib/terminal-sanitize';
 
 describe('sanitizeTerminalLine', () => {
   it('passes printable ASCII through unchanged', () => {
-    expect(sanitizeTerminalLine('RevealUI Studio Terminal')).toBe('RevealUI Studio Terminal');
+    expect(sanitizeTerminalLine('RevDev Terminal')).toBe('RevDev Terminal');
   });
 
   it('keeps \\t, \\n, \\r', () => {

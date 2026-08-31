@@ -55,9 +55,9 @@ describe('SetupWizard', () => {
     vi.mocked(daemonSetup).mockResolvedValue('ok');
   });
 
-  it('renders "Setup RevealUI Studio" title', () => {
+  it('renders "Setup RevDev" title', () => {
     renderWizard();
-    expect(screen.getByText('Setup RevealUI Studio')).toBeInTheDocument();
+    expect(screen.getByText('Setup RevDev')).toBeInTheDocument();
     expect(screen.getByText(/Agent Approvals live under Agent in the sidebar/)).toBeInTheDocument();
   });
 

@@ -58,10 +58,10 @@ pub async fn resend_send_test(api_key: String, to_email: String) -> Result<bool,
         .post("https://api.resend.com/emails")
         .bearer_auth(&api_key)
         .json(&serde_json::json!({
-            "from": "RevealUI Studio <noreply@resend.dev>",
+            "from": "RevDev <noreply@resend.dev>",
             "to": [to_email],
-            "subject": "RevealUI Studio — Email Test",
-            "text": "Your email configuration is working. This is a test from RevealUI Studio setup wizard."
+            "subject": "RevDev — Email Test",
+            "text": "Your email configuration is working. This is a test from the RevDev setup wizard."
         }))
         .send()
         .await?;
@@ -90,7 +90,7 @@ pub async fn smtp_send_test(
     };
 
     // Use the SMTP user as the "from" address — self-hosters won't have noreply@revealui.com
-    let from_addr = format!("RevealUI Studio <{}>", user);
+    let from_addr = format!("RevDev <{}>", user);
     let email = Message::builder()
         .from(
             from_addr
@@ -100,8 +100,8 @@ pub async fn smtp_send_test(
         .to(to_email
             .parse::<Mailbox>()
             .map_err(|e| StudioError::Other(format!("Invalid to address: {e}")))?)
-        .subject("RevealUI — SMTP Test")
-        .body("This is a test email from RevealUI Studio.".to_string())
+        .subject("RevDev — SMTP Test")
+        .body("This is a test email from RevDev.".to_string())
         .map_err(|e| StudioError::Other(format!("Build email: {e}")))?;
 
     let creds = Credentials::new(user, pass);
@@ -174,7 +174,7 @@ fn chrono_like_now() -> String {
 
 fn rfc2822_raw(from: &str, to: &str) -> Result<String, StudioError> {
     let message = format!(
-        "From: {from}\r\nTo: {to}\r\nSubject: RevealUI Studio email test\r\n\r\nYour Gmail configuration is working. This is a test from the RevealUI Studio deploy wizard.\r\n"
+        "From: {from}\r\nTo: {to}\r\nSubject: RevDev email test\r\n\r\nYour Gmail configuration is working. This is a test from the RevDev deploy wizard.\r\n"
     );
     use base64::Engine;
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(message.as_bytes()))

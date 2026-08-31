@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Build RevealUI Studio (Tauri) for Windows and produce an NSIS installer.
+  Build RevDev (Tauri) for Windows and produce an NSIS installer.
 
 .DESCRIPTION
   Run this from Windows PowerShell in the repo root or apps/studio directory.
@@ -41,7 +41,7 @@ if (-not (Test-Path (Join-Path $studioDir 'src-tauri'))) {
 
 Write-Host ""
 Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║     RevealUI Studio — Windows Build      ║" -ForegroundColor Cyan
+Write-Host "║          RevDev — Windows Build          ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 

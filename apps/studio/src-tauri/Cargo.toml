@@ -4,7 +4,7 @@ version = "0.2.12"
 edition = "2021"
 license = "LicenseRef-RevealUI-Commercial"
 authors = ["RevealUI Studio <noreply@revealui.com>"]
-description = "RevealUI Studio — native AI experience: agent coordination hub, local inference management"
+description = "RevDev — native AI experience: agent coordination hub, local inference management"
 
 [lib]
 name = "studio_lib"

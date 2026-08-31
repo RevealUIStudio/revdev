@@ -157,7 +157,7 @@ function SshTerminalPanel() {
                 onResize={handleTerminalResize}
                 terminalRef={terminalRef}
                 welcome={[
-                  '\x1b[1;33mRevealUI Studio Terminal\x1b[0m',
+                  '\x1b[1;33mRevDev Terminal\x1b[0m',
                   '\x1b[90mConnect to an SSH server using the form above.\x1b[0m',
                   '',
                 ]}

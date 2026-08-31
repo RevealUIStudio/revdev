@@ -179,6 +179,10 @@ export default function SettingsPanel() {
         <Card header={<h2 className="text-sm font-semibold text-fg">About</h2>}>
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
+              <span className="text-sm text-fg-muted">App</span>
+              <span className="text-sm text-fg-muted">RevDev</span>
+            </div>
+            <div className="flex items-center justify-between">
               <span className="text-sm text-fg-muted">Version</span>
               <span className="text-sm text-fg-muted">{appVersion}</span>
             </div>

@@ -64,7 +64,7 @@ export default function AppShell({ currentPage, onNavigate, children, padless }:
             >
               <IconMenu size="md" />
             </Button>
-            <span className="text-sm font-semibold text-fg">RevealUI Studio</span>
+            <span className="text-sm font-semibold text-fg">RevDev</span>
           </div>
 
           <main className={`flex-1 ${padless ? 'overflow-hidden' : 'overflow-y-auto p-3 md:p-6'}`}>
