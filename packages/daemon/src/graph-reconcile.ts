@@ -126,6 +126,10 @@ export function reconcileHeuristicLocal(facts: SharedFactRow[]): ReconciliationR
   };
 }
 
+async function importAiSubpath(subpath: string): Promise<Record<string, unknown>> {
+  return (await import(`@revealui/ai/${subpath}`)) as Record<string, unknown>;
+}
+
 async function layer3Reconcile(
   facts: SharedFactRow[],
   deps: GraphReconcileDeps,
@@ -133,7 +137,7 @@ async function layer3Reconcile(
   if (deps.reconcile) return deps.reconcile(facts);
   if (deps.complete) {
     try {
-      const mod = (await import('@revealui/ai/memory/services')) as {
+      const mod = (await importAiSubpath('memory/services')) as {
         buildReconciliationPrompt: (facts: ReturnType<typeof asSharedFactInput>[]) => string;
         parseReconciliationResponse: (
           response: string,
@@ -150,7 +154,7 @@ async function layer3Reconcile(
     }
   }
   try {
-    const mod = (await import('@revealui/ai/memory/services')) as {
+    const mod = (await importAiSubpath('memory/services')) as {
       reconcileHeuristic: (facts: ReturnType<typeof asSharedFactInput>[]) => ReconciliationResult;
     };
     return mod.reconcileHeuristic(facts.map(asSharedFactInput));
@@ -339,7 +343,8 @@ export async function graphReconcile(
     invalidatedEdges += await invalidateEdgesForEpisodeSource(db, episodeSource([fact.id]));
   }
 
-  const reconciled = active.length > 0 ? await layer3Reconcile(active, deps) : reconcileHeuristicLocal([]);
+  const reconciled =
+    active.length > 0 ? await layer3Reconcile(active, deps) : reconcileHeuristicLocal([]);
   let ingested = 0;
   let skipped = 0;
 

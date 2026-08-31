@@ -7,12 +7,8 @@
 
 import { PGlite } from '@electric-sql/pglite';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  communityIdFor,
-  connectedComponents,
-  graphCommunities,
-} from '../graph-communities.js';
 import { graphAddEpisode } from '../graph.js';
+import { communityIdFor, connectedComponents, graphCommunities } from '../graph-communities.js';
 import { migrate } from '../storage/migrate.js';
 
 const DB_TEST_TIMEOUT = 60_000;
@@ -98,7 +94,10 @@ describe('kg_communities (GAP-349 P5 leftover)', () => {
         { refresh: true },
         {
           complete: async () =>
-            JSON.stringify({ name: 'Electric proxy', summary: 'Retry policy for the Electric proxy.' }),
+            JSON.stringify({
+              name: 'Electric proxy',
+              summary: 'Retry policy for the Electric proxy.',
+            }),
         },
       );
       expect(first.computed).toBe(true);
@@ -117,7 +116,9 @@ describe('kg_communities (GAP-349 P5 leftover)', () => {
       const refreshed = await graphCommunities(
         db,
         { refresh: true },
-        { complete: async () => JSON.stringify({ name: 'Proxy cluster', summary: 'Second pass.' }) },
+        {
+          complete: async () => JSON.stringify({ name: 'Proxy cluster', summary: 'Second pass.' }),
+        },
       );
       expect(refreshed.computed).toBe(true);
       expect(refreshed.invalidated).toBeGreaterThan(0);

@@ -93,7 +93,9 @@ export function connectedComponents(
 }
 
 export function communityIdFor(nodeIds: string[], computedAt?: string): string {
-  const hash = createHash('sha256').update(['community', ...nodeIds].join('\n')).digest('hex');
+  const hash = createHash('sha256')
+    .update(['community', ...nodeIds].join('\n'))
+    .digest('hex');
   const stamp = computedAt ? `:${new Date(computedAt).getTime()}` : '';
   return `community:${hash.slice(0, 32)}${stamp}`;
 }
@@ -137,9 +139,12 @@ async function summarizeCommunity(
   try {
     const raw = await complete(COMMUNITY_SUMMARY_PROMPT, userText);
     const parsed = JSON.parse(extractJsonObject(raw)) as { name?: unknown; summary?: unknown };
-    const name = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : fallback.name;
+    const name =
+      typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : fallback.name;
     const summary =
-      typeof parsed.summary === 'string' && parsed.summary.trim() ? parsed.summary.trim() : fallback.summary;
+      typeof parsed.summary === 'string' && parsed.summary.trim()
+        ? parsed.summary.trim()
+        : fallback.summary;
     return { name: name.slice(0, 200), summary: summary.slice(0, 4000), llm: true };
   } catch (err) {
     log.warn('community LLM summary fell back to template', {
@@ -149,14 +154,17 @@ async function summarizeCommunity(
   }
 }
 
-export async function defaultCommunityCompleter(
-  prompt: string,
-  userText: string,
-): Promise<string> {
-  const { createLLMClientFromEnv } = (await import('@revealui/ai/llm/client')) as {
-    createLLMClientFromEnv: () => { chat: (messages: Array<{ role: string; content: string }>) => Promise<{ content: string }> };
+async function importAiSubpath(subpath: string): Promise<Record<string, unknown>> {
+  return (await import(`@revealui/ai/${subpath}`)) as Record<string, unknown>;
+}
+
+export async function defaultCommunityCompleter(prompt: string, userText: string): Promise<string> {
+  const mod = (await importAiSubpath('llm/client')) as {
+    createLLMClientFromEnv: () => {
+      chat: (messages: Array<{ role: string; content: string }>) => Promise<{ content: string }>;
+    };
   };
-  const client = createLLMClientFromEnv();
+  const client = mod.createLLMClientFromEnv();
   const result = await client.chat([
     { role: 'system', content: prompt },
     { role: 'user', content: userText },
@@ -166,12 +174,14 @@ export async function defaultCommunityCompleter(
 
 let cachedCompleter: CommunityCompleter | null | undefined;
 
-async function resolveCompleter(injected?: CommunityCompleter): Promise<CommunityCompleter | undefined> {
+async function resolveCompleter(
+  injected?: CommunityCompleter,
+): Promise<CommunityCompleter | undefined> {
   if (injected) return injected;
   if (process.env.REVDEV_KG_COMMUNITY_LLM === '0') return undefined;
   if (cachedCompleter !== undefined) return cachedCompleter ?? undefined;
   try {
-    await import('@revealui/ai/llm/client');
+    await importAiSubpath('llm/client');
     cachedCompleter = defaultCommunityCompleter;
     return cachedCompleter;
   } catch {
@@ -232,9 +242,7 @@ export async function computeCommunities(
     kind: string;
     name: string;
     natural_key: string;
-  }>(
-    `SELECT id, kind, name, natural_key FROM kg_nodes WHERE deleted_at IS NULL`,
-  );
+  }>(`SELECT id, kind, name, natural_key FROM kg_nodes WHERE deleted_at IS NULL`);
   const edges = await exec.query<{ source_id: string; target_id: string; fact: string }>(
     `SELECT source_id, target_id, fact FROM kg_edges
      WHERE invalid_at IS NULL AND expired_at IS NULL`,
@@ -289,9 +297,10 @@ export async function computeCommunities(
   const prior = await exec.query<{ n: number }>(
     `SELECT count(*)::int AS n FROM kg_communities WHERE invalidated_at IS NULL`,
   );
-  await exec.query(`UPDATE kg_communities SET invalidated_at = $1::timestamptz WHERE invalidated_at IS NULL`, [
-    computedAt,
-  ]);
+  await exec.query(
+    `UPDATE kg_communities SET invalidated_at = $1::timestamptz WHERE invalidated_at IS NULL`,
+    [computedAt],
+  );
 
   for (const community of communities) {
     await exec.query(

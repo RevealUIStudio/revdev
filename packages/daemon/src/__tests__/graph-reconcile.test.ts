@@ -103,11 +103,7 @@ describe('Layer-3 shared_facts reconcile (GAP-349 P5 leftover)', () => {
       );
       expect(nodes.rows.some((n) => n.natural_key.startsWith('shared-fact:'))).toBe(true);
 
-      const second = await graphReconcile(
-        db,
-        {},
-        { fetchFacts: async () => [FACT_A, FACT_A_DUP] },
-      );
+      const second = await graphReconcile(db, {}, { fetchFacts: async () => [FACT_A, FACT_A_DUP] });
       expect(second.ingested).toBe(0);
       expect(second.skipped).toBe(1);
       const again = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM kg_episodes`);
