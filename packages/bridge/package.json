@@ -33,7 +33,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@revealui/db": "^0.10.0",
-    "@revealui/knowledge-graph": "^0.1.8",
+    "@revealui/knowledge-graph": "^0.1.12",
     "@revdev/daemon": "workspace:*",
     "@revdev/protocol": "workspace:*",
     "zod": "^4.4.3"
