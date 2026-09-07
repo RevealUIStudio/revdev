@@ -9,6 +9,17 @@ Dates are ISO 8601 (UTC).
 
 ### Changed
 
+- **Bridge kg_* tools consume published knowledge-graph memory helpers.**
+  `@revdev/bridge` now depends on `@revealui/knowledge-graph` `^0.1.12` and
+  calls `publishMemory` / `queryMemory` plus `assembleContext`. Tool JSON is
+  an envelope `{ status, available, … }` (breaking for previous unwrapped
+  payloads). Missing identity returns `unavailable` / `principal-missing`
+  (`REVDEV_AGENT_ID` + hook-identity file). Agent writes are limited to
+  `agent-fact` | `memory` | `manual`. Database-down still does not take down
+  session/mail RPC. Daemon `memory.*` / `context.snapshot` are unchanged.
+  Root `pnpm.overrides` maps unpublished `@revealui/ts-strada` to `typescript@6.0.3`
+  so `0.1.12` can install; drop the override when a later knowledge-graph
+  release makes ts-strada optional.
 - Desktop app display name is **RevDev** (was “RevealUI Studio”) so the native
   app is not confused with the company (RevealUI Studio). Window title, tray,
   Start Menu / NSIS / MSI DisplayName, `productName`, about, login, sidebar,
