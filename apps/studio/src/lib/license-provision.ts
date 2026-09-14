@@ -2,7 +2,7 @@
  * Studio license auto-provision — fetch /current, verify, write or wipe KEY_FILE.
  *
  * Runs only when authenticated, not localMode, licenseAutoProvision on, and
- * not signingOut. Does not implement the 6h timer (PR-4).
+ * not signingOut. Idle/focus re-fetch lives in license-provision-poll.ts.
  */
 
 import { checkStatus, refreshToken } from './auth-api';
