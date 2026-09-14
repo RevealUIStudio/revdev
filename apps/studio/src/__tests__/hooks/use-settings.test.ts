@@ -11,9 +11,9 @@ describe('useSettings — licenseAutoProvision', () => {
     localStorage.clear();
   });
 
-  it('defaults licenseAutoProvision to false', () => {
+  it('defaults licenseAutoProvision to true', () => {
     const { result } = renderHook(() => useSettings());
-    expect(result.current.settings.licenseAutoProvision).toBe(false);
+    expect(result.current.settings.licenseAutoProvision).toBe(true);
   });
 
   it('persists and reloads licenseAutoProvision like localMode', () => {

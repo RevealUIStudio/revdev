@@ -196,8 +196,8 @@ export default function SettingsPanel() {
                 ))}
               </div>
               <span className="text-xs text-fg-subtle">
-                When signed in, fetch your license and install it for the local daemon. Off by
-                default. Skipped in local mode.
+                When signed in, fetch your license and install it for the local daemon. On by
+                default. Skipped in local mode. Closing Studio does not revoke the daemon.
               </span>
             </div>
           </div>

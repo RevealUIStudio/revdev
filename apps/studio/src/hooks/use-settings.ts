@@ -14,7 +14,7 @@ export interface StudioSettings {
   localMode: boolean;
   /**
    * When true (and not localMode), Studio fetches the signed-in owner's
-   * license and materializes it into the vault + KEY_FILE. Off by default.
+   * license and materializes it into the vault + KEY_FILE. On by default.
    */
   licenseAutoProvision: boolean;
 }
@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS: StudioSettings = {
   apiUrl: DEFAULT_API_URL,
   pollingIntervalMs: 30_000,
   localMode: false,
-  licenseAutoProvision: false,
+  licenseAutoProvision: true,
 };
 
 const STORAGE_KEY = 'revealui-studio-settings';
