@@ -13,6 +13,7 @@ const defaultSettings = {
     apiUrl: 'https://api.revealui.com',
     pollingIntervalMs: 30_000,
     localMode: false,
+    licenseAutoProvision: false,
   },
   updateSettings,
   resetSettings: vi.fn(),
@@ -24,11 +25,14 @@ const defaultAuth: AuthContextValue = {
   tokenExpiresAt: null,
   loading: false,
   error: null,
+  signingOut: false,
   sendOtp: vi.fn().mockResolvedValue(true),
   submitOtp: vi.fn().mockResolvedValue(true),
   signOut: vi.fn().mockResolvedValue(undefined),
   recheck: vi.fn().mockResolvedValue(undefined),
   getToken: vi.fn().mockReturnValue(null),
+  getSigningOut: vi.fn().mockReturnValue(false),
+  getStep: vi.fn().mockReturnValue('email'),
 };
 
 function renderGate(auth: Partial<AuthContextValue> = {}) {

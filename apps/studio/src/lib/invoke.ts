@@ -144,6 +144,14 @@ const MOCK_DATA: Record<string, unknown> = {
   vault_set: undefined,
   vault_delete: undefined,
   vault_copy: undefined,
+  license_env_override: false,
+  license_verify_local: { valid: false, code: 'daemon-binary-missing' },
+  license_write_managed: { changed: false },
+  license_wipe_managed: { wiped: false },
+  daemon_restart: 0,
+  daemon_start: 0,
+  daemon_stop: undefined,
+  daemon_status: { running: false, pid: null, reachable: false },
   ssh_disconnect: undefined,
   ssh_send: undefined,
   ssh_resize: undefined,
@@ -1598,6 +1606,41 @@ export function daemonStop(): Promise<void> {
 
 export function daemonRestart(): Promise<number> {
   return invoke<number>('daemon_restart');
+}
+
+// ── License auto-provision ─────────────────────────────────────────────────
+
+export interface LicenseVerifyLocalResult {
+  valid: boolean;
+  code?: string;
+}
+
+export interface LicenseWriteManagedResult {
+  changed: boolean;
+}
+
+export interface LicenseWipeManagedResult {
+  wiped: boolean;
+}
+
+/** True when the Studio process has REVEALUI_LICENSE_KEY set. */
+export function licenseEnvOverride(): Promise<boolean> {
+  return invoke<boolean>('license_env_override');
+}
+
+/** Verify a JWT via `revdev-daemon license-verify` (fail closed). */
+export function licenseVerifyLocal(jwt: string): Promise<LicenseVerifyLocalResult> {
+  return invoke<LicenseVerifyLocalResult>('license_verify_local', { jwt });
+}
+
+/** Write canonical license.jwt + .managed (and WSL studio-license.conf). */
+export function licenseWriteManaged(jwt: string): Promise<LicenseWriteManagedResult> {
+  return invoke<LicenseWriteManagedResult>('license_write_managed', { jwt });
+}
+
+/** Wipe managed license files if .managed exists at the canonical path. */
+export function licenseWipeManaged(): Promise<LicenseWipeManagedResult> {
+  return invoke<LicenseWipeManagedResult>('license_wipe_managed');
 }
 
 // Re-export AgentSession so consumers don't need to reach into types directly

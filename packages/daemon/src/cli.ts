@@ -68,6 +68,8 @@ Commands:
                  versions without applying anything. PGlite allows one
                  process per data dir — stop the daemon first, or point
                  REVDEV_DAEMON_DATA at the target copy.
+  license-verify Read a JWT from stdin, verify it, print JSON, exit.
+                 Does not write a PID file or start the daemon.
 
 Options:
   --help, -h     Show this help message
@@ -103,6 +105,16 @@ if (args.includes('--version') || args.includes('-v')) {
   // Keep in lockstep with packages/daemon/package.json version.
   console.log('revdev-daemon 0.2.0');
   process.exit(0);
+}
+
+// `license-verify` — verify a JWT from stdin and exit. Must sit in the same
+// early-exit band as migrate: no PID file, no socket, no PGlite, no startDaemon.
+if (args[0] === 'license-verify') {
+  const { readFileSync } = await import('node:fs');
+  const { runLicenseVerifyCommand } = await import('./license-verify-cli.js');
+  const { stdout, exitCode } = runLicenseVerifyCommand(readFileSync(0, 'utf8'));
+  process.stdout.write(stdout);
+  process.exit(exitCode);
 }
 
 // `migrate` subcommand — bring the schema to the latest version (or report
