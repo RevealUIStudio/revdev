@@ -1,6 +1,6 @@
-# Getting Started with RevDev Studio
+# Getting Started with RevDev
 
-RevDev Studio is a native desktop app for AI agent coordination. It connects to the RevDev Harness Daemon for multi-agent session management, file reservations, task coordination, and local inference.
+RevDev is a native desktop app for AI agent coordination. It connects to the RevDev Harness Daemon for multi-agent session management, file reservations, task coordination, and local inference.
 
 ---
 
@@ -96,12 +96,17 @@ To unlock Pro features (agent spawning, inference, merge pipeline, memory, coord
 
 1. Purchase a license at [revealui.com/pro](https://revealui.com/pro)
 2. You'll receive a license key starting with `eyJ` — an Ed25519-signed JWT (RFC 7519, `alg: EdDSA`), a three-part `<header>.<payload>.<signature>` token.
-3. Set it as an environment variable:
+3. **Studio (default):** sign in to Studio with the same account. Studio fetches the key, writes `~/.local/share/revealui/license.jwt` (mode `0600`, plus a `.managed` marker), and restarts the daemon. On Windows, that file lives **inside WSL** and Studio installs `~/.config/systemd/user/revdev-daemon.service.d/studio-license.conf` (it does **not** overwrite an operator `license-file.conf`). Closing Studio does **not** revoke a running daemon. Signing out of Studio also leaves the managed file in place.
+4. **Headless / copy (still supported):** set the same key yourself:
 
 ```bash
 # Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
 export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ0aWVyIjoicHJvIiwuLi59.<signature>"
 ```
+
+An inline `REVEALUI_LICENSE_KEY` always wins over Studio's file.
+
+**Stolen device:** on [revealui.com/account/license](https://revealui.com/account/license) revoke the Studio device **and** rotate the license key. Revoking the device only stops a new download. A license file already on that machine keeps working until it expires.
 
 The daemon ships with the vendor public key baked in, so it verifies your license with no further configuration.
 
@@ -113,13 +118,13 @@ MCowBQYDK2VwAyEA...
 -----END PUBLIC KEY-----"
 ```
 
-4. Restart the daemon:
+5. Restart the daemon (only needed for the headless copy path; Studio already restarts it):
 
 ```bash
 systemctl --user restart revdev-daemon
 ```
 
-5. Verify activation:
+6. Verify activation:
 
 ```bash
 journalctl --user -u revdev-daemon | grep "running with"

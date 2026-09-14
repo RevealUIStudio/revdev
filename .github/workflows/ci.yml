@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on non-main refs. Never cancel the promote SHA on main.
+concurrency:
+  group: revdev-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   # GAP-372: materialized .claude rules must match .revcon-manifest.json
   copy-lockstep:

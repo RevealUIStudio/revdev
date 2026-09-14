@@ -1,11 +1,31 @@
 # Changelog
 
-All notable changes to RevealUI Studio are documented in this file.
+All notable changes to RevDev are documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
+
+### Changed
+
+- **Bridge kg_* tools consume published knowledge-graph memory helpers.**
+  `@revdev/bridge` now depends on `@revealui/knowledge-graph` `^0.1.12` and
+  calls `publishMemory` / `queryMemory` plus `assembleContext`. Tool JSON is
+  an envelope `{ status, available, … }` (breaking for previous unwrapped
+  payloads). Missing identity returns `unavailable` / `principal-missing`
+  (`REVDEV_AGENT_ID` + hook-identity file). Agent writes are limited to
+  `agent-fact` | `memory` | `manual`. Database-down still does not take down
+  session/mail RPC. Daemon `memory.*` / `context.snapshot` are unchanged.
+  Root `pnpm.overrides` maps unpublished `@revealui/ts-strada` to `typescript@6.0.3`
+  so `0.1.12` can install; drop the override when a later knowledge-graph
+  release makes ts-strada optional.
+- Desktop app display name is **RevDev** (was “RevealUI Studio”) so the native
+  app is not confused with the company (RevealUI Studio). Window title, tray,
+  Start Menu / NSIS / MSI DisplayName, `productName`, about, login, sidebar,
+  setup, and terminal chrome now say RevDev. Bundle identifier
+  `dev.revealui.studio` and updater endpoints are unchanged so 0.2.12 installs
+  can still update. No version bump, no GitHub Release, no OS signing.
 
 ## [0.2.12] — 2026-08-29
 

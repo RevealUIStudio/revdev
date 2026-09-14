@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS: SettingsContextValue = {
     apiUrl: 'http://localhost:3004',
     pollingIntervalMs: 30_000,
     localMode: false,
+    licenseAutoProvision: false,
   },
   updateSettings: vi.fn(),
   resetSettings: vi.fn(),

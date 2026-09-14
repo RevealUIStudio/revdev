@@ -66,7 +66,7 @@ function getDeviceId(): string {
 
 function getDeviceName(): string {
   const platform = navigator.platform || 'Unknown';
-  return `RevealUI Studio (${platform})`;
+  return `RevDev (${platform})`;
 }
 
 function endpoint(apiUrl: string, path: string): string {

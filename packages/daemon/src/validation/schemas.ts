@@ -563,6 +563,20 @@ export const schemas: Record<string, z.ZodType> = {
       actorAgentId,
     })
     .passthrough(),
+  'graph.communities': z
+    .object({
+      refresh: z.boolean().optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
+  'graph.reconcile': z
+    .object({
+      sessionId: z.string().max(MAX_NAME_LENGTH).optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      actorAgentId,
+    })
+    .passthrough(),
 
   // -- Health -----------------------------------------------------------------
   // Both handlers (`server.ts:registerHandler('harness.health', ...)` and

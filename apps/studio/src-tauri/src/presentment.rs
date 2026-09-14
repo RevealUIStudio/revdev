@@ -87,7 +87,7 @@ pub fn present_main_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(), 
     };
 
     if cfg!(debug_assertions) {
-        let _ = win.set_title("RevealUI Studio (dev)");
+        let _ = win.set_title("RevDev (dev)");
     }
 
     let monitor =

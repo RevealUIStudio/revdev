@@ -58,7 +58,7 @@ describe('Sidebar', () => {
   it('renders the brand name', () => {
     render(<Sidebar currentPage="dashboard" onNavigate={vi.fn()} />);
 
-    expect(screen.getByText('RevealUI Studio')).toBeInTheDocument();
+    expect(screen.getByText('RevDev')).toBeInTheDocument();
   });
 
   it('calls onNavigate when a nav item is clicked', () => {

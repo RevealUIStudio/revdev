@@ -31,7 +31,7 @@ fn pid_file_path() -> std::path::PathBuf {
 
 /// Resolve the daemon binary location (native Unix spawn only).
 #[cfg(unix)]
-fn daemon_binary() -> Result<String, String> {
+pub(crate) fn daemon_binary() -> Result<String, String> {
     // 1. Explicit override
     if let Ok(bin) = std::env::var("REVDEV_DAEMON_BIN") {
         return Ok(bin);
@@ -71,14 +71,14 @@ fn is_pid_alive(pid: u32) -> bool {
 // ── Windows: systemd-user-in-WSL control ────────────────────────────────────
 
 #[cfg(not(unix))]
-mod wsl {
+pub(crate) mod wsl {
     use tokio::process::Command;
 
     /// systemd-user unit that owns the daemon inside WSL (see
     /// packages/daemon/systemd/revdev-daemon.service).
     pub const DAEMON_UNIT: &str = "revdev-daemon";
 
-    fn distro() -> String {
+    pub fn distro() -> String {
         std::env::var("REVDEV_WSL_DISTRO").unwrap_or_else(|_| "Ubuntu".to_string())
     }
 
@@ -217,6 +217,19 @@ pub async fn daemon_status() -> Result<DaemonStatus, String> {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
+/// Canonical Studio-managed license JWT path on Unix hosts.
+#[cfg(unix)]
+pub(crate) fn canonical_license_file() -> std::path::PathBuf {
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        if !xdg.is_empty() {
+            return std::path::PathBuf::from(xdg).join("revealui").join("license.jwt");
+        }
+    }
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join(".local/share/revealui/license.jwt")
+}
+
 /// Start the daemon. Returns the new PID on success.
 #[cfg(unix)]
 #[tauri::command]
@@ -230,7 +243,18 @@ pub async fn daemon_start() -> Result<u32, String> {
     let bin = daemon_binary()?;
     use std::process::{Command, Stdio};
 
-    let child = Command::new(&bin)
+    let mut cmd = Command::new(&bin);
+    // Inject KEY_FILE only when inline env is unset and the managed jwt exists.
+    // Never pass the JWT as REVEALUI_LICENSE_KEY; never point KEY_FILE at a
+    // missing path (that throws LicenseConfigError in the daemon).
+    if std::env::var_os("REVEALUI_LICENSE_KEY").is_none() {
+        let license_file = canonical_license_file();
+        if license_file.is_file() {
+            cmd.env("REVEALUI_LICENSE_KEY_FILE", &license_file);
+        }
+    }
+
+    let child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

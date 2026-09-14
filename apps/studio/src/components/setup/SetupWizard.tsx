@@ -64,7 +64,7 @@ export default function SetupWizard({ onComplete, onDismiss }: SetupWizardProps)
   return (
     <>
       <Modal
-        title="Setup RevealUI Studio"
+        title="Setup RevDev"
         open={true}
         onClose={handleSkip}
         maxWidth="lg"

@@ -7,6 +7,7 @@ pub mod daemon_ctl;
 pub mod harness;
 mod harness_watcher;
 mod inference;
+mod license_ctl;
 mod local_shell;
 mod platform;
 mod presentment;
@@ -202,11 +203,15 @@ pub fn run() {
             daemon_ctl::daemon_stop,
             daemon_ctl::daemon_restart,
             daemon_ctl::daemon_setup,
+            license_ctl::license_env_override,
+            license_ctl::license_verify_local,
+            license_ctl::license_write_managed,
+            license_ctl::license_wipe_managed,
             updater::check_for_update,
             updater::install_update,
         ])
         .build(tauri::generate_context!())
-        .expect("error while running RevealUI Studio")
+        .expect("error while running RevDev")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 spawner::kill_all(app.state::<SpawnerState>().sessions.clone());

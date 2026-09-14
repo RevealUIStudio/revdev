@@ -1,10 +1,10 @@
 /**
- * Fleet knowledge graph tools on the revdev MCP bridge (GAP-349 residual).
+ * Fleet knowledge graph tools on the revdev MCP bridge.
  *
- * Mirrors the seven `kg_*` tools from `@revealui/mcp` createKnowledgeGraphServer,
- * calling `@revealui/knowledge-graph` over Neon (same package API as revkg).
- * When the DB is unavailable, tools return a structured error and the rest of
- * the bridge (session/mail/daemon RPC) keeps working.
+ * Consumes published `@revealui/knowledge-graph/memory` helpers and
+ * `assembleContext`. Daemon `memory.*` / `context.snapshot` stay on PGlite.
+ * When the DB is unavailable, tools return a structured envelope and the rest
+ * of the bridge (session/mail/daemon RPC) keeps working.
  *
  * Env (same resolve surface as revkg / daemon Neon):
  *   POSTGRES_URL | DATABASE_URL | POSTGRES_URL_FILE
@@ -14,41 +14,39 @@
 import { hostname } from 'node:os';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
+  assembleContext,
   EDGE_RELATIONS,
   type EdgeInput,
   type EdgeRelation,
   type Embedder,
-  type EpisodeInput,
-  ingestEpisode,
   type KgExecutor,
   kgAtTime,
   kgNeighbors,
   kgPath,
-  kgSearch,
   makePoolExecutor,
   NODE_KINDS,
   type NodeInput,
   type NodeKind,
 } from '@revealui/knowledge-graph';
 import { resolveNaturalKey } from '@revealui/knowledge-graph/ingest';
+import {
+  type MemoryPrincipal,
+  type MemoryResult,
+  publishMemory,
+  queryMemory,
+  STUDIO_LOCAL_TENANT,
+} from '@revealui/knowledge-graph/memory';
 import { z } from 'zod';
+import { loadStudioPrincipal, warnMissingPrincipal } from './kg-principal.js';
 
-/** Episode types (runtime list; keep lockstep with @revealui/knowledge-graph types). */
-const EPISODE_TYPES = [
-  'code-scan',
-  'git-commit',
-  'doc',
-  'agent-fact',
-  'memory',
-  'json',
-  'manual',
-] as const;
+const PRODUCT_EPISODE_TYPES = ['agent-fact', 'memory', 'manual'] as const;
 
 const DEFAULT_CONTEXT_CHAR_BUDGET = 16_000;
+const DEFAULT_KG_TOOL_TIMEOUT_MS = 4000;
 
 const NODE_KIND_TUPLE = NODE_KINDS as unknown as [string, ...string[]];
 const EDGE_RELATION_TUPLE = EDGE_RELATIONS as unknown as [string, ...string[]];
-const EPISODE_TYPE_TUPLE = EPISODE_TYPES as unknown as [string, ...string[]];
+const PRODUCT_EPISODE_TUPLE = PRODUCT_EPISODE_TYPES as unknown as [string, ...string[]];
 
 export interface RegisterKgToolsOptions {
   /** Injected executor (tests). Production omits and resolves from @revealui/db/pool. */
@@ -57,25 +55,75 @@ export interface RegisterKgToolsOptions {
   embedder?: Embedder;
   /** siteId on kg_add_episode; defaults to hostname(). */
   siteId?: string;
+  /** Tests inject identity. Production loads hook-identity + REVDEV_AGENT_ID. */
+  principalProvider?: () => MemoryPrincipal | null;
+  /** Dispatch Promise.race budget in ms. Default 4000. `0` disables the race. */
+  timeoutMs?: number;
 }
 
 function jsonContent(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
 
-function errorContent(message: string): {
+function errorContent(
+  message: string,
+  extra?: Record<string, unknown>,
+): {
   content: Array<{ type: 'text'; text: string }>;
   isError: true;
 } {
   return {
-    content: [{ type: 'text' as const, text: `Error: ${message}` }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({
+          status: 'unavailable',
+          available: false,
+          ...extra,
+          message,
+        }),
+      },
+    ],
     isError: true,
   };
 }
 
+function wrapMemoryResult<T>(result: MemoryResult<T>): {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: true;
+} {
+  const body = jsonContent(result);
+  if (result.status === 'unavailable') {
+    return { ...body, isError: true };
+  }
+  return body;
+}
+
+function wrapOk(principal: MemoryPrincipal, data: unknown, deniedCount = 0) {
+  return jsonContent({
+    status: 'ok',
+    available: true,
+    enforcement: principal.trustBoundary === 'hosted' ? 'enforced' : 'deferred',
+    deniedCount,
+    data,
+  });
+}
+
+async function raceTimeout<T>(work: Promise<T>, timeoutMs: number, onTimeout: () => T): Promise<T> {
+  if (timeoutMs <= 0) return work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout()), timeoutMs);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function resolveProductionExecutor(): Promise<KgExecutor> {
   const { createPool, getConnectionIdentity } = await import('@revealui/db/pool');
-  // Touch identity so missing URL fails with the same diagnostics as revkg.
   getConnectionIdentity();
   const pool = createPool({
     connectionTimeoutMillis: 30_000,
@@ -91,6 +139,8 @@ async function resolveProductionExecutor(): Promise<KgExecutor> {
  */
 export function registerKgTools(server: McpServer, options?: RegisterKgToolsOptions): void {
   const defaultSiteId = options?.siteId ?? hostname();
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_KG_TOOL_TIMEOUT_MS;
+  const principalProvider = options?.principalProvider ?? loadStudioPrincipal;
 
   let cachedExecutor: KgExecutor | undefined = options?.executor;
   async function getExecutor(): Promise<KgExecutor> {
@@ -117,26 +167,32 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
     return cachedEmbedder ?? undefined;
   }
 
-  async function tryEmbed(text: string): Promise<number[] | undefined> {
-    const embedder = await resolveEmbedder();
-    if (!embedder) return undefined;
-    try {
-      return await embedder(text);
-    } catch {
-      return undefined;
+  function requirePrincipal(): MemoryPrincipal | ReturnType<typeof errorContent> {
+    const principal = principalProvider();
+    if (!principal) {
+      warnMissingPrincipal();
+      return errorContent('principal is required', { reason: 'principal-missing' });
     }
+    return principal;
   }
 
   async function withExecutor<T>(
-    fn: (exec: KgExecutor) => Promise<T>,
+    fn: (exec: KgExecutor, principal: MemoryPrincipal) => Promise<T>,
   ): Promise<T | ReturnType<typeof errorContent>> {
+    const principal = requirePrincipal();
+    if ('isError' in principal) return principal;
     try {
       const exec = await getExecutor();
-      return await fn(exec);
+      return await raceTimeout(
+        fn(exec, principal),
+        timeoutMs,
+        () => errorContent('knowledge graph tool timed out', { reason: 'timeout' }) as unknown as T,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return errorContent(
         `knowledge graph database unavailable (set POSTGRES_URL / DATABASE_URL / POSTGRES_URL_FILE via revvault): ${msg}`,
+        { reason: 'kg-database-unavailable' },
       );
     }
   }
@@ -154,21 +210,18 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
       bfsDepth: z.number().int().min(1).max(6).optional(),
     },
     async (args) => {
-      const out = await withExecutor(async (exec) => {
-        const queryEmbedding = await tryEmbed(args.query);
-        return kgSearch(exec, {
+      const out = await withExecutor(async (exec, principal) => {
+        return queryMemory(exec, {
+          principal,
           query: args.query,
-          anchor: args.anchor,
           kinds: args.kinds as NodeKind[] | undefined,
           relations: args.relations as EdgeRelation[] | undefined,
           at: args.at ? new Date(args.at) : undefined,
           limit: args.limit,
-          bfsDepth: args.bfsDepth,
-          queryEmbedding,
         });
       });
       if (out && typeof out === 'object' && 'isError' in out) return out;
-      return jsonContent(out);
+      return wrapMemoryResult(out);
     },
   );
 
@@ -182,7 +235,7 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
         .describe('e.g. revealui/packages/ai/src/llm/client.ts#getClient'),
     },
     async ({ naturalKey }) => {
-      const out = await withExecutor(async (exec) => {
+      const out = await withExecutor(async (exec, principal) => {
         const id = await resolveNaturalKey(exec, naturalKey);
         if (!id) throw new Error(`no node with natural key: ${naturalKey}`);
         const rows = await exec.query<{
@@ -200,10 +253,10 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
         const node = rows[0];
         if (!node) throw new Error(`node ${id} vanished`);
         const facts = await kgAtTime(exec, id, new Date());
-        return { node, facts };
+        return wrapOk(principal, { node, facts });
       });
       if (out && typeof out === 'object' && 'isError' in out) return out;
-      return jsonContent(out);
+      return out;
     },
   );
 
@@ -217,27 +270,28 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
       at: z.string().optional(),
     },
     async ({ naturalKey, depth, relations, at }) => {
-      const out = await withExecutor(async (exec) => {
+      const out = await withExecutor(async (exec, principal) => {
         const id = await resolveNaturalKey(exec, naturalKey);
         if (!id) throw new Error(`no node with natural key: ${naturalKey}`);
-        return kgNeighbors(exec, id, {
+        const data = await kgNeighbors(exec, id, {
           depth: depth ?? 1,
           relations: relations as EdgeRelation[] | undefined,
           at: at ? new Date(at) : undefined,
         });
+        return wrapOk(principal, data);
       });
       if (out && typeof out === 'object' && 'isError' in out) return out;
-      return jsonContent(out);
+      return out;
     },
   );
 
   server.tool(
     'kg_add_episode',
-    'Publish an episode plus candidate nodes/edges. ONLY write tool — always additive (never a rescan).',
+    'Publish an agent-fact / memory / manual episode. ONLY write tool — always additive (never a rescan).',
     {
-      episodeType: z.enum(EPISODE_TYPE_TUPLE),
-      source: z.string().min(1).describe('e.g. claude-session, shared_facts:…'),
-      content: z.string().optional(),
+      episodeType: z.enum(PRODUCT_EPISODE_TUPLE),
+      source: z.string().min(1).describe('e.g. grok-session, shared_facts:…'),
+      content: z.string().min(1).describe('Durable finding summary'),
       contentRef: z.record(z.string(), z.unknown()).optional(),
       referenceTime: z.string().optional().describe('ISO-8601; defaults to now'),
       siteId: z.string().optional(),
@@ -268,8 +322,8 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
         .optional(),
     },
     async (args) => {
-      const out = await withExecutor(async (exec) => {
-        const referenceTime = args.referenceTime ? new Date(args.referenceTime) : new Date();
+      void args.source;
+      const out = await withExecutor(async (exec, principal) => {
         const nodes: NodeInput[] = (args.nodes ?? []).map((n) => ({
           kind: n.kind as NodeKind,
           name: n.name,
@@ -278,7 +332,7 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
           summary: n.summary,
           attributes: n.attributes,
         }));
-        const edges: EdgeInput[] = (args.edges ?? []).map((e) => ({
+        const extraEdges: EdgeInput[] = (args.edges ?? []).map((e) => ({
           source: {
             kind: e.source.kind as NodeKind,
             naturalKey: e.source.naturalKey,
@@ -294,30 +348,27 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
           attributes: e.attributes,
         }));
         const embedder = await resolveEmbedder();
-        const result = await ingestEpisode(
+        return publishMemory(
           exec,
           {
-            episode: {
-              episodeType: args.episodeType as EpisodeInput['episodeType'],
-              source: args.source,
-              siteId: args.siteId ?? defaultSiteId,
-              content: args.content,
-              contentRef: args.contentRef,
-              referenceTime,
+            principal,
+            scope: {
+              tenantId: principal.tenantId || STUDIO_LOCAL_TENANT,
+              workspaceId: principal.workspaceId,
+              classification: 'workspace',
             },
-            nodes,
-            edges,
+            episodeType: args.episodeType as (typeof PRODUCT_EPISODE_TYPES)[number],
+            summary: args.content,
+            subjects: nodes,
+            extraEdges,
+            referenceTime: args.referenceTime ? new Date(args.referenceTime) : new Date(),
+            siteId: args.siteId ?? defaultSiteId,
           },
           { embedder, recordOutbox: true },
         );
-        return {
-          episodeId: result.episodeId,
-          nodeCount: result.nodeCount,
-          edgeCount: result.edgeCount,
-        };
       });
       if (out && typeof out === 'object' && 'isError' in out) return out;
-      return jsonContent(out);
+      return wrapMemoryResult(out);
     },
   );
 
@@ -331,18 +382,19 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
       maxDepth: z.number().int().min(1).max(12).optional(),
     },
     async ({ fromNaturalKey, toNaturalKey, at, maxDepth }) => {
-      const out = await withExecutor(async (exec) => {
+      const out = await withExecutor(async (exec, principal) => {
         const fromId = await resolveNaturalKey(exec, fromNaturalKey);
         const toId = await resolveNaturalKey(exec, toNaturalKey);
         if (!fromId) throw new Error(`no node with natural key: ${fromNaturalKey}`);
         if (!toId) throw new Error(`no node with natural key: ${toNaturalKey}`);
-        return kgPath(exec, fromId, toId, {
+        const data = await kgPath(exec, fromId, toId, {
           at: at ? new Date(at) : undefined,
           maxDepth: maxDepth ?? 6,
         });
+        return wrapOk(principal, data);
       });
       if (out && typeof out === 'object' && 'isError' in out) return out;
-      return jsonContent(out);
+      return out;
     },
   );
 
@@ -354,13 +406,14 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
       at: z.string().describe('ISO-8601 timestamp'),
     },
     async ({ naturalKey, at }) => {
-      const out = await withExecutor(async (exec) => {
+      const out = await withExecutor(async (exec, principal) => {
         const id = await resolveNaturalKey(exec, naturalKey);
         if (!id) throw new Error(`no node with natural key: ${naturalKey}`);
-        return kgAtTime(exec, id, new Date(at));
+        const data = await kgAtTime(exec, id, new Date(at));
+        return wrapOk(principal, data);
       });
       if (out && typeof out === 'object' && 'isError' in out) return out;
-      return jsonContent(out);
+      return out;
     },
   );
 
@@ -376,45 +429,19 @@ export function registerKgTools(server: McpServer, options?: RegisterKgToolsOpti
     async ({ naturalKey, charBudget, depth, at }) => {
       const budget = charBudget ?? DEFAULT_CONTEXT_CHAR_BUDGET;
       const bfsDepth = depth ?? 3;
-      const out = await withExecutor(async (exec) => {
+      const out = await withExecutor(async (exec, principal) => {
         const id = await resolveNaturalKey(exec, naturalKey);
         if (!id) throw new Error(`no node with natural key: ${naturalKey}`);
-        const neighbors = await kgNeighbors(exec, id, {
+        const assembled = await assembleContext(exec, id, {
+          charBudget: budget,
           depth: bfsDepth,
           at: at ? new Date(at) : undefined,
+          principal,
         });
-        const lines: string[] = [`# Context for ${naturalKey} (depth=${bfsDepth})`, '', '## Nodes'];
-        for (const n of neighbors.nodes) {
-          lines.push(`- [${n.kind}] ${n.naturalKey} (${n.distance} hop)`);
-        }
-        lines.push('', '## Facts');
-        for (const e of neighbors.edges) {
-          lines.push(`- (${e.relation}) ${e.fact}`);
-        }
-        let charsUsed = 0;
-        let truncated = false;
-        const packed: string[] = [];
-        for (const line of lines) {
-          const added = line.length + 1;
-          if (charsUsed + added > budget) {
-            truncated = true;
-            break;
-          }
-          packed.push(line);
-          charsUsed += added;
-        }
-        return {
-          context: packed.join('\n'),
-          anchor: { id, naturalKey },
-          nodeCount: neighbors.nodes.length,
-          factCount: neighbors.edges.length,
-          charBudget: budget,
-          charsUsed,
-          truncated,
-        };
+        return wrapOk(principal, assembled);
       });
       if (out && typeof out === 'object' && 'isError' in out) return out;
-      return jsonContent(out);
+      return out;
     },
   );
 }

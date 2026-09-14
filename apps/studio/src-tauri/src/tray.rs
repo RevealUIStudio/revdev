@@ -18,7 +18,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     TrayIconBuilder::new()
         .icon(icon)
-        .tooltip("RevealUI Studio")
+        .tooltip("RevDev")
         .menu(&menu)
         // Right-click opens menu; left-click focuses the window.
         .show_menu_on_left_click(false)
@@ -56,7 +56,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 }
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let show = MenuItem::with_id(app, "show", "Show RevealUI Studio", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Show RevDev", true, None::<&str>)?;
     let launcher = MenuItem::with_id(
         app,
         "launcher",
@@ -69,7 +69,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let unmount =
         MenuItem::with_id(app, "unmount", "Unmount Studio Drive", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit RevealUI Studio", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit RevDev", true, None::<&str>)?;
 
     Menu::with_items(
         app,

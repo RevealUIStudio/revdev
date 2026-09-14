@@ -22,6 +22,7 @@ import TerminalPanel from './components/terminal/TerminalPanel';
 import VaultPanel from './components/vault/VaultPanel';
 import { AuthContext, useAuth } from './hooks/use-auth';
 import { useConfig } from './hooks/use-config';
+import { useLicenseProvision } from './hooks/use-license-provision';
 import { SettingsContext, useSettings, useSettingsContext } from './hooks/use-settings';
 import type { Page } from './types';
 
@@ -62,9 +63,28 @@ function AuthGatedApp() {
       ) : auth.step !== 'authenticated' ? (
         <LoginScreen />
       ) : (
-        <MainApp />
+        <AuthenticatedApp />
       )}
     </AuthContext.Provider>
+  );
+}
+
+/** Runs license auto-provision after auth is ready, then mounts MainApp. */
+function AuthenticatedApp() {
+  const provision = useLicenseProvision();
+
+  return (
+    <>
+      {provision.message ? (
+        <div
+          role="status"
+          className="border-b border-edge bg-surface-1 px-4 py-2 text-center text-sm text-fg-muted"
+        >
+          {provision.message}
+        </div>
+      ) : null}
+      <MainApp />
+    </>
   );
 }
 

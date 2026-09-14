@@ -1,4 +1,4 @@
-# RevealUI Studio
+# RevDev
 
 > **Status:** Functional — connects to the harness daemon, 506 frontend tests passing. **Prebuilt binaries are published** on [GitHub Releases](https://github.com/RevealUIStudio/revdev/releases) (first release `studio-v0.1.0`, 2026-07-02; macOS · Linux · Windows). macOS builds are currently **unsigned / ad-hoc**, so Gatekeeper blocks the first launch — **right-click the app → Open** (or `System Settings → Privacy & Security → Open Anyway`) once to run it. In-app auto-update is **configured**. New `studio-v*` tags publish a `latest.json` feed to the `studio-latest` GitHub release. `releases.revealui.com` is still a 404 (owner DNS/Vercel alias); the GitHub feed is the fallback. macOS/Windows OS code-signing is still unsigned (GAP-273).
 >
