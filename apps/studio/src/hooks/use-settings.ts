@@ -12,6 +12,11 @@ export interface StudioSettings {
    * API-backed features stay disabled until you sign in.
    */
   localMode: boolean;
+  /**
+   * When true (and not localMode), Studio fetches the signed-in owner's
+   * license and materializes it into the vault + KEY_FILE. Off by default.
+   */
+  licenseAutoProvision: boolean;
 }
 
 const DEFAULT_API_URL = import.meta.env.DEV ? 'http://localhost:3004' : 'https://api.revealui.com';
@@ -21,6 +26,7 @@ const DEFAULT_SETTINGS: StudioSettings = {
   apiUrl: DEFAULT_API_URL,
   pollingIntervalMs: 30_000,
   localMode: false,
+  licenseAutoProvision: false,
 };
 
 const STORAGE_KEY = 'revealui-studio-settings';
@@ -46,6 +52,10 @@ function loadSettings(): StudioSettings {
           ? obj.pollingIntervalMs
           : DEFAULT_SETTINGS.pollingIntervalMs,
       localMode: typeof obj.localMode === 'boolean' ? obj.localMode : DEFAULT_SETTINGS.localMode,
+      licenseAutoProvision:
+        typeof obj.licenseAutoProvision === 'boolean'
+          ? obj.licenseAutoProvision
+          : DEFAULT_SETTINGS.licenseAutoProvision,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

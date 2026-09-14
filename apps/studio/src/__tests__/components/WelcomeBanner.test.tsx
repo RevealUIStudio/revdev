@@ -12,6 +12,7 @@ function renderBanner(localMode: boolean) {
           apiUrl: 'http://localhost:3004',
           pollingIntervalMs: 30_000,
           localMode,
+          licenseAutoProvision: false,
         },
         updateSettings: vi.fn(),
         resetSettings: vi.fn(),

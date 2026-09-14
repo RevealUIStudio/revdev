@@ -35,6 +35,11 @@ export interface AuthContextValue {
   loading: boolean;
   /** Error message from the last operation */
   error: string | null;
+  /**
+   * True while signOut is in progress. Cleared after local state is reset.
+   * License auto-provision must skip wipe while this is true.
+   */
+  signingOut: boolean;
   /** Start the login flow — sends OTP to email */
   sendOtp: (apiUrl: string, email: string) => Promise<boolean>;
   /** Submit OTP code — returns true on success */
@@ -45,6 +50,10 @@ export interface AuthContextValue {
   recheck: (apiUrl: string) => Promise<void>;
   /** Returns the current bearer token (null when not authenticated) */
   getToken: () => string | null;
+  /** Synchronous signingOut read for in-flight provisioner checks */
+  getSigningOut: () => boolean;
+  /** Synchronous step read for in-flight provisioner checks */
+  getStep: () => AuthStep;
 }
 
 // ── Token Storage ───────────────────────────────────────────────────────────
@@ -105,7 +114,11 @@ export function useAuth(apiUrl: string, localMode = false): AuthContextValue {
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const tokenRef = useRef<string | null>(null);
+  const signingOutRef = useRef(false);
+  const stepRef = useRef<AuthStep>('idle');
+  stepRef.current = step;
 
   // Check stored token on mount
   useEffect(() => {
@@ -254,19 +267,28 @@ export function useAuth(apiUrl: string, localMode = false): AuthContextValue {
   }
 
   async function signOut(_apiUrl: string): Promise<void> {
-    if (tokenRef.current) {
+    // Mark sign-out before revoke so an in-flight /api/license/current 401
+    // cannot wipe a Studio-managed license (HC13c). Refs update synchronously
+    // so getStep/getSigningOut/getToken see the new values before await.
+    signingOutRef.current = true;
+    setSigningOut(true);
+    stepRef.current = 'email';
+    setStep('email');
+    const token = tokenRef.current;
+    tokenRef.current = null;
+    if (token) {
       try {
-        await revokeToken(_apiUrl, tokenRef.current);
+        await revokeToken(_apiUrl, token);
       } catch {
         // Best-effort revoke
       }
     }
-    tokenRef.current = null;
     await clearToken();
     setUser(null);
     setTokenExpiresAt(null);
-    setStep('email');
     setError(null);
+    signingOutRef.current = false;
+    setSigningOut(false);
   }
 
   async function recheck(_apiUrl: string): Promise<void> {
@@ -293,16 +315,27 @@ export function useAuth(apiUrl: string, localMode = false): AuthContextValue {
     return tokenRef.current;
   }
 
+  function getSigningOut(): boolean {
+    return signingOutRef.current;
+  }
+
+  function getStep(): AuthStep {
+    return stepRef.current;
+  }
+
   return {
     step,
     user,
     tokenExpiresAt,
     loading,
     error,
+    signingOut,
     sendOtp,
     submitOtp,
     signOut,
     recheck,
     getToken,
+    getSigningOut,
+    getStep,
   };
 }

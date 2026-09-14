@@ -169,6 +169,37 @@ export default function SettingsPanel() {
                 API-backed features stay disabled until you sign in.
               </span>
             </div>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-fg-muted">Auto-provision license</span>
+                {settings.licenseAutoProvision && (
+                  <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-fg">
+                    On
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {LOCAL_MODE_OPTIONS.map((opt) => (
+                  <Button
+                    key={`license-${opt.label}`}
+                    type="button"
+                    variant={settings.licenseAutoProvision === opt.value ? 'primary' : 'ghost'}
+                    onClick={() => updateSettings({ licenseAutoProvision: opt.value })}
+                    className={`rounded-md px-4 py-2 text-sm transition-colors ${
+                      settings.licenseAutoProvision === opt.value
+                        ? 'bg-brand text-on-brand'
+                        : 'bg-surface-2 text-fg-muted hover:bg-surface-3 hover:text-fg'
+                    }`}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+              <span className="text-xs text-fg-subtle">
+                When signed in, fetch your license and install it for the local daemon. Off by
+                default. Skipped in local mode.
+              </span>
+            </div>
           </div>
         </Card>
       )}

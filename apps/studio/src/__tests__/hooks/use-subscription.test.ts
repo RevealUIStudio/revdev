@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS: SettingsContextValue = {
     apiUrl: 'http://localhost:3004',
     pollingIntervalMs: 30_000,
     localMode: false,
+    licenseAutoProvision: false,
   },
   updateSettings: vi.fn(),
   resetSettings: vi.fn(),
@@ -53,11 +54,14 @@ function createAuthValue(overrides: Partial<AuthContextValue> = {}): AuthContext
     tokenExpiresAt: '2027-01-01T00:00:00Z',
     loading: false,
     error: null,
+    signingOut: false,
     sendOtp: vi.fn(),
     submitOtp: vi.fn(),
     signOut: vi.fn(),
     recheck: vi.fn(),
     getToken: vi.fn().mockReturnValue('test-token'),
+    getSigningOut: vi.fn().mockReturnValue(false),
+    getStep: vi.fn().mockReturnValue('authenticated'),
     ...overrides,
   };
 }

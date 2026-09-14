@@ -42,6 +42,7 @@ const defaultSettings = {
     apiUrl: 'http://localhost:3004',
     pollingIntervalMs: 30_000,
     localMode: false,
+    licenseAutoProvision: false,
   },
   updateSettings: vi.fn(),
   resetSettings: vi.fn(),
@@ -53,11 +54,14 @@ const defaultAuth: AuthContextValue = {
   tokenExpiresAt: null,
   loading: false,
   error: null,
+  signingOut: false,
   sendOtp: vi.fn().mockResolvedValue(true),
   submitOtp: vi.fn().mockResolvedValue(true),
   signOut: vi.fn().mockResolvedValue(undefined),
   recheck: vi.fn().mockResolvedValue(undefined),
   getToken: vi.fn().mockReturnValue('mock-token'),
+  getSigningOut: vi.fn().mockReturnValue(false),
+  getStep: vi.fn().mockReturnValue('authenticated'),
 };
 
 function renderWithStatusContext(value: StatusContextValue) {
