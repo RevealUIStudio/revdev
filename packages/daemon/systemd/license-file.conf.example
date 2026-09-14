@@ -35,6 +35,10 @@
 #       revvault --json get revealui/dev/founder-license-key | jq -r .value > "$F"
 #   - Ensure REVEALUI_LICENSE_KEY is NOT exported in the daemon's environment,
 #     or it will win over this file.
+#   - Studio auto-provision writes a *separate* drop-in
+#     ~/.config/systemd/user/revdev-daemon.service.d/studio-license.conf
+#     (KEY_FILE only, no revvault ExecStartPre). Do not overwrite this
+#     founder/revvault example with that file.
 
 [Service]
 # Materialize the license into the service-private tmpfs at start. umask 077
