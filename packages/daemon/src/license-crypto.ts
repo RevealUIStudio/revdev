@@ -27,7 +27,10 @@
  */
 
 import { verify } from 'node:crypto';
+import { isRevokedJti, revokedJtiPath, revokeJti } from './revoked-jtis.js';
 import { DEFAULT_VENDOR_PUBLIC_KEY } from './vendor-public-key.js';
+
+export { isRevokedJti, revokedJtiPath, revokeJti };
 
 /**
  * Vendor Ed25519 public key (PEM) used to verify license JWTs.
@@ -52,8 +55,6 @@ const VALID_TIERS = new Set(['pro', 'max', 'enterprise']);
 
 const EXPECTED_ISS = 'https://revealui.com';
 const EXPECTED_AUD = 'revealui-license';
-
-export { isRevokedJti, revokeJti, revokedJtiPath } from './revoked-jtis.js';
 
 /**
  * Machine-readable reason a verification failed. Lets callers branch on

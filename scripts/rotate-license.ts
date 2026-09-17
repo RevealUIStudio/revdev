@@ -317,7 +317,9 @@ async function main(): Promise<void> {
   console.log(`  Audit log:  ${cfg.auditLogPath}`);
   console.log('');
   if (prior.jti) {
-    console.log(`  Prior jti written to ${process.env.REVEALUI_REVOKED_JTI_FILE ?? '~/.local/share/revealui/revoked-jtis.json'}`);
+    console.log(
+      `  Prior jti written to ${process.env.REVEALUI_REVOKED_JTI_FILE ?? '~/.local/share/revealui/revoked-jtis.json'}`,
+    );
   }
   console.log('  ACTION: restart any daemon/Studio consuming this license so it');
   console.log('  reloads the rotated key (the new key is already in revvault).');

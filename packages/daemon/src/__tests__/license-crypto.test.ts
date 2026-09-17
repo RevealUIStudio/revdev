@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getVendorPublicKey, isRevokedJti, revokeJti, verifyLicenseJWT } from '../license-crypto.js';
+import {
+  getVendorPublicKey,
+  isRevokedJti,
+  revokeJti,
+  verifyLicenseJWT,
+} from '../license-crypto.js';
 import { DEFAULT_VENDOR_PUBLIC_KEY } from '../vendor-public-key.js';
 
 function makeToken(
