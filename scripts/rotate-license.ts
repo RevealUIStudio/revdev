@@ -41,6 +41,7 @@ import { appendFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { revokeJti } from '../packages/daemon/src/revoked-jtis.js';
 import { issueLicense, revvaultSet } from './issue-license.js';
 
 const DAY_SECONDS = 86_400;
@@ -284,6 +285,9 @@ async function main(): Promise<void> {
     perpetual: cfg.perpetual,
   });
   revvaultSet(cfg.vaultPath, newJwt);
+  if (prior.jti) {
+    revokeJti(prior.jti);
+  }
   const next = decodeLicense(newJwt);
 
   const timestamp = new Date().toISOString();
@@ -312,6 +316,11 @@ async function main(): Promise<void> {
   console.log(`  New exp:    ${isoOrPerpetual(next.exp)}`);
   console.log(`  Audit log:  ${cfg.auditLogPath}`);
   console.log('');
+  if (prior.jti) {
+    console.log(
+      `  Prior jti written to ${process.env.REVEALUI_REVOKED_JTI_FILE ?? '~/.local/share/revealui/revoked-jtis.json'}`,
+    );
+  }
   console.log('  ACTION: restart any daemon/Studio consuming this license so it');
   console.log('  reloads the rotated key (the new key is already in revvault).');
   console.log('');
