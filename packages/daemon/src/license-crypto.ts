@@ -53,10 +53,7 @@ const VALID_TIERS = new Set(['pro', 'max', 'enterprise']);
 const EXPECTED_ISS = 'https://revealui.com';
 const EXPECTED_AUD = 'revealui-license';
 
-// hook for future revocation channel
-export function isRevokedJti(_jti: string): boolean {
-  return false;
-}
+export { isRevokedJti, revokeJti, revokedJtiPath } from './revoked-jtis.js';
 
 /**
  * Machine-readable reason a verification failed. Lets callers branch on

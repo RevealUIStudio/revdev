@@ -1,6 +1,9 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getVendorPublicKey, isRevokedJti, verifyLicenseJWT } from '../license-crypto.js';
+import { getVendorPublicKey, isRevokedJti, revokeJti, verifyLicenseJWT } from '../license-crypto.js';
 import { DEFAULT_VENDOR_PUBLIC_KEY } from '../vendor-public-key.js';
 
 function makeToken(
@@ -106,7 +109,7 @@ describe('verifyLicenseJWT — nbf check', () => {
 });
 
 describe('verifyLicenseJWT — jti revocation hook', () => {
-  it('stub always returns false (hook is unwired)', () => {
+  it('returns false when the denylist file is empty or absent', () => {
     expect(isRevokedJti('any-jti')).toBe(false);
   });
 
@@ -114,6 +117,24 @@ describe('verifyLicenseJWT — jti revocation hook', () => {
     const token = makeToken({ ...VALID_PAYLOAD, jti: 'clean-jti-1234' }, privateKey);
     const result = verifyLicenseJWT(token, publicKey);
     expect(result.valid).toBe(true);
+  });
+
+  it('rejects a token after revokeJti records its jti', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'revoked-jti-'));
+    process.env.REVEALUI_REVOKED_JTI_FILE = join(dir, 'revoked-jtis.json');
+    try {
+      const jti = 'stolen-jti-9999';
+      expect(isRevokedJti(jti)).toBe(false);
+      revokeJti(jti);
+      expect(isRevokedJti(jti)).toBe(true);
+      const token = makeToken({ ...VALID_PAYLOAD, jti }, privateKey);
+      const result = verifyLicenseJWT(token, publicKey);
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.code).toBe('revoked');
+    } finally {
+      delete process.env.REVEALUI_REVOKED_JTI_FILE;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
