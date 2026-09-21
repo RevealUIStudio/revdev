@@ -154,7 +154,7 @@ Hourly sweep prunes stale rows from `agent_sessions`.
 
 Socket-bound identity (agent binds at `session.register`, inherited per-socket) is being replaced by per-RPC cryptographic identity. Phase 1 is live; the full rollout is tracked in [`PLAN.md`](./PLAN.md) §W2.
 
-- **DID format:** `did:revfleet:<agentId>:<fingerprint>` where `fingerprint = base58btc(sha256(rawPublicKeyBytes))`. Internal-format DID only — no W3C DID resolution; other `did:` prefixes are rejected.
+- **DID format:** `did:revealfleet:<agentId>:<fingerprint>` where `fingerprint = base58btc(sha256(rawPublicKeyBytes))`. Internal-format DID only — no W3C DID resolution; other `did:` prefixes are rejected.
 - **Keys:** Ed25519 via `node:crypto` (zero external crypto deps), generated on first `session.register` per agent; persisted to the vault (canonical) and mirrored to PGlite (`agent_identity`, `agent_identity_keys`) for fast lookup. `forceRotate: true` rotates with a grace window for the superseded key.
 - **Envelope:** detached JWS-style, three base64url segments on an `x-revdev-signature` field beside the RPC frame. Header pins `alg: EdDSA`, `typ: revdev-rpc-sig-v1`, `kid: <DID>`. Payload signs `{method, params_hash, nonce, ts, agentId}` — `params_hash` is `sha256(canonicalJSON(params))`, so signed bytes stay ~200 B and verification short-circuits before params parsing.
 - **Replay protection:** 128-bit nonce cache (`agent_identity_nonces`, PGlite-persisted, swept periodically) + timestamp window (`REVDEV_SIG_TS_WINDOW_MS`, default 60s); `ping` returns `serverTimeMs` for skew detection.
@@ -238,7 +238,7 @@ Pre-1.0 per the fleet versioning convention. Per-package SemVer (`@revdev/daemon
 
 ---
 
-## Composition with the rest of RevFleet
+## Composition with the rest of RevealFleet
 
 | Other product | Relationship |
 |---|---|

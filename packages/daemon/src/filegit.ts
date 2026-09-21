@@ -313,7 +313,7 @@ function neverBoundClass(entry: string): string {
  * operator home, or that overlaps the never-bound secret set in either
  * direction. Same semantics as confinement's `assertGrantedRootBindable`,
  * sharing `findNeverBoundOverlap` + `neverBoundSet`; class-only errors (a root
- * beneath the home, the normal `~/revfleet/<repo>` shape, is NOT refused).
+ * beneath the home, the normal `~/revealfleet/<repo>` shape, is NOT refused).
  */
 function assertRootAvoidsNeverBound(real: string): void {
   const { operatorHome, list } = neverBoundContext();

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('formatDid', () => {
   it('formats a valid DID', () => {
-    expect(formatDid('agt-001', 'abc123')).toBe('did:revfleet:agt-001:abc123');
+    expect(formatDid('agt-001', 'abc123')).toBe('did:revealfleet:agt-001:abc123');
   });
 
   it('uses DID_PREFIX', () => {
@@ -31,7 +31,7 @@ describe('formatDid', () => {
 
 describe('parseDid', () => {
   it('parses a valid DID', () => {
-    const result = parseDid('did:revfleet:agt-001:abc123');
+    const result = parseDid('did:revealfleet:agt-001:abc123');
     expect(result).toEqual({ agentId: 'agt-001', fingerprint: 'abc123' });
   });
 
@@ -40,19 +40,19 @@ describe('parseDid', () => {
   });
 
   it('returns null when fingerprint is missing', () => {
-    expect(parseDid('did:revfleet:agt-001')).toBeNull();
+    expect(parseDid('did:revealfleet:agt-001')).toBeNull();
   });
 
   it('returns null when agentId is empty', () => {
-    expect(parseDid('did:revfleet::abc')).toBeNull();
+    expect(parseDid('did:revealfleet::abc')).toBeNull();
   });
 
   it('returns null when fingerprint is empty', () => {
-    expect(parseDid('did:revfleet:agent:')).toBeNull();
+    expect(parseDid('did:revealfleet:agent:')).toBeNull();
   });
 
   it('returns null for extra colons in fingerprint', () => {
-    expect(parseDid('did:revfleet:agent:fp:extra')).toBeNull();
+    expect(parseDid('did:revealfleet:agent:fp:extra')).toBeNull();
   });
 });
 

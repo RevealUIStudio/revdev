@@ -30,7 +30,7 @@ export function resolveSkillRoots(params: Record<string, unknown> | undefined): 
     process.env.REVDEV_REVSKILLS_ROOT && process.env.REVDEV_REVSKILLS_ROOT.length > 0
       ? process.env.REVDEV_REVSKILLS_ROOT
       : undefined;
-  const revskillsRoot = fromParam ?? fromEnv ?? join(homedir(), 'revfleet', 'revskills');
+  const revskillsRoot = fromParam ?? fromEnv ?? join(homedir(), 'revealfleet', 'revskills');
   return { projectRoot, revskillsRoot };
 }
 

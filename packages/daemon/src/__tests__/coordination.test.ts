@@ -550,11 +550,11 @@ describe('agent identity bootstrap', () => {
 
     expect(result.sessionId).toBe('identity-test-first');
     expect(result.did).toBe(
-      result.did.startsWith('did:revfleet:identity-test-first:')
+      result.did.startsWith('did:revealfleet:identity-test-first:')
         ? result.did
-        : 'did:revfleet:identity-test-first:<fingerprint>',
+        : 'did:revealfleet:identity-test-first:<fingerprint>',
     );
-    expect(result.did.startsWith('did:revfleet:identity-test-first:')).toBe(true);
+    expect(result.did.startsWith('did:revealfleet:identity-test-first:')).toBe(true);
     expect(result.publicKeyPem).toContain('BEGIN PUBLIC KEY');
     // INIT-002 Phase 1: one-shot private key so headless hooks can sign.
     expect(result.privateKeyPem).toContain('BEGIN PRIVATE KEY');
@@ -611,7 +611,7 @@ describe('agent identity bootstrap', () => {
       })) as { sessionId: string; did: string; publicKeyPem: string };
 
       expect(result.sessionId).toBe('identity-test-no-revvault');
-      expect(result.did.startsWith('did:revfleet:identity-test-no-revvault:')).toBe(true);
+      expect(result.did.startsWith('did:revealfleet:identity-test-no-revvault:')).toBe(true);
       expect(result.publicKeyPem).toContain('BEGIN PUBLIC KEY');
     } finally {
       if (origPath !== undefined) {

@@ -16,8 +16,8 @@ import {
 
 function makePayload(overrides: Partial<SignaturePayload> = {}): SignaturePayload {
   return {
-    did: 'did:revfleet:test-agent:abc123',
-    kid: 'did:revfleet:test-agent:abc123',
+    did: 'did:revealfleet:test-agent:abc123',
+    kid: 'did:revealfleet:test-agent:abc123',
     nonce: 'aabbccddeeff00112233445566778899',
     ts: Date.now(),
     method: 'ping',

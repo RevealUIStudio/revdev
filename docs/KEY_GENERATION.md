@@ -18,7 +18,7 @@ Signs Studio desktop binaries for auto-update verification.
 # with a random password (no interactive prompt):
 D=/dev/shm/h1-tauri && mkdir -m 700 "$D"
 openssl rand -base64 24 > "$D/pw"
-cd ~/revfleet/revdev/apps/studio
+cd ~/revealfleet/revdev/apps/studio
 node_modules/.bin/tauri signer generate -w "$D/revdev-studio.key" --password "$(cat "$D/pw")"
 
 # Vault all three (revvault set reads stdin). Substitute the real revvault
@@ -45,7 +45,7 @@ Signs customer license keys (Ed25519-signed JWTs — the daemon rejects legacy `
 # Mint Ed25519 keypair; auto-stores both halves in revvault (exact store paths
 # are kept in the internal key index) and prints the public PEM.
 # No plaintext key files ever land on disk.
-cd ~/revfleet/revdev
+cd ~/revealfleet/revdev
 npx tsx scripts/issue-license.ts --generate-keypair
 
 # Wire the public key into the local daemon's environment.
@@ -60,7 +60,7 @@ export REVDEV_LICENSE_PUBLIC_KEY="$(revvault get --full revdev/license-signing-p
 Verify the key works by issuing yourself an enterprise license:
 
 ```bash
-cd ~/revfleet/revdev
+cd ~/revealfleet/revdev
 npx tsx scripts/issue-license.ts --tier enterprise --perpetual
 ```
 

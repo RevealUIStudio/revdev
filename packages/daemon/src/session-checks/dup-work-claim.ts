@@ -1,7 +1,7 @@
 /**
  * Duplicate-work-claim check — a generic concurrency advisory.
  *
- * Generalizes the kind of collision the RevFleet duplicate-gap-claim detector
+ * Generalizes the kind of collision the RevealFleet duplicate-gap-claim detector
  * prevents (two concurrent sessions independently building the SAME unit of
  * work) into a configurable marker scan that carries NO project-specific
  * vocabulary. When the same claim identifier appears in 2+ git worktrees of a

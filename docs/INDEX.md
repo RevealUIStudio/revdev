@@ -26,4 +26,4 @@ Exactly one plan and one spec, each behind a stable entry point:
 
 ## Fleet coordination
 
-Part of [RevFleet](https://github.com/RevealUIStudio). Fleet-level planning, lanes, the gap tracker, and the live workboard live in the RevealUI Studio internal coordination hub (private repo); this repo's docs are RevDev-scoped only.
+Part of [RevealFleet](https://github.com/RevealUIStudio). Fleet-level planning, lanes, the gap tracker, and the live workboard live in the RevealUI Studio internal coordination hub (private repo); this repo's docs are RevDev-scoped only.

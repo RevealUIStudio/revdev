@@ -105,7 +105,7 @@ describe('D1/D3 never-bound root gate — registration refusal matrix', () => {
 
   it('does NOT refuse a normal project root beneath the home', () => {
     _setNeverBoundForTest(HOME, DATADIR);
-    expect(() => _assertRootAvoidsNeverBoundForTest(join(HOME, 'revfleet', 'repo'))).not.toThrow();
+    expect(() => _assertRootAvoidsNeverBoundForTest(join(HOME, 'revealfleet', 'repo'))).not.toThrow();
   });
 
   it('is separator-safe: a sibling sharing a name prefix is not refused', () => {

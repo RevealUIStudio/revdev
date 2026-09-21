@@ -98,7 +98,7 @@ export async function runSessionChecks(ctx: SessionCheckContext): Promise<string
  * Every built-in check ships with an EMPTY config, so each is a no-op until a
  * consuming project supplies rules (doc-locations) or claim markers
  * (dup-work-claim). This keeps the surface provider-agnostic: nothing about
- * RevFleet's own doc layout or work-tracking scheme is baked into the daemon.
+ * RevealFleet's own doc layout or work-tracking scheme is baked into the daemon.
  */
 export function initSessionChecks(
   config: { docLocations?: DocLocationsConfig; dupWorkClaim?: DupWorkClaimConfig } = {},

@@ -7,7 +7,7 @@
 
 ## Context
 
-RevFleet code lives on the WSL2 ext4 filesystem. RevDev Studio is a Windows-native Tauri app. When Studio performs file or git I/O on a project path, it reaches ext4 through the Windows `\\wsl$` / `\\wsl.localhost` redirector, served by the Plan 9 (9P) protocol server inside the WSL VM.
+RevealFleet code lives on the WSL2 ext4 filesystem. RevDev Studio is a Windows-native Tauri app. When Studio performs file or git I/O on a project path, it reaches ext4 through the Windows `\\wsl$` / `\\wsl.localhost` redirector, served by the Plan 9 (9P) protocol server inside the WSL VM.
 
 That crossing is unsafe, and the unsafety is structural, not a bug we can tune away:
 

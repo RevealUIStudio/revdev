@@ -389,9 +389,9 @@ describe('assertGrantedRootBindable', () => {
   });
 
   it('does NOT refuse the normal case: a project root beneath the home', () => {
-    // The supported shape — ~/revfleet/<repo>. Must NOT throw.
+    // The supported shape — ~/revealfleet/<repo>. Must NOT throw.
     expect(() =>
-      assertGrantedRootBindable(join(HOME, 'revfleet', 'revealui'), HOME, DATADIR),
+      assertGrantedRootBindable(join(HOME, 'revealfleet', 'revealui'), HOME, DATADIR),
     ).not.toThrow();
   });
 
@@ -503,13 +503,13 @@ describe('linuxBubblewrapBackend.spawnConfined — overlap guard', () => {
 
   it('still builds argv for a normal project root beneath the home', () => {
     const { argv } = backend.spawnConfined('bash', [], {
-      repoReal: '/base/op/revfleet/repo',
-      cwd: '/base/op/revfleet/repo',
+      repoReal: '/base/op/revealfleet/repo',
+      cwd: '/base/op/revealfleet/repo',
       agentHome: base.agentHome,
       operatorHome: base.operatorHome,
       dataDir: base.dataDir,
     });
     expect(argv).toContain('--bind');
-    expect(argv.join(' ')).toContain('--bind /base/op/revfleet/repo /base/op/revfleet/repo');
+    expect(argv.join(' ')).toContain('--bind /base/op/revealfleet/repo /base/op/revealfleet/repo');
   });
 });
