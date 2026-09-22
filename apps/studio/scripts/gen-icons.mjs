@@ -24,7 +24,9 @@ let sharp;
 try {
   sharp = (await import('sharp')).default;
 } catch {
-  sharp = require(join(process.env.HOME ?? '', 'revealfleet/revealui/apps/admin/node_modules/sharp'));
+  sharp = require(
+    join(process.env.HOME ?? '', 'revealfleet/revealui/apps/admin/node_modules/sharp'),
+  );
 }
 
 const png1024 = join(iconsDir, 'icon-1024.png');
