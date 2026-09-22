@@ -1,6 +1,6 @@
 import { BASE58_ALPHABET } from './base58.js';
 
-export const DID_PREFIX = 'did:revfleet:' as const;
+export const DID_PREFIX = 'did:revealfleet:' as const;
 
 const FINGERPRINT_ALPHABET_SET = new Set<string>(BASE58_ALPHABET.split(''));
 

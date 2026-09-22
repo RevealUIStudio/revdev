@@ -1,7 +1,7 @@
 /**
  * Canonical doc-locations check — a generic structural advisory.
  *
- * Generalizes the kind of check the RevFleet `doc-locations-check.ts` scanner
+ * Generalizes the kind of check the RevealFleet `doc-locations-check.ts` scanner
  * performs (misplaced docs in a restricted directory, a required index file
  * missing from each of a directory's subdirectories) into a configurable rule
  * set that carries NO project-specific paths. A consuming project supplies its

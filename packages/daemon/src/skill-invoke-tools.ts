@@ -47,7 +47,7 @@ function allowedRoots(ctx: SkillToolContext): string[] {
   const home = homedir();
   const roots = [
     resolve(ctx.projectRoot),
-    resolve(home, 'revfleet'),
+    resolve(home, 'revealfleet'),
     resolve(home, '.claude'),
     resolve(home, '.grok'),
     resolve(home, '.cursor'),

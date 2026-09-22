@@ -421,7 +421,7 @@ function HarnessSpawnForm({ onSpawn, onCancel }: HarnessSpawnFormProps) {
           id="spawn-repo-path"
           value={repoPath}
           onChange={(e) => setRepoPath(e.target.value)}
-          placeholder="/home/…/revfleet/revealui"
+          placeholder="/home/…/revealfleet/revealui"
         />
       </div>
       <div className="mb-2">

@@ -61,7 +61,7 @@ const gitRefArg = z
   .refine((s) => !s.startsWith('-'), { message: 'must not start with "-"' });
 
 // agentId must conform to the DID grammar (alphanumeric, _, -; 1-128 chars)
-// so it can be embedded in `did:revfleet:<agentId>:<fingerprint>`.
+// so it can be embedded in `did:revealfleet:<agentId>:<fingerprint>`.
 // Pre-existing IDs that contained spaces, slashes, or colons are rejected
 // here cleanly rather than failing mid-handler after a row was upserted.
 const agentId = z

@@ -6,7 +6,7 @@ import {
 } from '../signature-schemas.js';
 
 const validPayload = {
-  did: 'did:revfleet:agt-001:abc123',
+  did: 'did:revealfleet:agt-001:abc123',
   kid: 'abc123',
   nonce: '0'.repeat(32),
   ts: 1234567890,
