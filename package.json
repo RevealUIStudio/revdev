@@ -17,8 +17,8 @@
     "clean": "pnpm -r clean",
     "dev": "pnpm -r --parallel dev",
     "dev:studio": "pnpm --filter @revdev/studio dev",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "node scripts/check-biome-version.mjs && biome check .",
+    "lint:fix": "node scripts/check-biome-version.mjs && biome check --write .",
     "lint:docs": "node scripts/doc-lint-license-format.mjs",
     "test": "pnpm --filter @revdev/protocol build && pnpm --filter @revdev/daemon build && pnpm -r test && pnpm test:scripts",
     "test:scripts": "vitest run --config vitest.config.mjs",
@@ -27,12 +27,13 @@
     "typecheck:studio": "pnpm --filter studio typecheck"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2",
+    "@biomejs/biome": "2.5.2",
     "typescript": "7.0.2",
     "vitest": "^4.1.11"
   },
   "pnpm": {
     "overrides": {
+      "@biomejs/biome": "2.5.2",
       "esbuild": ">=0.28.1",
       "undici": ">=7.29.0 <8",
       "vite": "8.2.0",
