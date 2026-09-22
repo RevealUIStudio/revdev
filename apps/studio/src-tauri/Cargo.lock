@@ -5202,7 +5202,7 @@ dependencies = [
 
 [[package]]
 name = "revealui-studio"
-version = "0.2.12"
+version = "0.3.0"
 dependencies = [
  "age",
  "arboard",

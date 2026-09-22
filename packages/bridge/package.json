@@ -1,6 +1,6 @@
 {
   "name": "@revdev/bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server bridging AI coding tools to the RevDev Harness Daemon",
   "repository": {
     "type": "git",
