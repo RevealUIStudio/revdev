@@ -79,7 +79,7 @@ export function resolveWatchPaths(repoRoot: string): string[] {
  * Priority:
  * 1. `REVDEV_DESIGN_PACK_ROOTS` — colon-separated absolute (or ~) paths
  * 2. `REVDEV_REVEALUI_ROOT` — monorepo root → default relative segments
- * 3. `$HOME/revfleet/revealui` when that tree contains design-context
+ * 3. `$HOME/revealfleet/revealui` when that tree contains design-context
  */
 export function resolveAutoWatchRoots(env: NodeJS.ProcessEnv = process.env): string[] {
   const explicit = (env.REVDEV_DESIGN_PACK_ROOTS ?? '').trim();
@@ -94,7 +94,7 @@ export function resolveAutoWatchRoots(env: NodeJS.ProcessEnv = process.env): str
   if (revealui) {
     return resolveWatchPaths(expandHome(revealui));
   }
-  const dogfood = join(homedir(), 'revfleet', 'revealui');
+  const dogfood = join(homedir(), 'revealfleet', 'revealui');
   return resolveWatchPaths(dogfood);
 }
 

@@ -34,8 +34,8 @@ function resolveJvRoot(params: Record<string, unknown> | undefined): string {
   if (process.env.REVDEV_JV_ROOT && process.env.REVDEV_JV_ROOT.length > 0) {
     return process.env.REVDEV_JV_ROOT;
   }
-  // Default layout: <home>/revfleet/<private planning root> (not a public path claim).
-  return join(homedir(), 'revfleet', '.jv');
+  // Default layout: <home>/revealfleet/<private planning root> (not a public path claim).
+  return join(homedir(), 'revealfleet', '.jv');
 }
 
 function runnerPath(jvRoot: string): string {

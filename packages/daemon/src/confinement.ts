@@ -400,7 +400,7 @@ export function findNeverBoundOverlap(real: string, neverBound: readonly string[
  * this only refuses grants the confinement layer cannot actually confine.
  *
  * `repoReal` BENEATH the operator home (`within(operatorHome, repoReal)`) is the
- * normal, supported case (`~/revfleet/<repo>`) and is NOT refused. Every backend
+ * normal, supported case (`~/revealfleet/<repo>`) and is NOT refused. Every backend
  * MUST call this before building its argv (see the ConfinementBackend contract).
  *
  * @throws naming the granted root, the colliding path, and the reason. Both are

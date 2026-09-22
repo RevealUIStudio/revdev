@@ -21,7 +21,7 @@ function mockExecutor(overrides?: Partial<KgExecutor>): KgExecutor {
 }
 
 const testPrincipal: MemoryPrincipal = {
-  did: 'did:revfleet:agent-test:fp1',
+  did: 'did:revealfleet:agent-test:fp1',
   agentId: 'agent-test',
   fingerprint: 'fp1',
   didKind: 'agent-key',

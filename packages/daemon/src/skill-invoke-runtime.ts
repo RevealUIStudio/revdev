@@ -85,7 +85,7 @@ async function importAiSubpath(subpath: string): Promise<Record<string, unknown>
   try {
     return (await import(`@revealui/ai/${subpath}`)) as Record<string, unknown>;
   } catch {
-    const root = process.env.REVEALUI_MONOREPO ?? join(homedir(), 'revfleet', 'revealui');
+    const root = process.env.REVEALUI_MONOREPO ?? join(homedir(), 'revealfleet', 'revealui');
     const file = join(root, 'packages', 'ai', 'dist', `${subpath}.js`);
     return (await import(pathToFileURL(file).href)) as Record<string, unknown>;
   }

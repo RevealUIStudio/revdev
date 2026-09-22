@@ -1,5 +1,5 @@
 //! Read-only Fleet map: load planning tracker-snapshot + optional STATE.json.
-//! Paths resolve under `$REVFLEET_HOME`, `$JV_REPO`, or `$HOME/revfleet` (WSL-first).
+//! Paths resolve under `$REVFLEET_HOME`, `$JV_REPO`, or `$HOME/revealfleet` (WSL-first).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ pub struct FleetMapPayload {
     pub edge_count: usize,
 }
 
-fn revfleet_home() -> PathBuf {
+fn revealfleet_home() -> PathBuf {
     if let Ok(p) = std::env::var("REVFLEET_HOME") {
         let pb = PathBuf::from(p);
         if pb.is_dir() {
@@ -31,19 +31,19 @@ fn revfleet_home() -> PathBuf {
         }
     }
     if let Ok(home) = std::env::var("HOME") {
-        let pb = PathBuf::from(home).join("revfleet");
+        let pb = PathBuf::from(home).join("revealfleet");
         if pb.is_dir() {
             return pb;
         }
     }
     // Windows-side layout when Studio runs on Windows host
     if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        let pb = PathBuf::from(userprofile).join("revfleet");
+        let pb = PathBuf::from(userprofile).join("revealfleet");
         if pb.is_dir() {
             return pb;
         }
     }
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join("revfleet")
+    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join("revealfleet")
 }
 
 fn planning_candidates(root: &Path) -> Vec<PathBuf> {
@@ -80,7 +80,7 @@ fn read_json(path: &Path) -> Result<Value, StudioError> {
 
 #[tauri::command]
 pub fn read_fleet_map() -> Result<FleetMapPayload, StudioError> {
-    let fleet = revfleet_home();
+    let fleet = revealfleet_home();
     let jv = find_planning_root(&fleet)?;
     let snapshot_path = jv.join("docs").join("tracker-snapshot.json");
     let snapshot = read_json(&snapshot_path)?;

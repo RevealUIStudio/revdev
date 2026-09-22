@@ -296,7 +296,7 @@ impl StudioIdentity {
         let signing_key = SigningKey::from_bytes(seed);
         let raw = signing_key.verifying_key().to_bytes();
         let fingerprint = fingerprint_of(&raw);
-        let did = format!("did:revfleet:{agent_id}:{fingerprint}");
+        let did = format!("did:revealfleet:{agent_id}:{fingerprint}");
         let public_key_pem = public_key_pem(&raw);
         Self {
             signing_key,
@@ -561,7 +561,7 @@ mod tests {
         let b = StudioIdentity::from_seed("agent-x".into(), &seed);
         assert_eq!(a.fingerprint, b.fingerprint);
         assert_eq!(a.did, b.did);
-        assert!(a.did.starts_with("did:revfleet:agent-x:"));
+        assert!(a.did.starts_with("did:revealfleet:agent-x:"));
         assert_eq!(a.seed_hex(), hex::encode(seed));
     }
 
