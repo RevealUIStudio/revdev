@@ -164,7 +164,7 @@ export async function defaultFetchShapePage(url: URL): Promise<ShapePage> {
     throw new Error(`electric shape HTTP ${response.status}`);
   }
   const text = await response.text();
-  let body: unknown = text;
+  let body: unknown;
   try {
     body = JSON.parse(text) as unknown;
   } catch {
