@@ -4,6 +4,9 @@
  */
 
 import { generateKeyPairSync, sign } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 export interface TestLicenseKit {
   /** Set as REVEALUI_LICENSE_KEY */
@@ -74,4 +77,10 @@ export function setTestLicenseEnv(kit: TestLicenseKit): void {
 export function clearTestLicenseEnv(): void {
   delete process.env.REVEALUI_LICENSE_KEY;
   delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
+  const homeData = join(homedir(), '.local', 'share', 'revealui');
+  if (!process.env.REVDEV_DAEMON_DATA || process.env.REVDEV_DAEMON_DATA === homeData) {
+    const isolated = join(tmpdir(), 'revdev-license-isolation');
+    mkdirSync(isolated, { recursive: true });
+    process.env.REVDEV_DAEMON_DATA = isolated;
+  }
 }

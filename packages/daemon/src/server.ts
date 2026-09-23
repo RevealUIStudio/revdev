@@ -68,6 +68,7 @@ import {
   syncTaskCreate,
   syncTaskRelease,
 } from './neon.js';
+import { createIdleStop } from './idle-stop.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import {
   ApprovalRequiredError,
@@ -2923,10 +2924,19 @@ export async function startDaemon(
   // a closed PGlite or against a fresh startDaemon()'s state in the
   // same process. Destroying sockets in close() prevents that.
   const openSockets = new Set<Socket>();
+  const idleStop = createIdleStop({
+    idleStopMs: cfg.httpPort > 0 ? 0 : cfg.idleStopMs,
+    isBusy: () => openSockets.size > 0 || _closing,
+    onIdle: () => {
+      log.info('no clients; stopping', { idleStopMs: cfg.idleStopMs });
+      process.kill(process.pid, 'SIGTERM');
+    },
+  });
 
   // Start Unix socket server
   const server = createServer((socket: Socket) => {
     openSockets.add(socket);
+    idleStop.onConnect();
     onConnect();
     const ctx: SocketContext = {
       agentId: null,
@@ -3035,6 +3045,7 @@ export async function startDaemon(
 
     socket.on('close', async () => {
       openSockets.delete(socket);
+      idleStop.onDisconnect();
       onDisconnect();
       // Auto-release transient reservations when a long-lived agent
       // disconnects. Fresh-per-call clients (boundVia = 'param') don't
@@ -3093,6 +3104,7 @@ export async function startDaemon(
       }
       log.info('listening', { socketPath: cfg.socketPath, mode: '0600' });
       log.info('ready for connections');
+      idleStop.arm();
 
       // Optional HTTP gateway (GAP-421 daemon-ownership ADR wire path §3).
       // Default OFF: httpPort defaults to 0, and this daemon only ever
@@ -3148,6 +3160,7 @@ export async function startDaemon(
         _db: db,
         _httpGateway: httpGateway,
         close: async () => {
+          idleStop.stop();
           clearInterval(peerHeartbeat);
           // Sequence:
           //   1. Set _closing FIRST so any RPC arriving on an existing

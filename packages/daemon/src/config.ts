@@ -144,6 +144,12 @@ export interface DaemonConfig {
    * field, so they cannot disable the ownership requirement.
    */
   trustedAnchorRequireRootOwned: boolean;
+  /**
+   * Shut down after this many milliseconds with zero socket clients.
+   * 0 disables idle stop. The production CLI defaults this from
+   * REVDEV_DAEMON_IDLE_STOP_MS (5 minutes). Tests leave it at 0.
+   */
+  idleStopMs: number;
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
@@ -165,4 +171,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   shutdownGracePeriodMs: 5_000, // 5 s
   trustedClientFingerprintPath: '/etc/revdev/trusted-client-fingerprint',
   trustedAnchorRequireRootOwned: true,
+  idleStopMs: 0,
 };

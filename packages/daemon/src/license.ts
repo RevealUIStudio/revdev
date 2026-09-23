@@ -28,7 +28,9 @@
  *     broken path — surface it loudly, don't silently degrade).
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 // Import statically — same ESM module, no circular risk.
 import { getVendorPublicKey, verifyLicenseJWT } from './license-crypto.js';
 
@@ -221,6 +223,40 @@ export type LicenseKeySource = 'env' | 'file' | 'none';
  * are empty — a configured-but-broken file is an operator error, not the
  * same as "no license."
  */
+/** Founder license file the daemon reads when no license env var is set. */
+export function defaultLicenseKeyPath(): string {
+  const dataDir =
+    process.env.REVDEV_DAEMON_DATA ?? join(homedir(), '.local', 'share', 'revealui');
+  return join(dataDir, 'license.key');
+}
+
+function readKeyFile(filePath: string, required: boolean): string | null {
+  if (!existsSync(filePath)) {
+    if (required) {
+      throw new LicenseConfigError(
+        `REVEALUI_LICENSE_KEY_FILE is set to "${filePath}" but the file does not exist`,
+      );
+    }
+    return null;
+  }
+  let contents: string;
+  try {
+    contents = readFileSync(filePath, 'utf-8').trim();
+  } catch (err) {
+    throw new LicenseConfigError(
+      `license file "${filePath}" could not be read: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+  }
+  if (!contents) {
+    if (required) {
+      throw new LicenseConfigError(`REVEALUI_LICENSE_KEY_FILE ("${filePath}") is empty`);
+    }
+    return null;
+  }
+  return contents;
+}
+
 export function loadLicenseKey(): { key: string | null; source: LicenseKeySource } {
   const inline = process.env.REVEALUI_LICENSE_KEY;
   if (inline) {
@@ -229,19 +265,13 @@ export function loadLicenseKey(): { key: string | null; source: LicenseKeySource
 
   const filePath = process.env.REVEALUI_LICENSE_KEY_FILE;
   if (filePath) {
-    let contents: string;
-    try {
-      contents = readFileSync(filePath, 'utf-8').trim();
-    } catch (err) {
-      throw new LicenseConfigError(
-        `REVEALUI_LICENSE_KEY_FILE is set to "${filePath}" but could not be read: ` +
-          (err instanceof Error ? err.message : String(err)),
-      );
-    }
-    if (!contents) {
-      throw new LicenseConfigError(`REVEALUI_LICENSE_KEY_FILE ("${filePath}") is empty`);
-    }
+    const contents = readKeyFile(filePath, true);
     return { key: contents, source: 'file' };
+  }
+
+  const implicit = readKeyFile(defaultLicenseKeyPath(), false);
+  if (implicit) {
+    return { key: implicit, source: 'file' };
   }
 
   return { key: null, source: 'none' };
