@@ -15,8 +15,8 @@
  *   `session.register` are rejected with -32002.
  */
 
-import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
