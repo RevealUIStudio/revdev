@@ -12,7 +12,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "revdev-daemon": "./dist/cli.js"
+    "revdev-daemon": "./dist/cli.js",
+    "revdev": "./dist/cli.js"
   },
   "exports": {
     ".": {

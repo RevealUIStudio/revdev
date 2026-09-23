@@ -26,7 +26,9 @@ Exactly one plan and one spec, each behind a stable entry point:
 
 ## Gap notes
 
-- [`gap-specs/GAP-294-permission-modes-STOP.md`](./gap-specs/GAP-294-permission-modes-STOP.md) — GAP-294 manual/auto work is blocked: the countersigned design is not in this repo. Default permission mode was not changed.
+- [`gap-specs/GAP-294-permission-modes-design.md`](./gap-specs/GAP-294-permission-modes-design.md) — GAP-294 permission modes (manual / auto / agent). §4 and §5 countersigned 2026-07-18. Install default stays `shadow` until the owner flips it.
+- [`gap-specs/GAP-294-permission-shadow-soak-review.md`](./gap-specs/GAP-294-permission-shadow-soak-review.md) — historical soak review for that flip.
+- [`gap-specs/GAP-294-permission-modes-STOP.md`](./gap-specs/GAP-294-permission-modes-STOP.md) — note that the design is vendored here.
 
 ## Fleet coordination
 

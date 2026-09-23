@@ -45,6 +45,7 @@ import './workflow-rpc.js';
 import './skills-rpc.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { LICENSE_TIER_HELP, LicenseConfigError, LicenseExpiredError } from './license.js';
+import { parseCsvList, resolvePermissionMode } from './permission.js';
 import { startDaemon } from './server.js';
 
 // Default log path for --detach mode. Use the user's data dir (mode 0700,
@@ -71,6 +72,10 @@ Commands:
                  REVDEV_DAEMON_DATA at the target copy.
   license-verify Read a JWT from stdin, verify it, print JSON, exit.
                  Does not write a PID file or start the daemon.
+  approvals      Headless GAP-294 queue (revdev approvals). list, or
+                 decide <approvalId> <approved|denied>. Signs with
+                 REVDEV_AGENT_DID + REVDEV_AGENT_PRIVATE_KEY_PEM. The
+                 decider must be the trusted-client operator.
 
 Options:
   --help, -h     Show this help message
@@ -98,7 +103,10 @@ Environment:
   REVDEV_DAEMON_SHUTDOWN_GRACE_MS  Max wait for in-flight handlers during close() (default: ${DAEMON_DEFAULTS.shutdownGracePeriodMs} ms = ${DAEMON_DEFAULTS.shutdownGracePeriodMs / 1000} s)
   REVDEV_DAEMON_IDLE_STOP_MS  Stop after this many ms with zero clients (default: 300000). 0 keeps the daemon up.
   REVDEV_PERMISSION_MODE       GAP-294 mode: shadow (default) | manual | auto | agent-scoped
-                               shadow = would_* events only (no block). Flip only after soak review.
+                               Unset stays shadow. Unknown value fails closed to manual.
+                               Flip the install default only after the soak review.
+  REVDEV_PERMISSION_DENY_METHODS   Auto-mode method deny-list (comma-separated).
+  REVDEV_PERMISSION_DENY_PREFIXES  Auto-mode root-relative path prefixes (comma-separated).
   REVDEV_SKILLS_INVOKE_TIMEOUT_MS  Override skills.invoke wall-clock (default: prompt-sized, min 300s; completion is also capped at 2048 tokens)
   INFERENCE_SNAPS_BASE_URL     OpenAI-compat snap base (default: http://localhost:9090/v1)
 
@@ -115,6 +123,11 @@ if (args.includes('--version') || args.includes('-v')) {
 
 // `license-verify` — verify a JWT from stdin and exit. Must sit in the same
 // early-exit band as migrate: no PID file, no socket, no PGlite, no startDaemon.
+if (args[0] === 'approvals') {
+  const { runApprovalsCli } = await import('./approvals-cli.js');
+  process.exit(await runApprovalsCli(args.slice(1)));
+}
+
 if (args[0] === 'license-verify') {
   const { readFileSync } = await import('node:fs');
   const { runLicenseVerifyCommand } = await import('./license-verify-cli.js');
@@ -298,6 +311,9 @@ const config = {
   idleStopMs: parseNonNegativeInt('REVDEV_DAEMON_IDLE_STOP_MS', 5 * 60 * 1000),
   trustedClientFingerprintPath:
     process.env.REVDEV_DAEMON_TRUSTED_CLIENT_FP ?? DAEMON_DEFAULTS.trustedClientFingerprintPath,
+  permissionMode: resolvePermissionMode(process.env),
+  permissionDenyMethods: parseCsvList(process.env.REVDEV_PERMISSION_DENY_METHODS),
+  permissionDenyPrefixes: parseCsvList(process.env.REVDEV_PERMISSION_DENY_PREFIXES),
 };
 
 const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;
