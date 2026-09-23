@@ -91,27 +91,35 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tasks.create","params":{"title":"test ta
 
 ## 5. GitHub Secrets (for CI)
 
-Add these to RevealUIStudio/revdev → Settings → Secrets → Actions:
+Add these to RevealUIStudio/revdev → Settings → Secrets → Actions.
+
+`.github/workflows/studio-release.yml` **reads these names**. It does not contain certificate bytes and it does not generate certificates. An empty secret leaves that platform unsigned. A non-empty certificate secret is passed through (macOS) or imported for Authenticode (Windows).
 
 | Secret | Value Source | Status |
 |--------|-------------|--------|
 | `TAURI_SIGNING_PRIVATE_KEY` | revvault — Tauri signing private key (see internal key index) | ✅ set 2026-06-11 |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | revvault — Tauri signing private-key password (see internal key index) | ✅ set 2026-06-11 |
 
-macOS-only (when ready for Apple distribution):
+macOS Developer ID + notarization. Set the required names together. If `APPLE_CERTIFICATE` is empty, the macOS build stays unsigned.
+
+| Secret | Required | Value Source |
+|--------|----------|-------------|
+| `APPLE_CERTIFICATE` | yes, to sign | Base64 `.p12` exported from the Developer ID Application certificate |
+| `APPLE_CERTIFICATE_PASSWORD` | yes, with the certificate | `.p12` password |
+| `APPLE_SIGNING_IDENTITY` | no | Keychain identity. When empty, Tauri uses the identity inside the `.p12` |
+| `APPLE_ID` | yes, to notarize | Apple ID email |
+| `APPLE_PASSWORD` | yes, to notarize | App-specific password |
+| `APPLE_TEAM_ID` | yes, to notarize | Apple Developer Team ID |
+
+Windows Authenticode. Set both together. If `WINDOWS_CERTIFICATE` is empty, the Windows build stays unsigned. The workflow reads the thumbprint from the imported certificate at build time; it is not stored in the repo.
+
 | Secret | Value Source |
 |--------|-------------|
-| `APPLE_CERTIFICATE` | Base64 .p12 from Apple Developer |
-| `APPLE_CERTIFICATE_PASSWORD` | .p12 password |
-| `APPLE_ID` | founder@revealui.com |
-| `APPLE_PASSWORD` | App-specific password |
-| `APPLE_TEAM_ID` | Apple Developer Team ID |
+| `WINDOWS_CERTIFICATE` | Base64 `.pfx` (`certutil -encode certificate.pfx out.txt`, or raw base64) |
+| `WINDOWS_CERTIFICATE_PASSWORD` | `.pfx` export password |
 
 ---
 
 ## After All Keys Are Set
 
-Tell your AI coding tool: "keys are generated" — it will:
-1. Wire Tauri public key into `tauri.conf.json`
-2. Tag `studio-v0.1.0` for first signed release
-3. Verify CI builds succeed with signing
+The updater public key is already in `tauri.conf.json`. OS code signing is already wired to the secret names above. Do not generate certificates. After those secrets are set, tag a `studio-v*` release and confirm the macOS and Windows jobs sign.

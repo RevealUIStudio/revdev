@@ -12,6 +12,9 @@ Dates are ISO 8601 (UTC).
 - **GAP-262 agent-key GC.** Classification uses PID liveness instead of
   `agent_sessions.started_at`. Quarantine and delete stay disabled; the
   sweep does not remove agent keys. `harness.health` reports `agentKeyGc`.
+- Studio release workflow reads macOS and Windows code-signing secrets by
+  name. Builds stay unsigned until those secrets are set. No certificates
+  are stored in the repo.
 
 ### Fixed
 
