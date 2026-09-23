@@ -39,6 +39,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Assert Biome version
+        run: node scripts/check-biome-version.mjs
       - run: pnpm lint
 
   typecheck:

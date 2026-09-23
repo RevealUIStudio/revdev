@@ -7,6 +7,14 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Biome is pinned to 2.5.2.** The root dependency is an exact version, and
+  `pnpm.overrides` forces that same version. `pnpm lint` and the CI Quality
+  job run `scripts/check-biome-version.mjs` before `biome check`, so a stale
+  2.5.0 binary fails locally instead of disagreeing with CI. The schema URL
+  in `biome.json` matches 2.5.2.
+
 ## [0.3.0] — 2026-09-22
 
 ### Changed
