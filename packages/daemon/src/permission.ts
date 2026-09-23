@@ -1,7 +1,8 @@
 /**
  * Permission modes — action-class map + shadow/enforce gate (GAP-294).
  *
- * Spec: `.jv` docs/gap-specs/GAP-294-permission-modes-design.md §5–§10.
+ * Spec: docs/gap-specs/GAP-294-permission-modes-design.md §5–§10
+ * (countersigned §4 + §5, 2026-07-18). Default mode stays shadow.
  *
  * Phase 0: classify + `permission.would_*` events (never blocks when mode=shadow).
  * Phase 1: manual/auto enforcement with pending_approvals + -32004 reject-with-receipt.
@@ -212,13 +213,106 @@ export function shadowWouldAuto(actionClass: ActionClass): ShadowWould {
   return 'allow';
 }
 
+/**
+ * Daemon default from `REVDEV_PERMISSION_MODE`.
+ *
+ * Unset or blank stays `shadow` (Phase 0). Do not treat that as the Phase 3
+ * owner flip. A present but unknown value fails closed to `manual` (I2).
+ */
 export function resolvePermissionMode(env: NodeJS.ProcessEnv = process.env): PermissionMode {
   const raw = (env.REVDEV_PERMISSION_MODE ?? '').trim().toLowerCase();
+  if (raw === '') return 'shadow';
   if (raw === 'manual' || raw === 'auto' || raw === 'agent-scoped' || raw === 'shadow') {
     return raw;
   }
-  // Unset / unknown → shadow (Phase 0 default; never blocks).
-  return 'shadow';
+  return 'manual';
+}
+
+/** Comma-separated config list. Membership / prefix checks only — no regex. */
+export function parseCsvList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export interface PermissionPolicyConfig {
+  denyMethods?: readonly string[];
+  denyPrefixes?: readonly string[];
+}
+
+function policyLists(
+  env: NodeJS.ProcessEnv,
+  policy?: PermissionPolicyConfig,
+): { methods: string[]; prefixes: string[] } {
+  const methods =
+    env.REVDEV_PERMISSION_DENY_METHODS !== undefined
+      ? parseCsvList(env.REVDEV_PERMISSION_DENY_METHODS)
+      : [...(policy?.denyMethods ?? [])];
+  const prefixes =
+    env.REVDEV_PERMISSION_DENY_PREFIXES !== undefined
+      ? parseCsvList(env.REVDEV_PERMISSION_DENY_PREFIXES)
+      : [...(policy?.denyPrefixes ?? [])];
+  return { methods, prefixes };
+}
+
+/**
+ * Root-relative path candidates for the auto deny-list (design §7 step 2).
+ * `repoPath` itself is the granted root, not a root-relative path.
+ */
+export function denyPathCandidates(params: Record<string, unknown> | undefined): string[] {
+  if (!params) return [];
+  const repo = typeof params.repoPath === 'string' ? params.repoPath.replace(/\\/g, '/') : '';
+  const raw = [params.filePath, params.path, params.cwd].filter(
+    (v): v is string => typeof v === 'string' && v.length > 0,
+  );
+  const out: string[] = [];
+  const repoBoundary = repo.endsWith('/') ? repo : `${repo}/`;
+  for (const value of raw) {
+    const norm = value.replace(/\\/g, '/');
+    out.push(norm);
+    if (repo && (norm === repo || norm.startsWith(repoBoundary))) {
+      const rel = norm.slice(repo.length).replace(/^\/+/, '');
+      if (rel) out.push(rel);
+    }
+  }
+  return out;
+}
+
+/** True when a candidate equals a prefix or continues past a `/` boundary. */
+export function pathMatchesDenyPrefix(path: string, prefixes: readonly string[]): boolean {
+  const norm = path.replace(/\\/g, '/').replace(/^\.\//, '');
+  for (const prefixRaw of prefixes) {
+    const prefix = prefixRaw
+      .replace(/\\/g, '/')
+      .replace(/^\.\//, '')
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
+    if (!prefix) continue;
+    const relative = norm.replace(/^\/+/, '');
+    if (
+      relative === prefix ||
+      relative.startsWith(`${prefix}/`) ||
+      norm.endsWith(`/${prefix}`) ||
+      norm.includes(`/${prefix}/`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function matchesDenyList(
+  method: string,
+  params: Record<string, unknown> | undefined,
+  env: NodeJS.ProcessEnv,
+  policy?: PermissionPolicyConfig,
+): boolean {
+  const { methods, prefixes } = policyLists(env, policy);
+  if (methods.includes(method)) return true;
+  if (prefixes.length === 0) return false;
+  return denyPathCandidates(params).some((path) => pathMatchesDenyPrefix(path, prefixes));
 }
 
 /**
@@ -328,10 +422,26 @@ export type EnforceDecision =
  * so the gate can try matching an operator grant before queueing (§9).
  * Critical coverage requires an explicit method name on the grant (never class).
  */
+/**
+ * Live policy (design §4 + §7).
+ *
+ * Auto is ordered, first-match-wins:
+ *   1. critical → escalate (policy floor; deny-list cannot lower it)
+ *   2. operator deny-list (method names and/or root-relative prefixes) → deny
+ *   3. consequential → allow + `permission.auto_allowed` (caller emits the
+ *      audit). Within-root is enforced by `requireRoot` / `resolveInRoot`
+ *      before the handler mutates (design §7 step 3, invariant I3).
+ *   4. anything else that is not routine → escalate
+ *
+ * Manual is the §4 matrix only: routine allows; consequential and critical
+ * require approval. The deny-list is the auto engine, not a manual override.
+ */
 export function decideEnforcement(
   method: string,
   mode: PermissionMode,
   env: NodeJS.ProcessEnv = process.env,
+  params?: Record<string, unknown>,
+  policy?: PermissionPolicyConfig,
 ): EnforceDecision {
   const actionClass = classifyMethod(method);
   const effective: PermissionMode = mode === 'shadow' ? 'shadow' : mode;
@@ -340,29 +450,20 @@ export function decideEnforcement(
     return { action: 'allow', reason: 'routine' };
   }
 
-  // Deny-list (all enforce modes): comma-separated method names in env.
-  const denyRaw = (env.REVDEV_PERMISSION_DENY_METHODS ?? '').trim();
-  if (denyRaw.length > 0) {
-    const deny = new Set(
-      denyRaw
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-    );
-    if (deny.has(method)) {
-      return { action: 'deny', reason: 'deny_list' };
-    }
-  }
-
   if (effective === 'auto') {
     if (actionClass === 'critical') {
       return { action: 'require_approval', reason: 'auto_critical' };
     }
+    if (matchesDenyList(method, params, env, policy)) {
+      return { action: 'deny', reason: 'deny_list' };
+    }
     if (actionClass === 'consequential') {
-      // Handler-side requireRoot is the real root check; auto allows here.
       return { action: 'allow', reason: 'auto_consequential' };
     }
-    return { action: 'allow', reason: 'routine' };
+    if (actionClass === 'routine') {
+      return { action: 'allow', reason: 'routine' };
+    }
+    return { action: 'require_approval', reason: 'auto_other' };
   }
 
   if (effective === 'agent-scoped') {
@@ -373,11 +474,21 @@ export function decideEnforcement(
     return { action: 'require_approval', reason: 'agent_scoped' };
   }
 
-  // manual
+  // manual, including an unexpected mode value (I2: unknown → manual).
   if (actionClass === 'routine') {
     return { action: 'allow', reason: 'routine' };
   }
   return { action: 'require_approval', reason: 'manual' };
+}
+
+/** Design §6.4: decider agentId + verified key fingerprint must be in the trust anchor. */
+export function isTrustedOperator(
+  entries: ReadonlySet<string>,
+  agentId: string,
+  fingerprint: string | null | undefined,
+): boolean {
+  if (!agentId || !fingerprint) return false;
+  return entries.has(`${agentId}:${fingerprint}`);
 }
 
 /** Grant may name these action classes (critical never by class — methods only). */
@@ -736,11 +847,38 @@ export async function revokeGrant(
   return { id: grantId, status: 'revoked' };
 }
 
+const SUMMARY_MAX = 240;
+
+function clipSummary(text: string): string {
+  return text.length <= SUMMARY_MAX ? text : text.slice(0, SUMMARY_MAX);
+}
+
+/**
+ * Bounded human-readable extract (design §6.2). The params hash binds the
+ * rest. Named extracts: path for file.write/file.delete, remote+branch for
+ * git.push, argv head for agent.spawn.
+ */
 export function summarizeParams(
   method: string,
   params: Record<string, unknown> | undefined,
 ): string {
   if (!params) return method;
+  if (method === 'file.write' || method === 'file.delete') {
+    const filePath = typeof params.filePath === 'string' ? params.filePath : '';
+    return clipSummary(`${method} ${filePath}`.trim());
+  }
+  if (method === 'git.push') {
+    const remote = typeof params.remote === 'string' ? params.remote : '';
+    const branch = typeof params.branch === 'string' ? params.branch : '';
+    return clipSummary(`${method} ${remote} ${branch}`.replace(/\s+/g, ' ').trim());
+  }
+  if (method === 'agent.spawn') {
+    const command = typeof params.command === 'string' ? params.command : '';
+    const args = Array.isArray(params.args)
+      ? params.args.filter((a): a is string => typeof a === 'string').slice(0, 8)
+      : [];
+    return clipSummary(`${method} ${[command, ...args].join(' ')}`.trim());
+  }
   const pathish =
     (typeof params.filePath === 'string' && params.filePath) ||
     (typeof params.repoPath === 'string' && params.repoPath) ||
@@ -753,7 +891,7 @@ export function summarizeParams(
   const bits = [method];
   if (pathish) bits.push(pathish.slice(0, 120));
   if (branch) bits.push(branch.slice(0, 64));
-  return bits.join(' ').slice(0, 240);
+  return clipSummary(bits.join(' '));
 }
 
 export class PermissionDeniedError extends Error {
@@ -763,6 +901,17 @@ export class PermissionDeniedError extends Error {
     super(`Permission denied for ${method}`);
     this.name = 'PermissionDeniedError';
     this.data = { kind: 'permission-denied', method, reason };
+  }
+}
+
+/** -32004 without a queue row (design §6.7 flood cap). */
+export class PermissionFloodError extends Error {
+  readonly code = APPROVAL_REQUIRED_CODE;
+  readonly data: { kind: 'flood-cap'; method: string };
+  constructor(method: string) {
+    super(`Pending approval cap reached for ${method}`);
+    this.name = 'PermissionFloodError';
+    this.data = { kind: 'flood-cap', method };
   }
 }
 
@@ -786,8 +935,55 @@ export class ApprovalRequiredError extends Error {
   }
 }
 
+export function emitPermissionEvent(
+  db: PGlite,
+  agentId: string | null,
+  eventType: string,
+  payload: Record<string, unknown>,
+): void {
+  void db
+    .query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+      agentId ?? 'anonymous',
+      eventType,
+      JSON.stringify(payload),
+    ])
+    .catch((err: unknown) => {
+      log.warn('permission event write failed', {
+        eventType,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+}
+
 /**
- * Try to consume a matching approved row. Returns true if consumed (caller may proceed).
+ * Mark pending and unconsumed approvals past their TTL as expired and audit
+ * each transition (design §6.5–§6.6).
+ */
+export async function expireStaleApprovals(db: PGlite): Promise<void> {
+  const expired = await db.query<{
+    id: string;
+    agent_id: string;
+    method: string;
+    params_hash: string;
+  }>(
+    `UPDATE pending_approvals
+     SET status = 'expired'
+     WHERE status IN ('pending', 'approved') AND expires_at <= NOW()
+     RETURNING id, agent_id, method, params_hash`,
+  );
+  for (const row of expired.rows) {
+    emitPermissionEvent(db, row.agent_id, 'permission.expired', {
+      approvalId: row.id,
+      method: row.method,
+      paramsHash: row.params_hash,
+      requester: row.agent_id,
+    });
+  }
+}
+
+/**
+ * Consume one matching approved row in the same statement as the match
+ * (design §6.5 / I5). Returns true if this call consumed it.
  */
 export async function tryConsumeApproval(
   db: PGlite,
@@ -795,34 +991,31 @@ export async function tryConsumeApproval(
   method: string,
   params: Record<string, unknown> | undefined,
 ): Promise<boolean> {
+  await expireStaleApprovals(db);
   const paramsHash = hashParams(method, params ?? {});
-  const found = await db.query<{ id: string }>(
-    `SELECT id FROM pending_approvals
-     WHERE agent_id = $1 AND method = $2 AND params_hash = $3
-       AND status = 'approved' AND expires_at > NOW()
-     ORDER BY decided_at DESC NULLS LAST
-     LIMIT 1`,
-    [agentId, method, paramsHash],
-  );
-  const row = found.rows[0];
-  if (!row) return false;
-  const updated = await db.query(
-    `UPDATE pending_approvals SET status = 'consumed'
-     WHERE id = $1 AND status = 'approved'`,
-    [row.id],
-  );
-  // PGlite may not expose rowCount; re-check.
-  const check = await db.query<{ status: string }>(
-    `SELECT status FROM pending_approvals WHERE id = $1`,
-    [row.id],
-  );
-  if (check.rows[0]?.status !== 'consumed') return false;
-  void db.query(`INSERT INTO events (agent_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
-    agentId,
-    'permission.consumed',
-    JSON.stringify({ approvalId: row.id, method, paramsHash }),
-  ]);
-  void updated;
+  const consumed = await db.transaction(async (tx) => {
+    const updated = await tx.query<{ id: string }>(
+      `UPDATE pending_approvals
+       SET status = 'consumed'
+       WHERE id = (
+         SELECT id FROM pending_approvals
+         WHERE agent_id = $1 AND method = $2 AND params_hash = $3
+           AND status = 'approved' AND expires_at > NOW()
+         ORDER BY decided_at DESC NULLS LAST
+         LIMIT 1
+       )
+       RETURNING id`,
+      [agentId, method, paramsHash],
+    );
+    return updated.rows[0]?.id ?? null;
+  });
+  if (!consumed) return false;
+  emitPermissionEvent(db, agentId, 'permission.consumed', {
+    approvalId: consumed,
+    method,
+    paramsHash,
+    requester: agentId,
+  });
   return true;
 }
 
@@ -842,7 +1035,7 @@ export async function queueApprovalRequired(
   );
   const n = Number(pendingCount.rows[0]?.n ?? '0');
   if (n >= MAX_PENDING_PER_AGENT) {
-    throw new ApprovalRequiredError('flood-cap', method, new Date(Date.now() + PENDING_TTL_MS));
+    throw new PermissionFloodError(method);
   }
 
   const id = randomUUID();
@@ -888,11 +1081,7 @@ export async function listPendingApprovals(
     status: string;
   }>
 > {
-  // Expire stale pending rows opportunistically.
-  await db.query(
-    `UPDATE pending_approvals SET status = 'expired'
-     WHERE status = 'pending' AND expires_at <= NOW()`,
-  );
+  await expireStaleApprovals(db);
 
   const sql = agentIdFilter
     ? `SELECT id, agent_id, method, params_hash, summary, requested_at, expires_at, status
@@ -994,6 +1183,9 @@ export function parseSessionPermissionMode(raw: unknown): SessionPermissionMode 
 export interface SkillPermissionCtx {
   db: PGlite;
   agentId: string;
+  /** DaemonConfig.permissionMode when env is unset. */
+  daemonDefault?: PermissionMode;
+  policy?: PermissionPolicyConfig;
 }
 
 /**
@@ -1008,7 +1200,7 @@ export async function enforceSkillTool(
 ): Promise<void> {
   const method = skillToolMethod(toolName);
   const mode = ctx
-    ? await resolveEffectiveMode(ctx.db, ctx.agentId, env)
+    ? await resolveEffectiveMode(ctx.db, ctx.agentId, env, ctx.daemonDefault)
     : resolvePermissionMode(env);
 
   if (ctx) {
@@ -1017,14 +1209,27 @@ export async function enforceSkillTool(
 
   if (mode === 'shadow') return;
 
-  const decision = decideEnforcement(method, mode, env);
-  if (decision.action === 'allow') return;
+  const decision = decideEnforcement(method, mode, env, params, ctx?.policy);
+  if (decision.action === 'allow') {
+    if (decision.reason === 'auto_consequential' && ctx) {
+      emitPermissionEvent(ctx.db, ctx.agentId, 'permission.auto_allowed', {
+        method,
+        actionClass: classifyMethod(method),
+      });
+    }
+    return;
+  }
 
   if (!ctx) {
     throw new PermissionDeniedError(method, 'no-session');
   }
 
   if (decision.action === 'deny') {
+    emitPermissionEvent(ctx.db, ctx.agentId, 'permission.denied', {
+      method,
+      reason: decision.reason,
+      requester: ctx.agentId,
+    });
     throw new PermissionDeniedError(method, decision.reason);
   }
 
@@ -1038,13 +1243,20 @@ export async function enforceSkillTool(
   }
 }
 
-/** Effective mode: session permission_mode override, else daemon default (spec §3). */
+/**
+ * Effective mode: session permission_mode override, else daemon default (design §3).
+ * A set `REVDEV_PERMISSION_MODE` wins over `configured` so tests and the env
+ * contract stay the operator control. Blank env uses `configured` (DaemonConfig),
+ * which defaults to shadow.
+ */
 export async function resolveEffectiveMode(
   db: PGlite,
   agentId: string | null | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  configured?: PermissionMode,
 ): Promise<PermissionMode> {
-  const daemonDefault = resolvePermissionMode(env);
+  const raw = (env.REVDEV_PERMISSION_MODE ?? '').trim();
+  const daemonDefault = raw.length > 0 ? resolvePermissionMode(env) : (configured ?? 'shadow');
   if (!agentId) return daemonDefault;
   const r = await db.query<{ permission_mode: string | null }>(
     `SELECT permission_mode FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,

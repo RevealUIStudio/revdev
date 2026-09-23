@@ -12,18 +12,27 @@ import {
   classifyMethod,
   decideApproval,
   decideEnforcement,
+  denyPathCandidates,
   enforceSkillTool,
   evaluateShadow,
   expectedClassifiedMethods,
+  expireStaleApprovals,
   grantCoversMethod,
   grantRootMatches,
   issueGrant,
+  isTrustedOperator,
   listGrants,
+  listPendingApprovals,
   METHOD_ACTION_CLASS,
+  PermissionFloodError,
   parseSessionPermissionMode,
+  pathMatchesDenyPrefix,
+  queueApprovalRequired,
+  resolvePermissionMode,
   revokeGrant,
   shadowWouldAuto,
   shadowWouldManual,
+  summarizeParams,
   tryConsumeGrant,
 } from '../permission.js';
 import { migrate } from '../storage/migrate.js';
@@ -160,9 +169,34 @@ describe('decideEnforcement (Phase 1)', () => {
     expect(decideEnforcement('skills.tool.Read', 'manual').action).toBe('allow');
   });
 
-  it('deny-list absorbs', () => {
+  it('deny-list absorbs consequential calls in auto', () => {
     process.env.REVDEV_PERMISSION_DENY_METHODS = 'git.pull,file.write';
     expect(decideEnforcement('git.pull', 'auto').action).toBe('deny');
+  });
+
+  it('critical floor wins over the deny-list in auto', () => {
+    process.env.REVDEV_PERMISSION_DENY_METHODS = 'git.push';
+    expect(decideEnforcement('git.push', 'auto').action).toBe('require_approval');
+  });
+
+  it('path-prefix deny-list absorbs in auto and does not use regex', () => {
+    process.env.REVDEV_PERMISSION_DENY_PREFIXES = 'secrets, src/private';
+    const denied = decideEnforcement('file.write', 'auto', process.env, {
+      repoPath: '/tmp/proj',
+      filePath: 'secrets/token',
+    });
+    expect(denied.action).toBe('deny');
+    const allowed = decideEnforcement('file.write', 'auto', process.env, {
+      repoPath: '/tmp/proj',
+      filePath: 'src/app.ts',
+    });
+    expect(allowed.action).toBe('allow');
+    expect(pathMatchesDenyPrefix('src/app.ts', ['src/app.ts.bak'])).toBe(false);
+  });
+
+  it('manual stays on the approval matrix when a deny-list is configured', () => {
+    process.env.REVDEV_PERMISSION_DENY_METHODS = 'file.write';
+    expect(decideEnforcement('file.write', 'manual').action).toBe('require_approval');
   });
 
   it('agent-scoped allows routine and requires approval until grant is consulted', () => {
@@ -211,6 +245,59 @@ describe('grantRootMatches', () => {
   });
   it('no pathish in params does not reject', () => {
     expect(grantRootMatches('/tmp/proj', { branch: 'main' })).toBe(true);
+  });
+});
+
+describe('resolvePermissionMode (default stays shadow)', () => {
+  const env = {} as NodeJS.ProcessEnv;
+
+  it('unset and blank stay shadow', () => {
+    expect(resolvePermissionMode(env)).toBe('shadow');
+    expect(resolvePermissionMode({ REVDEV_PERMISSION_MODE: '  ' })).toBe('shadow');
+  });
+
+  it('known modes pass through', () => {
+    expect(resolvePermissionMode({ REVDEV_PERMISSION_MODE: 'auto' })).toBe('auto');
+    expect(resolvePermissionMode({ REVDEV_PERMISSION_MODE: 'MANUAL' })).toBe('manual');
+    expect(resolvePermissionMode({ REVDEV_PERMISSION_MODE: 'agent-scoped' })).toBe('agent-scoped');
+    expect(resolvePermissionMode({ REVDEV_PERMISSION_MODE: 'shadow' })).toBe('shadow');
+  });
+
+  it('unknown value fails closed to manual', () => {
+    expect(resolvePermissionMode({ REVDEV_PERMISSION_MODE: 'bypass' })).toBe('manual');
+  });
+});
+
+describe('summarizeParams (design §6.2)', () => {
+  it('names the path, the push target, and the spawn argv head', () => {
+    expect(summarizeParams('file.write', { filePath: 'src/a.ts', content: 'x' })).toBe(
+      'file.write src/a.ts',
+    );
+    expect(summarizeParams('git.push', { remote: 'origin', branch: 'test' })).toBe(
+      'git.push origin test',
+    );
+    expect(summarizeParams('agent.spawn', { command: 'pnpm', args: ['test', 'permission'] })).toBe(
+      'agent.spawn pnpm test permission',
+    );
+  });
+});
+
+describe('deny path candidates', () => {
+  it('keeps repoPath as the root and relativizes a file under it', () => {
+    expect(denyPathCandidates({ repoPath: '/tmp/proj', filePath: '/tmp/proj/secrets/a' })).toEqual([
+      '/tmp/proj/secrets/a',
+      'secrets/a',
+    ]);
+  });
+});
+
+describe('isTrustedOperator (design §6.4)', () => {
+  it('matches only the agentId:fingerprint pair', () => {
+    const entries = new Set(['op-1:fp-aaa']);
+    expect(isTrustedOperator(entries, 'op-1', 'fp-aaa')).toBe(true);
+    expect(isTrustedOperator(entries, 'op-1', 'fp-bbb')).toBe(false);
+    expect(isTrustedOperator(entries, 'other', 'fp-aaa')).toBe(false);
+    expect(isTrustedOperator(entries, 'op-1', null)).toBe(false);
   });
 });
 
@@ -288,6 +375,58 @@ describe('enforceSkillTool (GAP-294 skill tools)', () => {
     process.env.REVDEV_PERMISSION_MODE = 'manual';
     await enforceSkillTool('Read', { path: 'note.txt' }, { db, agentId: 'agent-a' });
   });
+});
+
+describe('approval queue audit (design §6)', () => {
+  let db: PGlite;
+
+  afterEach(async () => {
+    await db?.close().catch(() => {});
+  });
+
+  it(
+    'expires a stale pending row and writes permission.expired',
+    async () => {
+      db = new PGlite();
+      await migrate(db, [...MIGRATIONS]);
+      await db.query(
+        `INSERT INTO pending_approvals (id, agent_id, method, params_hash, summary, expires_at, status)
+         VALUES ('ap-old', 'agent-a', 'git.push', 'hash', 'git.push', NOW() - INTERVAL '1 minute', 'pending')`,
+      );
+      await expireStaleApprovals(db);
+      const row = await db.query<{ status: string }>(
+        `SELECT status FROM pending_approvals WHERE id = 'ap-old'`,
+      );
+      expect(row.rows[0]?.status).toBe('expired');
+      const events = await db.query<{ event_type: string }>(
+        `SELECT event_type FROM events WHERE event_type = 'permission.expired'`,
+      );
+      expect(events.rows.length).toBe(1);
+      expect(await listPendingApprovals(db)).toEqual([]);
+    },
+    DB_TEST_TIMEOUT,
+  );
+
+  it(
+    'returns -32004 at the flood cap without inserting another row',
+    async () => {
+      db = new PGlite();
+      await migrate(db, [...MIGRATIONS]);
+      for (let i = 0; i < 10; i++) {
+        await expect(
+          queueApprovalRequired(db, 'agent-a', 'file.write', { filePath: `f${i}` }),
+        ).rejects.toBeInstanceOf(ApprovalRequiredError);
+      }
+      await expect(
+        queueApprovalRequired(db, 'agent-a', 'file.write', { filePath: 'overflow' }),
+      ).rejects.toBeInstanceOf(PermissionFloodError);
+      const n = await db.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM pending_approvals WHERE agent_id = 'agent-a'`,
+      );
+      expect(n.rows[0]?.n).toBe('10');
+    },
+    DB_TEST_TIMEOUT,
+  );
 });
 
 describe('permission grants PGlite (GAP-294 §9)', () => {

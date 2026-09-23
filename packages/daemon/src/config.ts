@@ -150,6 +150,22 @@ export interface DaemonConfig {
    * REVDEV_DAEMON_IDLE_STOP_MS (5 minutes). Tests leave it at 0.
    */
   idleStopMs: number;
+  /**
+   * GAP-294 daemon default permission mode. Unset `REVDEV_PERMISSION_MODE`
+   * stays `shadow` (Phase 0). Phase 3 (shipping default) is an owner flip.
+   * Unknown env values fail closed to `manual` in `resolvePermissionMode` (I2).
+   */
+  permissionMode: 'shadow' | 'manual' | 'auto' | 'agent-scoped';
+  /**
+   * Auto-mode deny-list method names (`REVDEV_PERMISSION_DENY_METHODS`).
+   * Design §7 step 2. Empty unless configured.
+   */
+  permissionDenyMethods: readonly string[];
+  /**
+   * Auto-mode root-relative path prefixes (`REVDEV_PERMISSION_DENY_PREFIXES`).
+   * Prefix checks only — not regular expressions. Design §7 step 2.
+   */
+  permissionDenyPrefixes: readonly string[];
 }
 
 const homeDir = process.env.HOME ?? '/tmp';
@@ -172,4 +188,7 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   trustedClientFingerprintPath: '/etc/revdev/trusted-client-fingerprint',
   trustedAnchorRequireRootOwned: true,
   idleStopMs: 0,
+  permissionMode: 'shadow',
+  permissionDenyMethods: [],
+  permissionDenyPrefixes: [],
 };

@@ -74,11 +74,15 @@ import {
   ApprovalRequiredError,
   decideApproval,
   decideEnforcement,
+  emitPermissionEvent,
   emitPermissionShadowEvent,
   evaluateShadow,
   issueGrant,
+  isTrustedOperator,
   listGrants,
   listPendingApprovals,
+  PermissionDeniedError,
+  PermissionFloodError,
   parseSessionPermissionMode,
   queueApprovalRequired,
   resolveEffectiveMode,
@@ -654,6 +658,47 @@ async function requireVerifiedAgent(
   return bound;
 }
 
+const OPERATOR_DOOR_METHODS = new Set(['permission.decide', 'permission.setMode']);
+
+async function isOperatorDoor(method: string, ctx: SocketContext): Promise<boolean> {
+  if (!OPERATOR_DOOR_METHODS.has(method)) return false;
+  if (ctx.boundVia !== 'signature' || !ctx.agentId || !ctx.verifiedSignature?.kid) return false;
+  const cfg = getDaemonConfig();
+  const trusted = await loadTrustedClientEntries(
+    cfg.trustedClientFingerprintPath,
+    cfg.trustedAnchorRequireRootOwned,
+  );
+  return isTrustedOperator(trusted, ctx.agentId, ctx.verifiedSignature.kid);
+}
+
+/**
+ * Design §6.4 / I4: mode changes and approval decisions are operator-only.
+ * The decider must present a verified signature whose (agentId, fingerprint)
+ * pair is in the trust anchor. A daemon-minted bind is not that door.
+ */
+async function requireTrustedOperator(
+  ctx: SocketContext,
+  db: PGlite,
+  params?: Record<string, unknown>,
+): Promise<string> {
+  const operator = await requireVerifiedAgent(ctx, db, params);
+  const fingerprint = ctx.boundVia === 'signature' ? ctx.verifiedSignature?.kid : null;
+  if (!fingerprint) {
+    throw signatureRequired(
+      'permission operator action requires a verified signature from the trusted client',
+    );
+  }
+  const cfg = getDaemonConfig();
+  const trusted = await loadTrustedClientEntries(
+    cfg.trustedClientFingerprintPath,
+    cfg.trustedAnchorRequireRootOwned,
+  );
+  if (!isTrustedOperator(trusted, operator, fingerprint)) {
+    throw new UntrustedClientKeyError(operator, fingerprint, cfg.trustedClientFingerprintPath);
+  }
+  return operator;
+}
+
 function str(v: unknown, fallback = ''): string {
   return typeof v === 'string' ? v : fallback;
 }
@@ -920,7 +965,12 @@ export async function dispatchRpc(
       ctx.agentId ??
       (req.params && typeof req.params.actorAgentId === 'string' ? req.params.actorAgentId : null);
     // Spec §3: per-session override ?? daemon default (env).
-    const mode = await resolveEffectiveMode(db, agentForEvent);
+    const cfg = getDaemonConfig();
+    const mode = await resolveEffectiveMode(db, agentForEvent, process.env, cfg.permissionMode);
+    const paramsObj =
+      req.params && typeof req.params === 'object' && !Array.isArray(req.params)
+        ? (req.params as Record<string, unknown>)
+        : {};
     // Shadow only when *effective* mode is shadow (session override can
     // promote a session out of daemon-default shadow for dogfood).
     if (mode === 'shadow') {
@@ -928,41 +978,54 @@ export async function dispatchRpc(
     } else {
       // Still emit would_* for soak continuity under enforce modes.
       emitPermissionShadowEvent(db, agentForEvent, req.method, evaluateShadow(req.method));
-      const decision = decideEnforcement(req.method, mode);
-      if (decision.action === 'deny') {
-        return {
-          jsonrpc: '2.0',
-          id: req.id,
-          error: {
-            code: -32004,
-            message: `Permission denied for ${req.method}`,
-            data: { kind: 'permission-denied', method: req.method, reason: decision.reason },
-          },
-        };
-      }
-      if (decision.action === 'require_approval') {
-        if (!agentForEvent) {
+      try {
+        // The decision surface is the approval. Queueing permission.decide /
+        // permission.setMode for the trusted operator would lock manual mode
+        // (design §10: a manual mode with no approval surface is a lockout).
+        // Every other caller still hits the critical floor. The handler
+        // enforces the trust anchor and the self-approval ban (§6.4, I4).
+        const operatorDoor = await isOperatorDoor(req.method, ctx);
+        const decision = operatorDoor
+          ? ({ action: 'allow', reason: 'routine' } as const)
+          : decideEnforcement(req.method, mode, process.env, paramsObj, {
+              denyMethods: cfg.permissionDenyMethods,
+              denyPrefixes: cfg.permissionDenyPrefixes,
+            });
+        if (decision.action === 'deny') {
+          emitPermissionEvent(db, agentForEvent, 'permission.denied', {
+            method: req.method,
+            reason: decision.reason,
+            requester: agentForEvent,
+          });
+          const denied = new PermissionDeniedError(req.method, decision.reason);
           return {
             jsonrpc: '2.0',
             id: req.id,
-            error: {
-              code: -32002,
-              message: `Not registered: call session.register before ${req.method}`,
-            },
+            error: { code: denied.code, message: denied.message, data: denied.data },
           };
         }
-        const paramsObj =
-          req.params && typeof req.params === 'object' && !Array.isArray(req.params)
-            ? (req.params as Record<string, unknown>)
-            : {};
-        try {
+        if (decision.action === 'allow' && decision.reason === 'auto_consequential') {
+          emitPermissionEvent(db, agentForEvent, 'permission.auto_allowed', {
+            method: req.method,
+            actionClass: 'consequential',
+          });
+        }
+        if (decision.action === 'require_approval') {
+          if (!agentForEvent) {
+            return {
+              jsonrpc: '2.0',
+              id: req.id,
+              error: {
+                code: -32002,
+                message: `Not registered: call session.register before ${req.method}`,
+              },
+            };
+          }
           // Spec §9: agent-scoped mode consults operator grants before the
           // pending-approval queue (critical only by explicit method name).
           if (mode === 'agent-scoped' || decision.reason === 'agent_scoped') {
             const grantHit = await tryConsumeGrant(db, agentForEvent, req.method, paramsObj);
-            if (grantHit) {
-              // Covered by grant — proceed to dispatch.
-            } else {
+            if (!grantHit) {
               const consumed = await tryConsumeApproval(db, agentForEvent, req.method, paramsObj);
               if (!consumed) {
                 await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
@@ -974,16 +1037,33 @@ export async function dispatchRpc(
               await queueApprovalRequired(db, agentForEvent, req.method, paramsObj);
             }
           }
-        } catch (permErr) {
-          if (permErr instanceof ApprovalRequiredError) {
-            return {
-              jsonrpc: '2.0',
-              id: req.id,
-              error: { code: permErr.code, message: permErr.message, data: permErr.data },
-            };
-          }
-          throw permErr;
         }
+      } catch (permErr) {
+        if (
+          permErr instanceof ApprovalRequiredError ||
+          permErr instanceof PermissionDeniedError ||
+          permErr instanceof PermissionFloodError
+        ) {
+          return {
+            jsonrpc: '2.0',
+            id: req.id,
+            error: { code: permErr.code, message: permErr.message, data: permErr.data },
+          };
+        }
+        // I2: a gate-internal error refuses. It never falls through to dispatch.
+        log.error('permission gate failed closed', {
+          method: req.method,
+          error: permErr instanceof Error ? permErr.message : String(permErr),
+        });
+        return {
+          jsonrpc: '2.0',
+          id: req.id,
+          error: {
+            code: -32004,
+            message: `Permission gate failed closed for ${req.method}`,
+            data: { kind: 'gate-error', method: req.method },
+          },
+        };
       }
     }
   }
@@ -2583,8 +2663,9 @@ registerHandler('permission.pending', async (params, db, ctx) => {
 });
 
 registerHandler('permission.decide', async (params, db, ctx) => {
-  // Signature-required (MUTATING). Self-approval rejected in decideApproval.
-  const decider = await requireVerifiedAgent(ctx, db, params);
+  // Signature-required (MUTATING). Trusted-client operator only (design §6.4).
+  // Self-approval rejected in decideApproval.
+  const decider = await requireTrustedOperator(ctx, db, params);
   const approvalId = str(params.approvalId);
   const verdictRaw = str(params.verdict).toLowerCase();
   if (verdictRaw !== 'approved' && verdictRaw !== 'denied') {
@@ -2594,8 +2675,8 @@ registerHandler('permission.decide', async (params, db, ctx) => {
 });
 
 registerHandler('permission.setMode', async (params, db, ctx) => {
-  // Signature-required (MUTATING). Operator sets another session's override.
-  const operator = await requireVerifiedAgent(ctx, db, params);
+  // Signature-required (MUTATING). Trusted-client operator sets another session.
+  const operator = await requireTrustedOperator(ctx, db, params);
   const target = str(params.agentId);
   // null / "" / "default" clears the override (falls back to daemon default).
   const rawMode = params.mode;
