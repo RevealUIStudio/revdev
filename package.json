@@ -1,6 +1,6 @@
 {
   "name": "revdev",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "RevDev — Native developer tools for RevealUI",
   "repository": {
@@ -17,8 +17,8 @@
     "clean": "pnpm -r clean",
     "dev": "pnpm -r --parallel dev",
     "dev:studio": "pnpm --filter @revdev/studio dev",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "node scripts/check-biome-version.mjs && biome check .",
+    "lint:fix": "node scripts/check-biome-version.mjs && biome check --write .",
     "lint:docs": "node scripts/doc-lint-license-format.mjs",
     "test": "pnpm --filter @revdev/protocol build && pnpm --filter @revdev/daemon build && pnpm -r test && pnpm test:scripts",
     "test:scripts": "vitest run --config vitest.config.mjs",
@@ -27,20 +27,24 @@
     "typecheck:studio": "pnpm --filter studio typecheck"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2",
+    "@biomejs/biome": "2.5.2",
     "typescript": "7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "pnpm": {
     "overrides": {
+      "@biomejs/biome": "2.5.2",
       "esbuild": ">=0.28.1",
       "undici": ">=7.29.0 <8",
       "vite": "8.2.0",
-      "fast-uri": ">=3.1.5 <4",
-      "hono": "4.12.34",
+      "fast-uri": ">=3.1.6 <4",
+      "hono": "4.13.8",
       "ip-address": ">=10.3.1",
       "postcss": "8.5.25",
-      "qs": ">=6.15.2",
+      "qs": ">=6.16.0",
+      "nanoid@<3.3.18": "3.3.18",
+      "vitest": ">=4.1.11 <5",
+      "@vitest/mocker": ">=4.1.11 <5",
       "ws@8": ">=8.20.1",
       "@hono/node-server": ">=2.0.5",
       "body-parser": ">=2.3.0",

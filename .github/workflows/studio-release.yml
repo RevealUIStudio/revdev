@@ -16,6 +16,9 @@ permissions:
   contents: write
 
 env:
+  # Updater minisign key. OS code-signing secrets are forwarded per platform
+  # below, and only when non-empty — an empty APPLE_CERTIFICATE is still
+  # "set" to Tauri and fails at `security import`.
   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
@@ -98,19 +101,136 @@ jobs:
         run: pnpm --filter @revdev/protocol build
 
 
+      # Names only. Certificate bytes come from Actions secrets the owner sets.
+      # This step does not generate or decode a certificate; it publishes
+      # non-empty values for the Tauri bundler (APPLE_CERTIFICATE import +
+      # notarization). An empty APPLE_CERTIFICATE leaves the build unsigned.
+      - name: Forward macOS code-signing secrets
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_CERTIFICATE}" ]; then
+            if [ -n "${APPLE_CERTIFICATE_PASSWORD}" ]; then
+              echo "APPLE_CERTIFICATE_PASSWORD is set but APPLE_CERTIFICATE is empty" >&2
+              exit 1
+            fi
+            echo "codesign: APPLE_CERTIFICATE unset; macOS build stays unsigned"
+            exit 0
+          fi
+          missing=()
+          require() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              missing+=("$name")
+            fi
+          }
+          require APPLE_CERTIFICATE_PASSWORD "${APPLE_CERTIFICATE_PASSWORD}"
+          require APPLE_ID "${APPLE_ID}"
+          require APPLE_PASSWORD "${APPLE_PASSWORD}"
+          require APPLE_TEAM_ID "${APPLE_TEAM_ID}"
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "APPLE_CERTIFICATE is set but these secrets are empty: ${missing[*]}" >&2
+            exit 1
+          fi
+          publish() {
+            local name="$1"
+            local value="$2"
+            local delim
+            delim="EOS_$(openssl rand -hex 16)"
+            {
+              printf '%s<<%s\n' "$name" "$delim"
+              printf '%s\n' "$value"
+              printf '%s\n' "$delim"
+            } >> "$GITHUB_ENV"
+            echo "codesign: forwarded ${name}"
+          }
+          publish APPLE_CERTIFICATE "${APPLE_CERTIFICATE}"
+          publish APPLE_CERTIFICATE_PASSWORD "${APPLE_CERTIFICATE_PASSWORD}"
+          publish APPLE_ID "${APPLE_ID}"
+          publish APPLE_PASSWORD "${APPLE_PASSWORD}"
+          publish APPLE_TEAM_ID "${APPLE_TEAM_ID}"
+          if [ -n "${APPLE_SIGNING_IDENTITY}" ]; then
+            publish APPLE_SIGNING_IDENTITY "${APPLE_SIGNING_IDENTITY}"
+          else
+            echo "codesign: APPLE_SIGNING_IDENTITY unset; Tauri uses the identity inside the certificate"
+          fi
+
+      # Names only. Decode the owner-provided .pfx, import it into the job
+      # certificate store, and pass the thumbprint read from that certificate
+      # to Tauri. The thumbprint is not stored in the repo.
+      - name: Import Windows code-signing certificate
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # certutil writes status on stderr; do not treat that as a terminating error.
+          $PSNativeCommandUseErrorActionPreference = $false
+          $cert = $env:WINDOWS_CERTIFICATE
+          $password = $env:WINDOWS_CERTIFICATE_PASSWORD
+          $certSet = -not [string]::IsNullOrWhiteSpace($cert)
+          $passwordSet = -not [string]::IsNullOrWhiteSpace($password)
+          if (-not $certSet -and -not $passwordSet) {
+            Write-Host "codesign: WINDOWS_CERTIFICATE unset; Windows build stays unsigned"
+            exit 0
+          }
+          if (-not $certSet -or -not $passwordSet) {
+            throw "WINDOWS_CERTIFICATE and WINDOWS_CERTIFICATE_PASSWORD must both be set"
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "studio-windows-certificate.pfx"
+          $b64 = Join-Path $env:RUNNER_TEMP "studio-windows-certificate.b64.txt"
+          try {
+            $raw = $cert.Trim()
+            if ($raw -match '-----BEGIN') {
+              [System.IO.File]::WriteAllText($b64, $raw)
+              & certutil -decode $b64 $pfx | Out-Null
+              if ($LASTEXITCODE -ne 0) { throw "certutil -decode failed for WINDOWS_CERTIFICATE" }
+            } else {
+              $bytes = [Convert]::FromBase64String(($raw -replace '\s', ''))
+              [System.IO.File]::WriteAllBytes($pfx, $bytes)
+            }
+            $secure = ConvertTo-SecureString -String $password -Force -AsPlainText
+            $imported = @(Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $secure)
+            $leaf = $imported | Where-Object { $_.HasPrivateKey } | Select-Object -First 1
+            if (-not $leaf) {
+              throw "WINDOWS_CERTIFICATE imported but no certificate with a private key was found"
+            }
+            $thumb = ($leaf.Thumbprint -replace '\s', '').ToUpperInvariant()
+            if ($thumb -notmatch '^[0-9A-F]+$') {
+              throw "imported certificate thumbprint is not hex"
+            }
+            $configPath = (Join-Path $env:RUNNER_TEMP "windows-sign.json") -replace '\\', '/'
+            $json = '{"bundle":{"windows":{"certificateThumbprint":"' + $thumb + '","digestAlgorithm":"sha256","timestampUrl":"http://timestamp.comodoca.com"}}}'
+            [System.IO.File]::WriteAllText($configPath, $json)
+            Add-Content -Path $env:GITHUB_ENV -Value "WINDOWS_SIGN_ARGS=--config $configPath"
+            Write-Host "codesign: imported Windows certificate thumbprint $thumb"
+          } finally {
+            Remove-Item -Force -ErrorAction SilentlyContinue $pfx, $b64
+          }
+
       - name: Build Studio (Tauri)
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS ships ad-hoc/unsigned until Apple Developer ID + notarization are provisioned (tracked internally).
-          # With APPLE_* absent, tauri's bundler skips code-signing (keychain -> None) and produces an unsigned
-          # .app/.dmg; passing an invalid/unprovisioned APPLE_CERTIFICATE instead hard-fails the bundle at `security
-          # import`. Restore the 6 APPLE_* secrets here once a real Developer ID cert lands. Same unsigned posture as
-          # Windows (SmartScreen). Does NOT touch TAURI_SIGNING_* (updater key, workflow env above) or license signing.
+          # APPLE_* arrives via GITHUB_ENV from the forward step when those
+          # secrets are non-empty. WINDOWS_SIGN_ARGS is set only after a real
+          # WINDOWS_CERTIFICATE import. Neither path embeds certificate bytes.
+          # Does not touch TAURI_SIGNING_* (updater key, workflow env above).
         with:
           projectPath: apps/studio
           tauriScript: pnpm tauri
-          args: --target ${{ matrix.rust_target }}
+          args: --target ${{ matrix.rust_target }} ${{ env.WINDOWS_SIGN_ARGS }}
           tagName: ${{ github.ref_name }}
           releaseName: "RevDev ${{ github.ref_name }}"
           releaseBody: "See the [changelog](https://github.com/RevealUIStudio/revdev/blob/main/CHANGELOG.md) for details."

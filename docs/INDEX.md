@@ -1,7 +1,7 @@
 ---
 type: repo-doc-index
 repo: revdev
-updated: 2026-07-23
+updated: 2026-09-23
 ---
 
 # RevDev — Documentation Index
@@ -23,6 +23,12 @@ Exactly one plan and one spec, each behind a stable entry point:
 - [`GETTING_STARTED.md`](./GETTING_STARTED.md) — quick start
 - [`KEY_GENERATION.md`](./KEY_GENERATION.md) — signing-key runbook (Tauri updater + license keypair)
 - [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) — common issues
+
+## Gap notes
+
+- [`gap-specs/GAP-294-permission-modes-design.md`](./gap-specs/GAP-294-permission-modes-design.md) — GAP-294 permission modes (manual / auto / agent). §4 and §5 countersigned 2026-07-18. Install default stays `shadow` until the owner flips it.
+- [`gap-specs/GAP-294-permission-shadow-soak-review.md`](./gap-specs/GAP-294-permission-shadow-soak-review.md) — historical soak review for that flip.
+- [`gap-specs/GAP-294-permission-modes-STOP.md`](./gap-specs/GAP-294-permission-modes-STOP.md) — note that the design is vendored here.
 
 ## Fleet coordination
 

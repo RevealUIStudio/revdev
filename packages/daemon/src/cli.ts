@@ -20,8 +20,9 @@
  */
 
 import { spawn } from 'node:child_process';
-import { openSync } from 'node:fs';
+import { openSync, readFileSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import './inference.js';
@@ -44,6 +45,7 @@ import './workflow-rpc.js';
 import './skills-rpc.js';
 import { DAEMON_DEFAULTS } from './config.js';
 import { LICENSE_TIER_HELP, LicenseConfigError, LicenseExpiredError } from './license.js';
+import { parseCsvList, resolvePermissionMode } from './permission.js';
 import { startDaemon } from './server.js';
 
 // Default log path for --detach mode. Use the user's data dir (mode 0700,
@@ -70,9 +72,17 @@ Commands:
                  REVDEV_DAEMON_DATA at the target copy.
   license-verify Read a JWT from stdin, verify it, print JSON, exit.
                  Does not write a PID file or start the daemon.
+  approvals      Headless GAP-294 queue (revdev approvals). list, or
+                 decide <approvalId> <approved|denied>. Signs with
+                 REVDEV_AGENT_DID + REVDEV_AGENT_PRIVATE_KEY_PEM. The
+                 decider must be the trusted-client operator.
 
 Options:
   --help, -h     Show this help message
+  --ensure       Start the daemon if the socket is down, then exit.
+                 Already-running daemons are left alone. A dead PID file
+                 is cleared first. Clients (goal-client) call this so the
+                 daemon starts when something needs it.
   --detach       Spawn a detached child daemon and exit immediately.
                  Logs go to REVDEV_DAEMON_LOG (default ~/.local/share/revealui/daemon.log).
                  The detached child runs in its own session (setsid) so it
@@ -91,8 +101,12 @@ Environment:
   REVDEV_DAEMON_MAX_LINE_BYTES  Max bytes per JSON-RPC frame (default: ${DAEMON_DEFAULTS.maxLineBytes}, ~1 MiB)
   REVDEV_DAEMON_GIT_TIMEOUT_MS  Max wall-clock per git spawn (default: ${DAEMON_DEFAULTS.gitTimeoutMs} ms = ${DAEMON_DEFAULTS.gitTimeoutMs / 1000} s)
   REVDEV_DAEMON_SHUTDOWN_GRACE_MS  Max wait for in-flight handlers during close() (default: ${DAEMON_DEFAULTS.shutdownGracePeriodMs} ms = ${DAEMON_DEFAULTS.shutdownGracePeriodMs / 1000} s)
+  REVDEV_DAEMON_IDLE_STOP_MS  Stop after this many ms with zero clients (default: 300000). 0 keeps the daemon up.
   REVDEV_PERMISSION_MODE       GAP-294 mode: shadow (default) | manual | auto | agent-scoped
-                               shadow = would_* events only (no block). Flip only after soak review.
+                               Unset stays shadow. Unknown value fails closed to manual.
+                               Flip the install default only after the soak review.
+  REVDEV_PERMISSION_DENY_METHODS   Auto-mode method deny-list (comma-separated).
+  REVDEV_PERMISSION_DENY_PREFIXES  Auto-mode root-relative path prefixes (comma-separated).
   REVDEV_SKILLS_INVOKE_TIMEOUT_MS  Override skills.invoke wall-clock (default: prompt-sized, min 300s; completion is also capped at 2048 tokens)
   INFERENCE_SNAPS_BASE_URL     OpenAI-compat snap base (default: http://localhost:9090/v1)
 
@@ -109,6 +123,11 @@ if (args.includes('--version') || args.includes('-v')) {
 
 // `license-verify` — verify a JWT from stdin and exit. Must sit in the same
 // early-exit band as migrate: no PID file, no socket, no PGlite, no startDaemon.
+if (args[0] === 'approvals') {
+  const { runApprovalsCli } = await import('./approvals-cli.js');
+  process.exit(await runApprovalsCli(args.slice(1)));
+}
+
 if (args[0] === 'license-verify') {
   const { readFileSync } = await import('node:fs');
   const { runLicenseVerifyCommand } = await import('./license-verify-cli.js');
@@ -166,6 +185,80 @@ if (args[0] === 'migrate') {
   }
 }
 
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function pingSocket(socketPath: string, timeoutMs = 800): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect(socketPath);
+    let buf = '';
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    socket.on('connect', () => {
+      socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} })}\n`);
+    });
+    socket.on('data', (chunk) => {
+      buf += chunk.toString();
+      if (buf.includes('\n')) finish(buf.includes('"pong":true'));
+    });
+    socket.on('error', () => finish(false));
+  });
+}
+
+if (args.includes('--ensure')) {
+  const socketPath = process.env.REVDEV_DAEMON_SOCKET ?? DAEMON_DEFAULTS.socketPath;
+  const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;
+  if (await pingSocket(socketPath)) {
+    console.log('revdev-daemon already running');
+    process.exit(0);
+  }
+  try {
+    const pid = Number.parseInt(readFileSync(pidFile, 'utf8').trim(), 10);
+    if (Number.isFinite(pid) && !pidAlive(pid)) {
+      await unlink(pidFile).catch(() => {});
+      await unlink(socketPath).catch(() => {});
+    } else if (Number.isFinite(pid) && pidAlive(pid)) {
+      console.error(`[daemon] pid ${pid} is alive but the socket did not answer ping`);
+      process.exit(1);
+    }
+  } catch {
+    await unlink(socketPath).catch(() => {});
+  }
+  const entryScript = process.argv[1];
+  if (!entryScript) {
+    throw new Error('Cannot determine daemon entry script (process.argv[1] missing)');
+  }
+  const child = spawn(process.execPath, [entryScript, '--detach'], {
+    detached: true,
+    stdio: 'ignore',
+    env: process.env,
+  });
+  child.unref();
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (await pingSocket(socketPath)) {
+      console.log('revdev-daemon started');
+      process.exit(0);
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  console.error('[daemon] --ensure timed out waiting for the socket');
+  process.exit(1);
+}
+
 // --detach: re-spawn ourselves in a new session, redirect stdio to a log,
 // and exit the parent. The child runs the same script without --detach so
 // it falls into the normal foreground codepath below.
@@ -192,6 +285,13 @@ if (args.includes('--detach')) {
   process.exit(0);
 }
 
+function parseNonNegativeInt(envName: string, defaultValue: number): number {
+  const raw = process.env[envName];
+  if (raw === undefined || raw === '') return defaultValue;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultValue;
+}
+
 function parsePositiveInt(envName: string, defaultValue: number): number {
   const raw = process.env[envName];
   if (!raw) return defaultValue;
@@ -208,8 +308,12 @@ const config = {
     'REVDEV_DAEMON_SHUTDOWN_GRACE_MS',
     DAEMON_DEFAULTS.shutdownGracePeriodMs,
   ),
+  idleStopMs: parseNonNegativeInt('REVDEV_DAEMON_IDLE_STOP_MS', 5 * 60 * 1000),
   trustedClientFingerprintPath:
     process.env.REVDEV_DAEMON_TRUSTED_CLIENT_FP ?? DAEMON_DEFAULTS.trustedClientFingerprintPath,
+  permissionMode: resolvePermissionMode(process.env),
+  permissionDenyMethods: parseCsvList(process.env.REVDEV_PERMISSION_DENY_METHODS),
+  permissionDenyPrefixes: parseCsvList(process.env.REVDEV_PERMISSION_DENY_PREFIXES),
 };
 
 const pidFile = process.env.REVDEV_DAEMON_PID ?? DAEMON_DEFAULTS.pidFile;

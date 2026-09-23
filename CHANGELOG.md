@@ -9,23 +9,46 @@ Dates are ISO 8601 (UTC).
 
 ### Changed
 
-- **Bridge kg_* tools consume published knowledge-graph memory helpers.**
-  `@revdev/bridge` now depends on `@revealui/knowledge-graph` `^0.1.12` and
-  calls `publishMemory` / `queryMemory` plus `assembleContext`. Tool JSON is
-  an envelope `{ status, available, … }` (breaking for previous unwrapped
-  payloads). Missing identity returns `unavailable` / `principal-missing`
-  (`REVDEV_AGENT_ID` + hook-identity file). Agent writes are limited to
-  `agent-fact` | `memory` | `manual`. Database-down still does not take down
-  session/mail RPC. Daemon `memory.*` / `context.snapshot` are unchanged.
-  Root `pnpm.overrides` maps unpublished `@revealui/ts-strada` to `typescript@6.0.3`
-  so `0.1.12` can install; drop the override when a later knowledge-graph
-  release makes ts-strada optional.
-- Desktop app display name is **RevDev** (was “RevealUI Studio”) so the native
-  app is not confused with the company (RevealUI Studio). Window title, tray,
-  Start Menu / NSIS / MSI DisplayName, `productName`, about, login, sidebar,
-  setup, and terminal chrome now say RevDev. Bundle identifier
-  `dev.revealui.studio` and updater endpoints are unchanged so 0.2.12 installs
-  can still update. No version bump, no GitHub Release, no OS signing.
+- **GAP-262 agent-key GC.** Classification uses PID liveness instead of
+  `agent_sessions.started_at`. Quarantine and delete stay disabled; the
+  sweep does not remove agent keys. `harness.health` reports `agentKeyGc`.
+- Studio release workflow reads macOS and Windows code-signing secrets by
+  name. Builds stay unsigned until those secrets are set. No certificates
+  are stored in the repo.
+
+### Fixed
+
+- **Biome is pinned to 2.5.2.** The root dependency is an exact version, and
+  `pnpm.overrides` forces that same version. `pnpm lint` and the CI Quality
+  job run `scripts/check-biome-version.mjs` before `biome check`, so a stale
+  2.5.0 binary fails locally instead of disagreeing with CI. The schema URL
+  in `biome.json` matches 2.5.2.
+
+## [0.3.0] — 2026-09-22
+
+### Changed
+
+- Root package and `@revdev/daemon` `0.2.0` → `0.3.0`. Since `0.2.0` (#290,
+  2026-07-17) the daemon shipped a knowledge-graph replica and `graph.*` RPC,
+  `skills.invoke`, goals, workflow run/list, and GAP-294 enforcement on skill
+  tools. That is a minor of behavior on each package, not a shared lockstep
+  number with any other repo.
+- Studio `0.2.12` → `0.3.0` (`apps/studio/package.json`,
+  `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`). Since `0.2.12` the
+  app re-fetches the license on a timer and can auto-provision it into the
+  vault. The display name is RevDev. Bundle id `dev.revealui.studio` and the
+  updater endpoints are unchanged, so `0.2.12` installs can still update.
+  This commit does not cut a GitHub Release.
+- `@revdev/protocol` `0.1.0` → `0.2.0`. Shared RPC types grew (`daemon.peers`,
+  wait-for-work). Inside `0.x` a contract addition is a minor.
+- `@revdev/bridge` `0.1.0` → `0.2.0`. `kg_*` tools now depend on
+  `@revealui/knowledge-graph` `^0.1.12` and return an envelope
+  `{ status, available, … }` (breaking for previous unwrapped payloads).
+  Missing identity returns `unavailable` / `principal-missing`. Agent writes
+  are limited to `agent-fact` | `memory` | `manual`. Database-down still does
+  not take down session/mail RPC.
+- `@revdev/theme` stays `0.1.0`. Nothing but a dependency soak touched it
+  since its version line.
 
 ## [0.2.12] — 2026-08-29
 

@@ -60,5 +60,11 @@ if [ "$(uname)" = "Darwin" ]; then
   exit 0
 fi
 
-echo "Error: Unsupported platform. Requires systemd (Linux) or launchd (macOS)."
-exit 1
+# Linux without a user systemd bus (typical WSL before a user session).
+# Start on demand and stop after the idle window. Clients call --ensure.
+echo "No user systemd bus. The daemon will start when a client asks, and stop after it has no clients."
+echo "  Start now:  revdev-daemon --ensure"
+echo "  Idle stop:  REVDEV_DAEMON_IDLE_STOP_MS (default 300000, 0 to stay up)"
+echo "  License:    ~/.local/share/revealui/license.key (mode 0600) or REVEALUI_LICENSE_KEY_FILE"
+revdev-daemon --ensure
+exit $?

@@ -6,7 +6,7 @@
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { registerHandler } from './server.js';
+import { getDaemonConfig, registerHandler } from './server.js';
 import { listSkillCatalog } from './skill-catalog.js';
 import { PHASE_C_INFERENCE_SNAP, prepareInvoke } from './skill-invoke.js';
 import { runSkillInvokeRuntime } from './skill-invoke-runtime.js';
@@ -68,6 +68,16 @@ registerHandler('skills.invoke', async (params, db, ctx) => {
   return runSkillInvokeRuntime(prepared, {
     projectRoot: roots.projectRoot,
     revskillsRoot: roots.revskillsRoot,
-    permission: agentId ? { db, agentId } : undefined,
+    permission: agentId
+      ? {
+          db,
+          agentId,
+          daemonDefault: getDaemonConfig().permissionMode,
+          policy: {
+            denyMethods: getDaemonConfig().permissionDenyMethods,
+            denyPrefixes: getDaemonConfig().permissionDenyPrefixes,
+          },
+        }
+      : undefined,
   });
 });
