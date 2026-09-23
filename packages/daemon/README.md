@@ -47,6 +47,20 @@ and sending SIGTERM:
 kill "$(cat ~/.local/share/revealui/harness.pid)"
 ```
 
+### On demand (start when a client asks, stop when idle)
+
+`revdev-daemon --ensure` starts the daemon if the socket is down and does
+nothing if it is already answering `ping`. `goal-client` calls `--ensure`
+before each RPC, so the goals store comes up when the tracker needs it.
+
+With zero socket clients for `REVDEV_DAEMON_IDLE_STOP_MS` (default 5
+minutes) the daemon stops itself. Set that variable to `0` to stay up.
+An enabled HTTP gateway does not idle-stop.
+
+A license file at `~/.local/share/revealui/license.key` (mode 0600) is
+read when `REVEALUI_LICENSE_KEY` and `REVEALUI_LICENSE_KEY_FILE` are unset.
+`goal.*` still requires a valid Pro or Enterprise license.
+
 ### systemd-user (auto-start, auto-restart on crash)
 
 ```bash
