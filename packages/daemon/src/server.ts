@@ -43,6 +43,7 @@ import {
   runtimeLicenseRecheck,
 } from './guard.js';
 import { HttpGateway } from './http-gateway.js';
+import { createIdleStop } from './idle-stop.js';
 import { evaluateLicense, LicenseConfigError, type LicenseTier, tierRank } from './license.js';
 import { loopGuards } from './loop-guard.js';
 import {
@@ -68,7 +69,6 @@ import {
   syncTaskCreate,
   syncTaskRelease,
 } from './neon.js';
-import { createIdleStop } from './idle-stop.js';
 import { initObservability, onConnect, onDisconnect, trackRpcCall } from './observability.js';
 import {
   ApprovalRequiredError,

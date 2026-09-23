@@ -225,8 +225,7 @@ export type LicenseKeySource = 'env' | 'file' | 'none';
  */
 /** Founder license file the daemon reads when no license env var is set. */
 export function defaultLicenseKeyPath(): string {
-  const dataDir =
-    process.env.REVDEV_DAEMON_DATA ?? join(homedir(), '.local', 'share', 'revealui');
+  const dataDir = process.env.REVDEV_DAEMON_DATA ?? join(homedir(), '.local', 'share', 'revealui');
   return join(dataDir, 'license.key');
 }
 
