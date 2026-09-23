@@ -1,7 +1,7 @@
 ---
 type: repo-doc-index
 repo: revdev
-updated: 2026-07-23
+updated: 2026-09-23
 ---
 
 # RevDev — Documentation Index
@@ -23,6 +23,10 @@ Exactly one plan and one spec, each behind a stable entry point:
 - [`GETTING_STARTED.md`](./GETTING_STARTED.md) — quick start
 - [`KEY_GENERATION.md`](./KEY_GENERATION.md) — signing-key runbook (Tauri updater + license keypair)
 - [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) — common issues
+
+## Gap notes
+
+- [`gap-specs/GAP-294-permission-modes-STOP.md`](./gap-specs/GAP-294-permission-modes-STOP.md) — GAP-294 manual/auto work is blocked: the countersigned design is not in this repo. Default permission mode was not changed.
 
 ## Fleet coordination
 
