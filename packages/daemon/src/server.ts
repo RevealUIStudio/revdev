@@ -31,6 +31,7 @@ import {
   spkiPemToRaw,
   verifyEnvelope,
 } from './agent-identity-crypto.js';
+import { agentKeyGcHealth, runAgentKeyGc } from './agent-key-gc.js';
 import { DAEMON_DEFAULTS, type DaemonConfig } from './config.js';
 import { readRootOwnedFile } from './confinement.js';
 import { DESIGN_PACK_MOVED_EVENT, designPackEvents } from './design-pack-events.js';
@@ -2585,6 +2586,9 @@ registerHandler('harness.health', async (_params, db) => {
       lastAgedCount: pruneState.lastAgedCount,
       lastDeletedCount: pruneState.lastDeletedCount,
     },
+    // GAP-262: PID-liveness classification. quarantined and deleted stay 0
+    // while the owner gate is closed.
+    agentKeyGc: agentKeyGcHealth(),
     // GAP-154: signal whether daemon→Neon sync is wired this run. Callers
     // can use this to decide whether `session.list({scope:'fleet'})`
     // returning empty means "no peers" or "no fleet visibility".
@@ -2930,11 +2934,16 @@ export async function startDaemon(
       runPrune(db, cfg.staleSessionDays, cfg.hardDeleteDays).catch((err) =>
         log.warn('periodic prune failed', { error: String(err) }),
       );
+      // GAP-262: classify agent keys by PID liveness. Quarantine/delete stay off.
+      runAgentKeyGc(db).catch((err) => log.warn('agent-key gc failed', { error: String(err) }));
     }, cfg.pruneIntervalMs);
     pruneTimer.unref();
     setTimeout(() => {
       runPrune(db, cfg.staleSessionDays, cfg.hardDeleteDays).catch((err) =>
         log.warn('startup prune failed', { error: String(err) }),
+      );
+      runAgentKeyGc(db).catch((err) =>
+        log.warn('startup agent-key gc failed', { error: String(err) }),
       );
     }, 5000).unref();
   }

@@ -138,6 +138,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"ping"}' | \
 ## Architecture pointers
 
 - `src/server.ts` — JSON-RPC dispatch, license guard, RPC handler registry, periodic stale-session prune (GAP-153).
+- `src/agent-key-gc.ts` — agent-key GC classification by PID liveness (GAP-262). Quarantine and delete stay disabled; the sweep does not remove keys.
 - `src/storage/schema.ts` — PGlite schema (11 tables: agent_sessions, agent_messages, file_reservations, tasks, events, worktrees, agent_memory, merge_requests, agent_identity, agent_identity_keys, agent_identity_nonces).
 - `src/neon.ts` — daemon → Neon dual-write helpers (GAP-154 Phases 2 + 3). Best-effort, no-op when `POSTGRES_URL` unset. Sessions, mail, files, tasks, events dual-write; `memory.*` / `merge.*` stay local-only until Neon schema grows (documented in-module).
 - `src/http-gateway.ts` — TCP HTTP gateway + pairing + SSE (GAP-421 / GAP-154 Phase 5 transport). Off unless `httpPort > 0`.

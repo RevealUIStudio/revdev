@@ -7,6 +7,12 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+### Changed
+
+- **GAP-262 agent-key GC.** Classification uses PID liveness instead of
+  `agent_sessions.started_at`. Quarantine and delete stay disabled; the
+  sweep does not remove agent keys. `harness.health` reports `agentKeyGc`.
+
 ### Fixed
 
 - **Biome is pinned to 2.5.2.** The root dependency is an exact version, and

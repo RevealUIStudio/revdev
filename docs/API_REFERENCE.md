@@ -37,7 +37,9 @@ Returns a pong response to verify daemon connectivity.
 ### `harness.health`
 **Tier**: Free (GAP-337 — monitoring without a Pro license; `harness.prune` remains Pro)
 
-Returns daemon health status, active session/task counts, prune state, and client-identity anchor consistency. Takes no params (any passed are ignored).
+Returns daemon health status, active session/task counts, prune state, agent-key GC classification, and client-identity anchor consistency. Takes no params (any passed are ignored).
+
+Agent-key GC (GAP-262) counts identities by PID liveness (`agentKeyGc`). It does not use `started_at`. `quarantined` and `deleted` stay 0 while quarantine/delete is owner-gated off; the sweep does not remove agent keys.
 
 **Params**: none
 **Response**:
@@ -48,6 +50,7 @@ Returns daemon health status, active session/task counts, prune state, and clien
   "openTasks": 5,
   "uptime": 86400,
   "prune": { "lastRunAt": "2026-07-10T00:00:00.000Z", "lastAgedCount": 0, "lastDeletedCount": 0 },
+  "agentKeyGc": { "lastRunAt": null, "scanned": 0, "live": 0, "deadPid": 0, "unproven": 0, "quarantined": 0, "deleted": 0, "quarantineDeletesEnabled": false },
   "neonSyncActive": false,
   "identitySignatureMode": "accept-if-present",
   "anchorInconsistencies": []
