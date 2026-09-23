@@ -16,6 +16,8 @@
  */
 
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { hostname as osHostname } from 'node:os';
@@ -2867,10 +2869,31 @@ registerHandler('memory.query', async (params, db, ctx) => {
 // Server
 // ---------------------------------------------------------------------------
 
+/** Control layer first. Tests skip this. Missing CLI is not a startup failure. */
+function announceControlLayer(): void {
+  if (process.env.VITEST || process.env.REVDEV_SKIP_SESSION_ADAPTER === '1') return;
+  const fleet = process.env.REVEALFLEET_ROOT || process.env.REVFLEET_ROOT;
+  const cli = fleet ? `${fleet}/revealui/packages/harnesses/dist/cli.js` : '';
+  const run =
+    cli && existsSync(cli)
+      ? spawnSync(process.execPath, [cli, 'session', 'adapter', 'revdev'], {
+          stdio: ['ignore', 'inherit', 'inherit'],
+          timeout: 8000,
+        })
+      : spawnSync('revealui-harnesses', ['session', 'adapter', 'revdev'], {
+          stdio: ['ignore', 'inherit', 'inherit'],
+          timeout: 8000,
+        });
+  if (run.error || run.status) {
+    process.stderr.write('[control-layer] WARN: session adapter revdev failed\n');
+  }
+}
+
 export async function startDaemon(
   config: Partial<DaemonConfig> = {},
 ): Promise<{ close: () => Promise<void>; _db: PGlite; _httpGateway: HttpGateway | null }> {
   const cfg = { ...DAEMON_DEFAULTS, ...config };
+  announceControlLayer();
   // Publish the effective config so handlers in other modules (filegit.ts)
   // can read limits like maxInlineReadBytes without a cfg parameter.
   _daemonConfig = cfg;
