@@ -238,6 +238,15 @@ importers:
         specifier: '>=4.1.11 <5'
         version: 4.1.11(@types/node@25.9.4)(jsdom@29.1.1)(vite@8.2.0(@types/node@25.9.4)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
+  packages/db-inspector:
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: '>=4.1.11 <5'
+        version: 4.1.11(@types/node@25.9.4)(jsdom@29.1.1)(vite@8.2.0(@types/node@25.9.4)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+
   packages/protocol:
     dependencies:
       zod:
