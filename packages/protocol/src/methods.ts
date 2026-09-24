@@ -77,7 +77,8 @@ export const RPC_METHODS = {
   'events.log': 'events.log',
   'events.query': 'events.query',
   'events.wait': 'events.wait',
-  // GAP-362 token-economy loop guard
+  // GAP-362 token-economy loop guard.
+  // Payloads and the Studio-attached call shape: src/loop-contract.ts.
   'loop.arm': 'loop.arm',
   'loop.tick': 'loop.tick',
   'loop.status': 'loop.status',

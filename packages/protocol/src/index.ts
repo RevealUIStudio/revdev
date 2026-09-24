@@ -16,6 +16,27 @@ export type {
   HarnessProcessInfo,
   HealthCheckResult,
 } from './harness.js';
+export type {
+  LoopActorParams,
+  LoopArmParams,
+  LoopArmWireResult,
+  LoopGuardStatus,
+  LoopGuardWireState,
+  LoopSpendWire,
+  LoopStatusParams,
+  LoopStatusWireResult,
+  LoopTickParams,
+  LoopTickWireResult,
+} from './loop-contract.js';
+export {
+  armDaemonLoop,
+  DEFAULT_LOOP_NOOP_LIMIT,
+  HARNESS_SOCK_DEFAULT,
+  LOOP_GUARD_METHODS,
+  loopMustStop,
+  statusDaemonLoop,
+  tickDaemonLoop,
+} from './loop-contract.js';
 export { RPC_METHODS } from './methods.js';
 export type { JsonRpcRequest, JsonRpcResponse, RpcErrorCode } from './rpc.js';
 export type {
