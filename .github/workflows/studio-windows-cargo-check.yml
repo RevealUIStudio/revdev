@@ -1,0 +1,72 @@
+name: Studio Windows cargo check
+
+# Type-check the Studio Tauri crate for x86_64-pc-windows-msvc so the
+# cfg(not(unix)) daemon_setup path (apps/studio/src-tauri/src/daemon_ctl.rs)
+# stays compiling on pull requests. Release CI already builds this target
+# (studio-release.yml). The other PR workflows run on ubuntu-latest, which
+# does not compile that cfg.
+#
+# The WSL relay (apps/studio/relay) is a Linux ELF. It uses std::os::unix and
+# is staged into WSL; it is not an msvc crate, so this job does not check it.
+#
+# NOT a required check. Path filters make the job skip on unrelated PRs, and
+# a skipped required check blocks merges. Do not add this job to branch
+# protection.
+
+on:
+  push:
+    branches: [main, test]
+    paths:
+      - "apps/studio/src-tauri/**"
+      - ".github/workflows/studio-windows-cargo-check.yml"
+  pull_request:
+    branches: [main, test]
+    paths:
+      - "apps/studio/src-tauri/**"
+      - ".github/workflows/studio-windows-cargo-check.yml"
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on non-main refs. Never cancel the promote SHA on main.
+concurrency:
+  group: revdev-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  cargo-check-windows:
+    name: cargo check (x86_64-pc-windows-msvc)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: apps/studio/src-tauri -> target
+
+      # tauri-build (build.rs) requires frontendDist and the bundled resource
+      # path to exist. cargo check does not execute the relay. The real Linux
+      # ELF is produced on Linux (apps/studio/src-tauri/wsl/README.md).
+      - name: Satisfy tauri-build inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apps/studio/dist
+          mkdir -p apps/studio/src-tauri/wsl
+          if [ ! -f apps/studio/src-tauri/wsl/revdev-relay ]; then
+            : > apps/studio/src-tauri/wsl/revdev-relay
+          fi
+
+      - name: cargo check --target x86_64-pc-windows-msvc
+        shell: bash
+        run: |
+          cargo check --locked \
+            --manifest-path apps/studio/src-tauri/Cargo.toml \
+            --target x86_64-pc-windows-msvc
