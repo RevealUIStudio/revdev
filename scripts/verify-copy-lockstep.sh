@@ -73,27 +73,48 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 2
 fi
 
-mode="$(jq -r '.mode // empty' "$MANIFEST")"
-if [[ "$mode" != "copy" ]]; then
-  echo "✗ $DOT/.revcon-manifest.json mode is '${mode:-missing}' (expected copy)" >&2
-  exit 1
-fi
-
-if ! jq -e '.files | type == "object"' "$MANIFEST" >/dev/null 2>&1; then
-  echo "✗ $DOT/.revcon-manifest.json missing files map" >&2
+# Parse and validate the entire manifest before checking any paths. A parser
+# failure inside process substitution would otherwise leave the outer loop's
+# exit status at zero and allow a malformed manifest to pass as an empty one.
+if ! manifest_rows="$(jq -s -r '
+  if length == 1 and (.[0] | type == "object") then
+    .[0] as $m |
+    if ($m.mode == "copy")
+      and ($m.profiles | type == "array")
+      and all($m.profiles[]; type == "string")
+      and ($m.files | type == "object")
+      and all($m.files | to_entries[];
+        ((.key | startswith("rules/") or startswith("agents/") or startswith("skills/"))
+          and (.key | split("/") | all(.[]; length > 0 and . != "." and . != ".."))
+          and (.key | test("[[:cntrl:]]") | not)
+          and (.value | type == "object")
+          and (.value.source | type == "string")
+          and (.value.source | length > 0)
+          and (.value.source | test("[[:cntrl:]]") | not)
+          and (.value.sha256 | type == "string")
+          and (.value.sha256 | test("^[0-9a-f]{64}$"))))
+    then $m.files | to_entries[] | tojson | @base64
+    else error("invalid copy manifest schema") end
+  else error("expected exactly one manifest object") end
+' "$MANIFEST" 2>/dev/null)"; then
+  echo "✗ $DOT/.revcon-manifest.json is not one valid copy manifest" >&2
   exit 1
 fi
 
 hash_file() {
-  sha256sum "$1" | awk '{print $1}'
+  sha256sum < "$1" | awk '{print $1}'
 }
 
 problems=0
 count=0
 declare -A manifest_paths=()
 
-while IFS=$'\t' read -r rel src want; do
-  [[ -n "$rel" ]] || continue
+while IFS= read -r encoded; do
+  [[ -n "$encoded" ]] || continue
+  row="$(printf '%s' "$encoded" | base64 -d)"
+  rel="$(jq -r '.key' <<< "$row")"
+  src="$(jq -r '.value.source' <<< "$row")"
+  want="$(jq -r '.value.sha256' <<< "$row")"
   count=$((count + 1))
   file_rel="$DOT/$rel"
   manifest_paths["$file_rel"]=1
@@ -119,25 +140,32 @@ while IFS=$'\t' read -r rel src want; do
     echo "    Edit the revcon profile ($src), then re-run link.sh --mode copy." >&2
     problems=$((problems + 1))
   fi
-done < <(jq -r '.files | to_entries[] | [.key, .value.source, .value.sha256] | @tsv' "$MANIFEST")
+done <<< "$manifest_rows"
 
-# Strays: git-tracked under materialized dirs but not in the manifest
-if git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  pathspecs=()
-  for sub in "${MATERIALIZED_SUBDIRS[@]}"; do
-    pathspecs+=("$DOT/$sub")
-  done
-  while IFS= read -r tracked; do
-    [[ -n "$tracked" ]] || continue
-    if [[ -z "${manifest_paths[$tracked]+x}" ]]; then
-      echo "  $tracked — tracked but not in the manifest (hand-added?)." >&2
-      echo "    Add it to the revcon profile and re-run link.sh --mode copy, or untrack it." >&2
-      problems=$((problems + 1))
-    fi
-  done < <(git -C "$TARGET" ls-files -- "${pathspecs[@]}" 2>/dev/null || true)
-else
-  echo "  (warn) not a git work tree — skipping stray-file check" >&2
+# Strays: git-tracked under materialized dirs but not in the manifest.
+# A failed inventory cannot prove lockstep, so reject it instead of treating
+# an empty error output as a clean tracked tree.
+if ! git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "error: target is not a git work tree; cannot check tracked strays" >&2
+  exit 2
 fi
+pathspecs=()
+for sub in "${MATERIALIZED_SUBDIRS[@]}"; do
+  pathspecs+=("$DOT/$sub")
+done
+tracked_file_list="$(mktemp)"
+trap 'rm -f -- "$tracked_file_list"' EXIT
+if ! git -C "$TARGET" ls-files -z -- "${pathspecs[@]}" > "$tracked_file_list"; then
+  echo "error: git could not list tracked editor files" >&2
+  exit 2
+fi
+while IFS= read -r -d '' tracked; do
+  if [[ -z "${manifest_paths[$tracked]+x}" ]]; then
+    echo "  $tracked — tracked but not in the manifest (hand-added?)." >&2
+    echo "    Add it to the revcon profile and re-run link.sh --mode copy, or untrack it." >&2
+    problems=$((problems + 1))
+  fi
+done < "$tracked_file_list"
 
 profiles="$(jq -r '.profiles | join(", ")' "$MANIFEST" 2>/dev/null || echo "?")"
 

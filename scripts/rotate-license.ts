@@ -37,12 +37,18 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createPublicKey, verify } from 'node:crypto';
 import { appendFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { revokeJti } from '../packages/daemon/src/revoked-jtis.js';
-import { issueLicense, revvaultSet } from './issue-license.js';
+import {
+  getPrivateKey,
+  issueLicense,
+  revvaultSet,
+  validateLicenseStorePath,
+} from './issue-license.js';
 
 const DAY_SECONDS = 86_400;
 
@@ -72,9 +78,8 @@ export interface DecodedLicense {
 }
 
 /**
- * Decode (NOT verify) a license JWT to read its claims. We are reading our own
- * vault copy purely to decide whether to rotate + to record the prior identity
- * in the audit log; signature verification is the daemon's job at load time.
+ * Decode (NOT verify) a license JWT to read its claims. The rotation CLI
+ * verifies the stored token's signature before using these decoded claims.
  */
 export function decodeLicense(jwt: string): DecodedLicense {
   const parts = jwt.trim().split('.');
@@ -97,6 +102,34 @@ export function decodeLicense(jwt: string): DecodedLicense {
   }
 }
 
+/** Authenticate the stored token with the public half of the current signing
+ * key before trusting its expiry or revocation identity. Expired tokens still
+ * pass this signature check so they can be replaced on a calendar run. */
+export function assertSignedPriorLicense(jwt: string, publicKey: string): void {
+  try {
+    const parts = jwt.trim().split('.');
+    if (parts.length !== 3) throw new Error('invalid JWT shape');
+    const [headerB64, payloadB64, signatureB64] = parts as [string, string, string];
+    const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf-8')) as Record<
+      string,
+      unknown
+    >;
+    if (header.alg !== 'EdDSA') throw new Error('invalid algorithm');
+    if (
+      !verify(
+        null,
+        Buffer.from(`${headerB64}.${payloadB64}`),
+        publicKey,
+        Buffer.from(signatureB64, 'base64url'),
+      )
+    ) {
+      throw new Error('invalid signature');
+    }
+  } catch {
+    throw new Error('Current license signature cannot be verified; refusing rotation.');
+  }
+}
+
 /**
  * Rotation decision. Emergency always rotates. Otherwise rotate only when a
  * dated license is within the threshold window; a perpetual license (exp null)
@@ -111,6 +144,27 @@ export function shouldRotate(
   if (emergency) return true;
   if (exp === null) return false;
   return exp - nowSeconds <= thresholdDays * DAY_SECONDS;
+}
+
+export function assertEmergencyRevocable(prior: DecodedLicense, emergency: boolean): void {
+  if (emergency && (prior.malformed || !prior.jti?.trim())) {
+    throw new Error(
+      'Current license has no revocable jti. Emergency replacement would leave the old key valid; rotate the signing key or add legacy-token revocation first.',
+    );
+  }
+}
+
+export function validateRotateConfig(cfg: RotateConfig): void {
+  validateLicenseStorePath(cfg.vaultPath);
+  if (!['pro', 'max', 'enterprise'].includes(cfg.tier)) {
+    throw new Error('Replacement tier must be pro, max, or enterprise.');
+  }
+  if (!Number.isInteger(cfg.days) || cfg.days < 1 || cfg.days > 36_500) {
+    throw new Error('Replacement days must be an integer from 1 to 36500.');
+  }
+  if (!Number.isInteger(cfg.thresholdDays) || cfg.thresholdDays < 0 || cfg.thresholdDays > 36_500) {
+    throw new Error('Threshold days must be an integer from 0 to 36500.');
+  }
 }
 
 function parseArgs(): RotateConfig {
@@ -144,10 +198,10 @@ function parseArgs(): RotateConfig {
         cfg.customer = args[++i];
         break;
       case '--days':
-        cfg.days = Number.parseInt(args[++i] ?? '', 10) || cfg.days;
+        cfg.days = Number(args[++i]);
         break;
       case '--threshold-days':
-        cfg.thresholdDays = Number.parseInt(args[++i] ?? '', 10) || cfg.thresholdDays;
+        cfg.thresholdDays = Number(args[++i]);
         break;
       case '--perpetual':
         cfg.perpetual = true;
@@ -245,6 +299,13 @@ function isoOrPerpetual(exp: number | null): string {
 async function main(): Promise<void> {
   const cfg = parseArgs();
 
+  try {
+    validateRotateConfig(cfg);
+  } catch (err) {
+    console.error(`[rotate] ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+
   if (cfg.emergency && !cfg.reason) {
     console.error('[rotate] --emergency requires --reason "<why>"');
     process.exit(1);
@@ -260,11 +321,21 @@ async function main(): Promise<void> {
   }
 
   const prior = decodeLicense(current);
+  try {
+    assertSignedPriorLicense(
+      current,
+      createPublicKey(getPrivateKey()).export({ type: 'spki', format: 'pem' }).toString(),
+    );
+    assertEmergencyRevocable(prior, cfg.emergency);
+  } catch (err) {
+    console.error(`[rotate] ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
   if (prior.malformed && !cfg.emergency) {
     console.error(
       `[rotate] current license at "${cfg.vaultPath}" is not a parseable JWT — refusing to ` +
-        'silently skip rotation. Investigate the vault entry, or force-replace it with ' +
-        '--emergency --reason "<why>".',
+        'silently skip rotation. Investigate the vault entry and use signing-key ' +
+        'rotation or an explicit recovery path; this token cannot be revoked by jti.',
     );
     process.exit(1);
   }
@@ -281,7 +352,7 @@ async function main(): Promise<void> {
   const newJwt = issueLicense({
     tier: cfg.tier,
     customer: cfg.customer,
-    days: cfg.days,
+    days: cfg.perpetual ? undefined : cfg.days,
     perpetual: cfg.perpetual,
   });
   revvaultSet(cfg.vaultPath, newJwt);

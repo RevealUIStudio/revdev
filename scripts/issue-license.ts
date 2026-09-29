@@ -23,7 +23,7 @@
  * (or REVDEV_LICENSE_PRIVATE_KEY env, or ~/.revealui/license-private.pem).
  *
  * Output: Ed25519-signed JWT (RFC 7519). Header: { alg: "EdDSA", typ: "JWT" }.
- * Payload: { tier, iat, iss, aud, customerId?, exp? }.
+ * Payload: { tier, iat, iss, aud, jti, customerId?, exp? }.
  * Format matches the RevealUI license API issuer (revealui#735, Phase A).
  *
  * The signing helpers (issueLicense / getPrivateKey / revvaultSet) are
@@ -33,7 +33,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -60,6 +60,37 @@ export function deriveStorePath(opts: Options): string | null {
   return null;
 }
 
+/** License writes may only target the two supported license-key namespaces.
+ * In particular, a CLI --store value must never reach a signing-key path. */
+export function validateLicenseStorePath(path: string): void {
+  if (
+    path !== 'revealui/dev/founder-license-key' &&
+    !/^forge\/customers\/[a-zA-Z0-9][a-zA-Z0-9._-]*\/license-key$/.test(path)
+  ) {
+    throw new Error('Vault destination must be a supported license-key path.');
+  }
+}
+
+export function validateIssueOptions(opts: Options): void {
+  if (!['pro', 'max', 'enterprise'].includes(opts.tier)) {
+    throw new Error('License tier must be pro, max, or enterprise.');
+  }
+  if (
+    opts.days !== undefined &&
+    (!Number.isInteger(opts.days) || opts.days < 1 || opts.days > 36_500)
+  ) {
+    throw new Error('License days must be an integer from 1 to 36500.');
+  }
+  if (opts.perpetual && opts.days !== undefined) {
+    throw new Error('Use either --perpetual or --days, not both.');
+  }
+  if (opts.customer !== undefined && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(opts.customer)) {
+    throw new Error('Customer must be a single path-safe identifier.');
+  }
+  const storePath = deriveStorePath(opts);
+  if (storePath !== null) validateLicenseStorePath(storePath);
+}
+
 function parseArgs(): Options {
   const args = process.argv.slice(2);
   const opts: Options = { tier: 'pro' };
@@ -73,7 +104,7 @@ function parseArgs(): Options {
         opts.customer = args[++i];
         break;
       case '--days':
-        opts.days = parseInt(args[++i], 10);
+        opts.days = Number(args[++i]);
         break;
       case '--perpetual':
         opts.perpetual = true;
@@ -173,6 +204,7 @@ export function getPrivateKey(): string {
 }
 
 export function issueLicense(opts: Options): string {
+  validateIssueOptions(opts);
   const privateKeyPem = getPrivateKey();
   const privateKey = createPrivateKey(privateKeyPem);
 
@@ -183,6 +215,7 @@ export function issueLicense(opts: Options): string {
     iat: now,
     iss: 'https://revealui.com',
     aud: 'revealui-license',
+    jti: randomUUID(),
   };
 
   if (opts.customer) {
@@ -202,6 +235,7 @@ export function issueLicense(opts: Options): string {
 }
 
 export function revvaultSet(path: string, value: string): void {
+  validateLicenseStorePath(path);
   try {
     execFileSync('revvault', ['set', '--force', path], {
       input: value,
@@ -215,14 +249,48 @@ export function revvaultSet(path: string, value: string): void {
   }
 }
 
-function generateKeypair(): void {
+function revvaultCreate(path: string, value: string): void {
+  try {
+    execFileSync('revvault', ['set', path], {
+      input: value,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    console.error(`Failed to create ${path} in revvault without overwriting an existing key.`);
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+function revvaultPathExists(path: string): boolean {
+  try {
+    execFileSync('revvault', ['get', '--full', path], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function generateKeypair(): void {
+  const privatePath = 'revdev/license-signing-private-key';
+  const publicPath = 'revdev/license-signing-public-key';
+  if (revvaultPathExists(privatePath) || revvaultPathExists(publicPath)) {
+    console.error(
+      'Error: a signing key already exists. First-time key generation will not overwrite it.',
+    );
+    process.exit(1);
+  }
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'pem' },
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
   });
 
-  revvaultSet('revdev/license-signing-private-key', privateKey as string);
-  revvaultSet('revdev/license-signing-public-key', publicKey as string);
+  revvaultCreate(privatePath, privateKey as string);
+  revvaultCreate(publicPath, publicKey as string);
 
   console.log('');
   console.log('  Ed25519 Keypair Generated');
@@ -263,7 +331,13 @@ if (isMainModule()) {
   }
 
   const opts = parseArgs();
-  const key = issueLicense(opts);
+  let key: string;
+  try {
+    key = issueLicense(opts);
+  } catch (err) {
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 
   console.log('');
   console.log('  License Key Issued');
@@ -292,8 +366,8 @@ if (isMainModule()) {
       process.exit(1);
     }
     revvaultSet(storePath, key);
-    // Readback verification: stored value must be a 3-part JWT. Shape only —
-    // the value is never displayed.
+    // Readback verification: the stored value must be the exact minted JWT.
+    // The value is never displayed.
     let readback = '';
     try {
       readback = execFileSync('revvault', ['get', '--full', storePath], {
@@ -303,8 +377,10 @@ if (isMainModule()) {
     } catch {
       // handled below
     }
-    if (readback.split('.').length !== 3) {
-      console.error(`Error: readback from ${storePath} is not a JWT — store may have failed.`);
+    if (readback !== key) {
+      console.error(
+        `Error: readback from ${storePath} differs from the minted JWT — store may have failed.`,
+      );
       process.exit(1);
     }
     console.log(`  Stored:   ${storePath} (readback verified; value not displayed)`);
