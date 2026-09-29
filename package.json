@@ -22,6 +22,8 @@
     "lint:docs": "node scripts/doc-lint-license-format.mjs",
     "test": "pnpm --filter @revdev/protocol build && pnpm --filter @revdev/daemon build && pnpm -r test && pnpm test:scripts",
     "test:scripts": "vitest run --config vitest.config.mjs",
+    "notice:generate": "bash scripts/generate-notice.sh",
+    "notice:check": "bash scripts/generate-notice.sh --check",
     "test:coverage": "pnpm -r test:coverage",
     "typecheck": "pnpm --filter @revdev/protocol build && pnpm --filter @revdev/daemon build && pnpm -r --filter=!studio typecheck",
     "typecheck:studio": "pnpm --filter studio typecheck"
