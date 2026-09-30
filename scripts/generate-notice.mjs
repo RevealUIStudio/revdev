@@ -9,7 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,7 +77,7 @@ export function prepareTools(rootDir = root, run = command) {
     env,
   );
 }
-export function licenseFiles(packageDir) {
+export function licenseFiles(packageDir, sourcePaths = []) {
   const files = [];
   const visit = (dir, depth) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -96,7 +96,20 @@ export function licenseFiles(packageDir) {
     }
   };
   visit(packageDir, 0);
-  if (!files.some((file) => /^(licen[cs]e|copying)([._-]|$)/i.test(file.name.split('/').at(-1))))
+  // Cargo metadata and cargo-about may identify a workspace license outside
+  // the crate directory. Read only these explicit source-backed files; never
+  // guess an ancestor license or substitute canonical license text.
+  for (const source of new Set(sourcePaths.map((path) => resolve(path)))) {
+    const text = readFileSync(source, 'utf8');
+    if (!text.trim() || text.includes('\uFFFD'))
+      throw new Error(`Unreadable license text: ${source}`);
+    const name = relative(packageDir, source);
+    if (!files.some((file) => file.name === name)) files.push({ name, text });
+  }
+  if (
+    sourcePaths.length === 0 &&
+    !files.some((file) => /^(licen[cs]e|copying)([._-]|$)/i.test(file.name.split('/').at(-1)))
+  )
     throw new Error(`Missing installed license files: ${packageDir}`);
   return files.sort((a, b) => compareText(a.name, b.name));
 }
@@ -355,7 +368,16 @@ export function generate(rootDir = root, run = command, check = false) {
       texts.push({
         ecosystem: 'Rust',
         dependency: `${pkg.name}@${pkg.version}`,
-        files: licenseFiles(dirname(pkg.manifest_path)),
+        files: licenseFiles(dirname(pkg.manifest_path), [
+          ...(pkg.license_file ? [resolve(dirname(pkg.manifest_path), pkg.license_file)] : []),
+          ...attribution.licenses
+            .filter((item) =>
+              item.used_by.some(
+                ({ crate }) => crate.name === pkg.name && crate.version === pkg.version,
+              ),
+            )
+            .map((item) => item.source_path),
+        ]),
       });
     }
     for (const item of attribution.licenses) {
