@@ -367,3 +367,60 @@ test('attribution tool caches do not become additional product module roots', ()
   });
   expect(inventories).toBe(5);
 });
+
+test('nested Rust crate retains its source-backed workspace license without a crate-local copy', () => {
+  const { dir, run } = completeFixture();
+  const crateDir = join(dir, 'rust-dep', 'crates', 'core');
+  mkdirSync(crateDir, { recursive: true });
+  writeFileSync(join(crateDir, 'Cargo.toml'), '[package]\nlicense.workspace = true\n');
+  const nested = (tool, args, ...rest) => {
+    const result = run(tool, args, ...rest);
+    if (tool === 'cargo' && args[0] === 'metadata') {
+      const data = JSON.parse(result);
+      data.packages[0].manifest_path = join(crateDir, 'Cargo.toml');
+      return JSON.stringify(data);
+    }
+    return result;
+  };
+  generate(dir, nested);
+  const notice = readFileSync(join(dir, 'NOTICE.md'), 'utf8');
+  expect(notice).toContain('Synthetic Rust license file');
+  expect(notice).toContain('../../LICENSE');
+  generate(dir, nested, true);
+});
+
+test('explicit package license_file reads the installed source and refuses an absent source', () => {
+  const dir = fixture();
+  const crateDir = join(dir, 'crate');
+  mkdirSync(crateDir);
+  const source = join(dir, 'custom-license-text');
+  writeFileSync(source, 'Verified declared license text');
+  // A declared source need not use a conventional filename.
+  expect(licenseFiles(crateDir, [source])).toEqual([
+    { name: '../custom-license-text', text: 'Verified declared license text' },
+  ]);
+  expect(() => licenseFiles(crateDir, [join(dir, 'absent-license')])).toThrow('ENOENT');
+});
+
+test('nested Rust source license cannot replace missing crate identity attribution', () => {
+  const { dir, run } = completeFixture();
+  const crateDir = join(dir, 'rust-dep', 'crates', 'core');
+  mkdirSync(crateDir, { recursive: true });
+  writeFileSync(join(crateDir, 'Cargo.toml'), '');
+  const unrelated = (tool, args, ...rest) => {
+    const result = run(tool, args, ...rest);
+    if (tool === 'cargo' && args[0] === 'metadata') {
+      const data = JSON.parse(result);
+      data.packages[0].manifest_path = join(crateDir, 'Cargo.toml');
+      return JSON.stringify(data);
+    }
+    if (tool === 'cargo-about' && args[0] === 'generate') {
+      const data = JSON.parse(result);
+      data.licenses[0].used_by[0].crate.name = 'unrelatedCrate';
+      return JSON.stringify(data);
+    }
+    return result;
+  };
+  expect(() => generate(dir, unrelated)).toThrow('missing attribution for rustDep@2');
+  expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe('existing notice');
+});
