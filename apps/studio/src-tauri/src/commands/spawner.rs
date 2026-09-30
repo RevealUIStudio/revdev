@@ -39,7 +39,10 @@ pub async fn agent_spawn(
         name
     };
     // agentId must be DID-safe: use snap- prefix + shortened uuid (hyphens ok).
-    let daemon_agent_id = format!("snap-{}", session_id.replace('-', "").get(..24).unwrap_or(&session_id));
+    let daemon_agent_id = format!(
+        "snap-{}",
+        session_id.replace('-', "").get(..24).unwrap_or(&session_id)
+    );
 
     match crate::harness::register_inference_agent(
         &daemon_agent_id,
@@ -50,11 +53,7 @@ pub async fn agent_spawn(
     .await
     {
         Ok(creds) => {
-            let _ = crate::spawner::set_daemon_creds(
-                &session_id,
-                state.sessions.clone(),
-                creds,
-            );
+            let _ = crate::spawner::set_daemon_creds(&session_id, state.sessions.clone(), creds);
         }
         Err(e) => {
             // Non-fatal: local inference still works; coordination is degraded.
@@ -119,11 +118,7 @@ pub async fn agent_input(session_id: String, data: String) -> Result<(), StudioE
 
 /// Resize a daemon PTY session's terminal (agent.resize RPC).
 #[tauri::command]
-pub async fn agent_resize(
-    session_id: String,
-    cols: u32,
-    rows: u32,
-) -> Result<(), StudioError> {
+pub async fn agent_resize(session_id: String, cols: u32, rows: u32) -> Result<(), StudioError> {
     crate::harness::rpc_call(
         "agent.resize",
         serde_json::json!({ "sessionId": session_id, "cols": cols, "rows": rows }),

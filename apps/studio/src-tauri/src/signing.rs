@@ -415,7 +415,10 @@ pub fn load_or_create_at(path: &Path) -> Result<StudioIdentity, String> {
         // secure; delete it so the next run regenerates + re-provisions.
         if let Err(e) = lock_identity_file(path) {
             let _ = fs::remove_file(path);
-            return Err(format!("cannot secure existing signing key {}: {e}", path.display()));
+            return Err(format!(
+                "cannot secure existing signing key {}: {e}",
+                path.display()
+            ));
         }
         let data = fs::read_to_string(path).map_err(|e| format!("read identity: {e}"))?;
         let stored: StoredIdentity =
@@ -443,12 +446,18 @@ pub fn load_or_create_at(path: &Path) -> Result<StudioIdentity, String> {
     fs::write(path, b"").map_err(|e| format!("create identity file: {e}"))?;
     if let Err(e) = lock_identity_file(path) {
         let _ = fs::remove_file(path);
-        return Err(format!("cannot secure new signing key {}: {e}", path.display()));
+        return Err(format!(
+            "cannot secure new signing key {}: {e}",
+            path.display()
+        ));
     }
     // The file is now owner-only; write the seed into it (truncate-in-place
     // preserves the DACL/mode just set).
-    fs::write(path, serde_json::to_string(&stored).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("write identity: {e}"))?;
+    fs::write(
+        path,
+        serde_json::to_string(&stored).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write identity: {e}"))?;
     Ok(identity)
 }
 
@@ -472,7 +481,11 @@ mod tests {
 
         // Fresh create → owner-only (0600).
         let created = load_or_create_at(&path).expect("create identity");
-        assert_eq!(mode(&path), 0o600, "a freshly created signing key must be 0600");
+        assert_eq!(
+            mode(&path),
+            0o600,
+            "a freshly created signing key must be 0600"
+        );
 
         // Simulate a pre-#173 file: broaden to group/other-readable.
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -481,7 +494,10 @@ mod tests {
         // Load again → must RE-LOCK to 0600 without regenerating the identity.
         let loaded = load_or_create_at(&path).expect("load identity");
         assert_eq!(mode(&path), 0o600, "load must re-lock a legacy key to 0600");
-        assert_eq!(created.agent_id, loaded.agent_id, "re-lock must not regenerate the key");
+        assert_eq!(
+            created.agent_id, loaded.agent_id,
+            "re-lock must not regenerate the key"
+        );
         assert_eq!(created.fingerprint, loaded.fingerprint);
 
         let _ = std::fs::remove_dir_all(&dir);

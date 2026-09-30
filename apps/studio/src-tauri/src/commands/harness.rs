@@ -277,7 +277,10 @@ pub async fn harness_mark_read(message_ids: Vec<i64>) -> Result<(), StudioError>
 /// Missing fields default to `{ success: false, owner: None }`.
 fn parse_claim_result(val: &serde_json::Value) -> HarnessClaimResult {
     HarnessClaimResult {
-        success: val.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+        success: val
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         owner: val
             .get("owner")
             .and_then(|v| v.as_str())
@@ -289,7 +292,10 @@ fn parse_claim_result(val: &serde_json::Value) -> HarnessClaimResult {
 /// The daemon returns `{ success, conflicts: [{ path, holder }] }` — we
 /// surface the first conflict's holder to the UI.
 fn parse_reserve_result(val: &serde_json::Value) -> HarnessReserveResult {
-    let success = val.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+    let success = val
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let holder = val
         .get("conflicts")
         .and_then(|v| v.as_array())
@@ -359,42 +365,27 @@ pub async fn harness_claim_task(
     agent_id: String,
 ) -> Result<HarnessClaimResult, StudioError> {
     let _ = agent_id;
-    let result = harness::rpc_call(
-        "tasks.claim",
-        serde_json::json!({ "taskId": task_id }),
-    )
-    .await
-    .map_err(|e| StudioError::Other(e))?;
+    let result = harness::rpc_call("tasks.claim", serde_json::json!({ "taskId": task_id }))
+        .await
+        .map_err(|e| StudioError::Other(e))?;
     Ok(parse_claim_result(&result))
 }
 
 #[tauri::command]
-pub async fn harness_complete_task(
-    task_id: String,
-    agent_id: String,
-) -> Result<bool, StudioError> {
+pub async fn harness_complete_task(task_id: String, agent_id: String) -> Result<bool, StudioError> {
     let _ = agent_id;
-    let result = harness::rpc_call(
-        "tasks.complete",
-        serde_json::json!({ "taskId": task_id }),
-    )
-    .await
-    .map_err(|e| StudioError::Other(e))?;
+    let result = harness::rpc_call("tasks.complete", serde_json::json!({ "taskId": task_id }))
+        .await
+        .map_err(|e| StudioError::Other(e))?;
     Ok(parse_ok_flag(&result))
 }
 
 #[tauri::command]
-pub async fn harness_release_task(
-    task_id: String,
-    agent_id: String,
-) -> Result<bool, StudioError> {
+pub async fn harness_release_task(task_id: String, agent_id: String) -> Result<bool, StudioError> {
     let _ = agent_id;
-    let result = harness::rpc_call(
-        "tasks.release",
-        serde_json::json!({ "taskId": task_id }),
-    )
-    .await
-    .map_err(|e| StudioError::Other(e))?;
+    let result = harness::rpc_call("tasks.release", serde_json::json!({ "taskId": task_id }))
+        .await
+        .map_err(|e| StudioError::Other(e))?;
     Ok(parse_ok_flag(&result))
 }
 
@@ -442,12 +433,9 @@ pub async fn harness_reserve_file(
 pub async fn harness_check_file(
     file_path: String,
 ) -> Result<Option<HarnessReservation>, StudioError> {
-    let result = harness::rpc_call(
-        "files.check",
-        serde_json::json!({ "paths": [file_path] }),
-    )
-    .await
-    .map_err(|e| StudioError::Other(e))?;
+    let result = harness::rpc_call("files.check", serde_json::json!({ "paths": [file_path] }))
+        .await
+        .map_err(|e| StudioError::Other(e))?;
     let rows = result
         .get("reservations")
         .and_then(|v| v.as_array())
@@ -487,7 +475,9 @@ pub async fn harness_agent_spawn(
     rows: Option<u32>,
 ) -> Result<HarnessAgentProcess, StudioError> {
     if command.trim().is_empty() {
-        return Err(StudioError::Other("harness_agent_spawn: command is required".into()));
+        return Err(StudioError::Other(
+            "harness_agent_spawn: command is required".into(),
+        ));
     }
     if repo_path.trim().is_empty() {
         return Err(StudioError::Other(
@@ -553,10 +543,7 @@ pub async fn harness_agent_list() -> Result<Vec<HarnessAgentProcess>, StudioErro
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let cwd = o
-            .get("cwd")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let cwd = o.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
         let pid = o.get("pid").and_then(|v| v.as_i64());
         let status = o
             .get("status")
@@ -582,12 +569,9 @@ pub async fn harness_agent_list() -> Result<Vec<HarnessAgentProcess>, StudioErro
 
 #[tauri::command]
 pub async fn harness_agent_stop(process_id: String) -> Result<(), StudioError> {
-    harness::rpc_call(
-        "agent.stop",
-        serde_json::json!({ "processId": process_id }),
-    )
-    .await
-    .map_err(StudioError::Other)?;
+    harness::rpc_call("agent.stop", serde_json::json!({ "processId": process_id }))
+        .await
+        .map_err(StudioError::Other)?;
     Ok(())
 }
 

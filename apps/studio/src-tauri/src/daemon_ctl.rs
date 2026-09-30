@@ -222,7 +222,9 @@ pub async fn daemon_status() -> Result<DaemonStatus, String> {
 pub(crate) fn canonical_license_file() -> std::path::PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         if !xdg.is_empty() {
-            return std::path::PathBuf::from(xdg).join("revealui").join("license.jwt");
+            return std::path::PathBuf::from(xdg)
+                .join("revealui")
+                .join("license.jwt");
         }
     }
     dirs::home_dir()
@@ -397,13 +399,19 @@ const TRUST_ANCHOR_PATH: &str = "/etc/revdev/trusted-client-fingerprint";
 /// Linux even though the only caller is the not(unix) WSL `daemon_setup`.
 #[cfg(any(not(unix), test))]
 fn validate_anchor_components(agent_id: &str, fp: &str) -> Result<(), String> {
-    let ok_agent =
-        !agent_id.is_empty() && agent_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    let ok_agent = !agent_id.is_empty()
+        && agent_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
     if !ok_agent {
-        return Err(format!("refusing to provision a malformed agentId: {agent_id:?}"));
+        return Err(format!(
+            "refusing to provision a malformed agentId: {agent_id:?}"
+        ));
     }
     if fp.is_empty() || !fp.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(format!("refusing to provision a malformed client fingerprint: {fp:?}"));
+        return Err(format!(
+            "refusing to provision a malformed client fingerprint: {fp:?}"
+        ));
     }
     Ok(())
 }
@@ -508,7 +516,10 @@ pub async fn daemon_setup(app: tauri::AppHandle) -> Result<String, String> {
         ));
     }
 
-    Ok("RevDev relay installed, client trust anchor provisioned, daemon enabled in WSL.".to_string())
+    Ok(
+        "RevDev relay installed, client trust anchor provisioned, daemon enabled in WSL."
+            .to_string(),
+    )
 }
 
 /// Native Unix: the daemon runs as a local process; no WSL staging is needed.
@@ -543,13 +554,16 @@ pub async fn daemon_restart() -> Result<u32, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_trust_anchor_provision_script, validate_anchor_components, TRUST_ANCHOR_PATH};
+    use super::{
+        build_trust_anchor_provision_script, validate_anchor_components, TRUST_ANCHOR_PATH,
+    };
 
     #[test]
     fn validate_accepts_a_studio_agent_and_base58_fingerprint() {
         // Representative agentId ("studio-...") + bs58 fingerprint.
         assert!(
-            validate_anchor_components("studio-abc123", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy").is_ok()
+            validate_anchor_components("studio-abc123", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy")
+                .is_ok()
         );
     }
 

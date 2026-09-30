@@ -361,7 +361,10 @@ async fn wipe_managed_wsl() -> Result<LicenseWipeManagedResult, String> {
 // ── Shared parse ─────────────────────────────────────────────────────────────
 
 fn parse_verify_stdout(stdout: &str) -> Result<LicenseVerifyLocalResult, String> {
-    let line = stdout.lines().find(|l| l.trim().starts_with('{')).unwrap_or("");
+    let line = stdout
+        .lines()
+        .find(|l| l.trim().starts_with('{'))
+        .unwrap_or("");
     if line.is_empty() {
         return Ok(LicenseVerifyLocalResult {
             valid: false,
@@ -370,7 +373,10 @@ fn parse_verify_stdout(stdout: &str) -> Result<LicenseVerifyLocalResult, String>
     }
     let parsed: serde_json::Value =
         serde_json::from_str(line).map_err(|e| format!("license-verify JSON: {e}"))?;
-    let valid = parsed.get("valid").and_then(|v| v.as_bool()).unwrap_or(false);
+    let valid = parsed
+        .get("valid")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let code = parsed
         .get("code")
         .and_then(|v| v.as_str())

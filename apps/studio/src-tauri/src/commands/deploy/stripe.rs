@@ -35,8 +35,8 @@ pub async fn stripe_run_seed(repo_path: String) -> Result<String, StudioError> {
     }
 
     // Read node_modules/.cache/revealui-stripe-env.json which contains envVars + catalogEntries
-    let env_file = std::path::Path::new(&repo_path)
-        .join("node_modules/.cache/revealui-stripe-env.json");
+    let env_file =
+        std::path::Path::new(&repo_path).join("node_modules/.cache/revealui-stripe-env.json");
     match std::fs::read_to_string(&env_file) {
         Ok(contents) => Ok(contents),
         Err(_) => {

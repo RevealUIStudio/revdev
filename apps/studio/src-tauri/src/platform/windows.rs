@@ -1,6 +1,8 @@
 use std::process::Command;
 
-use super::trait_defs::{AppInfo, AppStatus, MountStatus, PlatformOps, RepoEntry, SetupStatus, SyncResult, SystemStatus};
+use super::trait_defs::{
+    AppInfo, AppStatus, MountStatus, PlatformOps, RepoEntry, SetupStatus, SyncResult, SystemStatus,
+};
 
 /// Windows implementation — shells out to `wsl.exe`, `pwsh.exe`, and `git`.
 pub struct WindowsPlatform {
@@ -39,14 +41,18 @@ impl WindowsPlatform {
     }
 
     fn git_sync_c(&self, repo_path: &str) -> SyncResult {
-        let user_profile = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\user".to_string());
+        let user_profile =
+            std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\user".to_string());
         let full_path = format!("{}\\{}", user_profile, repo_path);
         let branch = self.git_branch(&full_path);
 
         // Check if repo exists
         let git_dir = format!("{}/.git", full_path.replace('\\', "/"));
         if Self::hidden("cmd")
-            .args(["/C", &format!("if exist \"{}\" echo EXISTS", git_dir.replace('/', "\\"))])
+            .args([
+                "/C",
+                &format!("if exist \"{}\" echo EXISTS", git_dir.replace('/', "\\")),
+            ])
             .output()
             .map(|o| !String::from_utf8_lossy(&o.stdout).contains("EXISTS"))
             .unwrap_or(true)
@@ -171,7 +177,11 @@ impl WindowsPlatform {
     /// through `wsl_exec` (bash -c) are UTF-8 and must NOT use this function.
     fn decode_utf16le(bytes: &[u8]) -> String {
         // Strip BOM (0xFF 0xFE) if present
-        let bytes = if bytes.starts_with(&[0xFF, 0xFE]) { &bytes[2..] } else { bytes };
+        let bytes = if bytes.starts_with(&[0xFF, 0xFE]) {
+            &bytes[2..]
+        } else {
+            bytes
+        };
         let words: Vec<u16> = bytes
             .chunks_exact(2)
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
@@ -364,12 +374,10 @@ impl PlatformOps for WindowsPlatform {
     }
 
     fn start_app(&self, name: &str) -> Result<String, String> {
-        let dev_cmd = Self::app_dev_command(name)
-            .ok_or_else(|| format!("Unknown app: {name}"))?;
+        let dev_cmd = Self::app_dev_command(name).ok_or_else(|| format!("Unknown app: {name}"))?;
 
-        let bash_cmd = format!(
-            "cd ~/projects/RevealUI && nohup {dev_cmd} > /tmp/revealui-{name}.log 2>&1 &"
-        );
+        let bash_cmd =
+            format!("cd ~/projects/RevealUI && nohup {dev_cmd} > /tmp/revealui-{name}.log 2>&1 &");
 
         Self::hidden("wsl.exe")
             .args(["-d", &self.distribution, "-e", "bash", "-c", &bash_cmd])
@@ -422,32 +430,71 @@ impl PlatformOps for WindowsPlatform {
 
         // Read git config (pass args directly — no shell injection risk)
         let git_name = Self::hidden("wsl.exe")
-            .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.name"])
+            .args([
+                "-d",
+                &self.distribution,
+                "-e",
+                "git",
+                "config",
+                "--global",
+                "user.name",
+            ])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
 
         let git_email = Self::hidden("wsl.exe")
-            .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.email"])
+            .args([
+                "-d",
+                &self.distribution,
+                "-e",
+                "git",
+                "config",
+                "--global",
+                "user.email",
+            ])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
 
-        Ok(SetupStatus { wsl_running, nix_installed, devbox_mounted, git_name, git_email })
+        Ok(SetupStatus {
+            wsl_running,
+            nix_installed,
+            devbox_mounted,
+            git_name,
+            git_email,
+        })
     }
 
     fn set_git_identity(&self, name: &str, email: &str) -> Result<(), String> {
         Self::hidden("wsl.exe")
-            .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.name", name])
+            .args([
+                "-d",
+                &self.distribution,
+                "-e",
+                "git",
+                "config",
+                "--global",
+                "user.name",
+                name,
+            ])
             .output()
             .map_err(|e| format!("Failed to set git name: {e}"))?;
 
         Self::hidden("wsl.exe")
-            .args(["-d", &self.distribution, "-e", "git", "config", "--global", "user.email", email])
+            .args([
+                "-d",
+                &self.distribution,
+                "-e",
+                "git",
+                "config",
+                "--global",
+                "user.email",
+                email,
+            ])
             .output()
             .map_err(|e| format!("Failed to set git email: {e}"))?;
 
         Ok(())
     }
-
 }

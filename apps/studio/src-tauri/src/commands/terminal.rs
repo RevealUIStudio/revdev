@@ -20,7 +20,8 @@ pub struct TerminalProfile {
 #[tauri::command]
 pub fn terminal_detect() -> Result<Vec<TerminalProfile>, StudioError> {
     let mut profiles = Vec::new();
-    let home = dirs::home_dir().ok_or_else(|| StudioError::Other("Cannot determine home directory".into()))?;
+    let home = dirs::home_dir()
+        .ok_or_else(|| StudioError::Other("Cannot determine home directory".into()))?;
 
     #[cfg(target_os = "macos")]
     {
@@ -51,8 +52,7 @@ pub fn terminal_detect() -> Result<Vec<TerminalProfile>, StudioError> {
 
         // Alacritty
         let dest = home.join(".config/alacritty/revealui.toml");
-        let detected = home.join(".config/alacritty").exists()
-            || which::which("alacritty").is_ok();
+        let detected = home.join(".config/alacritty").exists() || which::which("alacritty").is_ok();
         if detected {
             profiles.push(TerminalProfile {
                 id: "alacritty".into(),
@@ -66,8 +66,7 @@ pub fn terminal_detect() -> Result<Vec<TerminalProfile>, StudioError> {
 
         // Kitty
         let dest = home.join(".config/kitty/revealui.conf");
-        let detected = home.join(".config/kitty").exists()
-            || which::which("kitty").is_ok();
+        let detected = home.join(".config/kitty").exists() || which::which("kitty").is_ok();
         if detected {
             profiles.push(TerminalProfile {
                 id: "kitty".into(),
@@ -84,8 +83,7 @@ pub fn terminal_detect() -> Result<Vec<TerminalProfile>, StudioError> {
     {
         // Alacritty
         let dest = home.join(".config/alacritty/revealui.toml");
-        let detected = home.join(".config/alacritty").exists()
-            || which::which("alacritty").is_ok();
+        let detected = home.join(".config/alacritty").exists() || which::which("alacritty").is_ok();
         if detected {
             profiles.push(TerminalProfile {
                 id: "alacritty".into(),
@@ -99,8 +97,7 @@ pub fn terminal_detect() -> Result<Vec<TerminalProfile>, StudioError> {
 
         // Kitty
         let dest = home.join(".config/kitty/revealui.conf");
-        let detected = home.join(".config/kitty").exists()
-            || which::which("kitty").is_ok();
+        let detected = home.join(".config/kitty").exists() || which::which("kitty").is_ok();
         if detected {
             profiles.push(TerminalProfile {
                 id: "kitty".into(),

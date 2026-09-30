@@ -195,15 +195,8 @@ pub async fn vercel_get_deployment(
     deployment_id: String,
 ) -> Result<VercelDeployment, StudioError> {
     let client = Client::new();
-    let url = format!(
-        "https://api.vercel.com/v13/deployments/{}",
-        deployment_id
-    );
-    let resp = client
-        .get(&url)
-        .bearer_auth(&token)
-        .send()
-        .await?;
+    let url = format!("https://api.vercel.com/v13/deployments/{}", deployment_id);
+    let resp = client.get(&url).bearer_auth(&token).send().await?;
 
     if !resp.status().is_success() {
         return Err(StudioError::Network(format!(

@@ -80,7 +80,10 @@ pub fn vault_init() -> Result<(), StudioError> {
         ),
     )?;
 
-    std::fs::write(store_dir.join(".age-recipients"), format!("{}\n", public_key))?;
+    std::fs::write(
+        store_dir.join(".age-recipients"),
+        format!("{}\n", public_key),
+    )?;
 
     Ok(())
 }

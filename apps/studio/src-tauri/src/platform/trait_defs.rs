@@ -103,4 +103,3 @@ pub struct SetupStatus {
     pub git_name: String,
     pub git_email: String,
 }
-

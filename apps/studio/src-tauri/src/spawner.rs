@@ -323,7 +323,9 @@ pub fn take_daemon_creds(
     state: Arc<Mutex<HashMap<String, AgentProcess>>>,
 ) -> Option<crate::harness::InferenceAgentCreds> {
     let mut sessions = state.lock().ok()?;
-    sessions.get_mut(session_id).and_then(|p| p.daemon_creds.take())
+    sessions
+        .get_mut(session_id)
+        .and_then(|p| p.daemon_creds.take())
 }
 
 /// Stop a running agent process.
@@ -576,7 +578,10 @@ mod tests {
         // The waiter observes the exit and returns within a bounded time.
         let code = waiter.join().expect("waiter thread panicked");
         // SIGKILL'd children have no exit code on unix.
-        assert!(code.is_none(), "killed child should have no exit code, got {code:?}");
+        assert!(
+            code.is_none(),
+            "killed child should have no exit code, got {code:?}"
+        );
 
         // stop() set "stopped"; the waiter must not have clobbered it to "errored".
         let sessions = list(state).unwrap();

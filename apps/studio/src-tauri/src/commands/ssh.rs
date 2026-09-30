@@ -22,9 +22,16 @@ pub async fn ssh_connect(
     app_handle: tauri::AppHandle,
     state: State<'_, SshState>,
 ) -> Result<String, StudioError> {
-    crate::ssh::connect(host, port, username, auth, app_handle, state.sessions.clone())
-        .await
-        .map_err(|e| StudioError::Ssh(e))
+    crate::ssh::connect(
+        host,
+        port,
+        username,
+        auth,
+        app_handle,
+        state.sessions.clone(),
+    )
+    .await
+    .map_err(|e| StudioError::Ssh(e))
 }
 
 /// Disconnect an SSH session.

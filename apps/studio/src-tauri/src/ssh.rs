@@ -3,10 +3,10 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
-use base64::Engine;
 use base64::engine::general_purpose::{STANDARD as BASE64, STANDARD_NO_PAD};
+use base64::Engine;
 use russh::keys::{PublicKey, PublicKeyBase64};
-use russh::{ChannelId, ChannelMsg, ChannelReadHalf, ChannelWriteHalf, client};
+use russh::{client, ChannelId, ChannelMsg, ChannelReadHalf, ChannelWriteHalf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::Emitter;
@@ -163,12 +163,16 @@ fn learn_known_host(host: &str, port: u16, key: &PublicKey) -> Result<(), String
         .join("known_hosts");
 
     if let Some(parent) = known_hosts_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create ~/.ssh: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create ~/.ssh: {e}"))?;
     }
 
     let pattern = host_pattern(host, port);
-    let line = format!("{} {} {}\n", pattern, key.algorithm().as_str(), key.public_key_base64());
+    let line = format!(
+        "{} {} {}\n",
+        pattern,
+        key.algorithm().as_str(),
+        key.public_key_base64()
+    );
 
     let mut file = std::fs::OpenOptions::new()
         .create(true)
@@ -346,10 +350,7 @@ pub async fn connect(
             }
             let key_pair = russh::keys::load_secret_key(path, passphrase.as_deref())
                 .map_err(|e| format!("Failed to load key: {e}"))?;
-            let key_with_alg = russh::keys::PrivateKeyWithHashAlg::new(
-                Arc::new(key_pair),
-                None,
-            );
+            let key_with_alg = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
             let auth_result = handle
                 .authenticate_publickey(&username, key_with_alg)
                 .await
@@ -412,13 +413,7 @@ pub async fn connect(
 
     // Store session
     let mut sessions = ssh_state.lock().await;
-    sessions.insert(
-        session_id.clone(),
-        SshSession {
-            handle,
-            channel,
-        },
-    );
+    sessions.insert(session_id.clone(), SshSession { handle, channel });
 
     Ok(session_id)
 }
