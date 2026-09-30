@@ -2897,7 +2897,7 @@ registerHandler('memory.query', async (params, db, ctx) => {
 /** Control layer first. Tests skip this. Missing CLI is not a startup failure. */
 function announceControlLayer(): void {
   if (process.env.VITEST || process.env.REVDEV_SKIP_SESSION_ADAPTER === '1') return;
-  const fleet = process.env.REVEALFLEET_ROOT || process.env.REVFLEET_ROOT;
+  const fleet = process.env.REVEALFLEET_ROOT;
   const cli = fleet ? `${fleet}/revealui/packages/harnesses/dist/cli.js` : '';
   const run =
     cli && existsSync(cli)
