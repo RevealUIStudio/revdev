@@ -72,7 +72,8 @@ export type LicenseFailureCode =
   | 'invalid-signature'
   | 'invalid-issuer'
   | 'invalid-audience'
-  | 'revoked';
+  | 'revoked'
+  | 'revocation-unavailable';
 
 export interface LicenseJWTResult {
   tier: 'pro' | 'max' | 'enterprise';
@@ -230,8 +231,19 @@ export function verifyLicenseJWT(
 
     // Check jti revocation
     const jti = payload.jti;
-    if (typeof jti === 'string' && isRevokedJti(jti)) {
-      return { tier: 'free', valid: false, reason: 'token has been revoked', code: 'revoked' };
+    try {
+      // Validate the existing store even for legacy tokens without a JTI, so
+      // corruption never silently grants paid authorization.
+      if (isRevokedJti(typeof jti === 'string' ? jti : '')) {
+        return { tier: 'free', valid: false, reason: 'token has been revoked', code: 'revoked' };
+      }
+    } catch {
+      return {
+        tier: 'free',
+        valid: false,
+        reason: 'local revocation state unavailable',
+        code: 'revocation-unavailable',
+      };
     }
 
     // Temporal expiration check — performed AFTER signature + iss + aud + nbf

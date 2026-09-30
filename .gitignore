@@ -52,3 +52,6 @@ opensrc/
 !.claude/skills/
 !.claude/.revcon-manifest.json
 .agents/
+
+# Pinned attribution tool installs and caches (maintained NOTICE generator)
+.notice-tools/

@@ -1,5 +1,5 @@
 //! Read-only Fleet map: load planning tracker-snapshot + optional STATE.json.
-//! Paths resolve under `$REVFLEET_HOME`, `$JV_REPO`, or `$HOME/revealfleet` (WSL-first).
+//! Paths resolve under `$REVEALFLEET_ROOT`, `$JV_REPO`, or `$HOME/revealfleet` (WSL-first).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,7 +24,7 @@ pub struct FleetMapPayload {
 }
 
 fn revealfleet_home() -> PathBuf {
-    if let Ok(p) = std::env::var("REVFLEET_HOME") {
+    if let Ok(p) = std::env::var("REVEALFLEET_ROOT") {
         let pb = PathBuf::from(p);
         if pb.is_dir() {
             return pb;
@@ -66,7 +66,7 @@ fn find_planning_root(fleet: &Path) -> Result<PathBuf, StudioError> {
         }
     }
     Err(StudioError::Other(
-        "tracker-snapshot.json not found — set JV_REPO or REVFLEET_HOME and run tracker sync in the planning checkout"
+        "tracker-snapshot.json not found — set JV_REPO or REVEALFLEET_ROOT and run tracker sync in the planning checkout"
             .into(),
     ))
 }

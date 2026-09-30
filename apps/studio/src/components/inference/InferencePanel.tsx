@@ -366,7 +366,7 @@ export default function InferencePanel() {
         ) : (
           <p className="py-6 text-center text-xs text-fg-subtle">
             {ollama?.running
-              ? 'No models downloaded yet — pull one above'
+              ? 'No models are downloaded. Enter a supported model name above to download one.'
               : ollama?.installed
                 ? 'Start the Ollama server to manage models'
                 : 'Install Ollama to download and run models locally'}

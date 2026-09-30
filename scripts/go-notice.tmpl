@@ -1,0 +1,1 @@
+[{{range $i, $item := .}}{{if $i}},{{end}}{"name":{{printf "%q" .Name}},"license":{{printf "%q" .LicenseName}},"path":{{printf "%q" .LicensePath}},"text":{{printf "%q" .LicenseText}}}{{end}}]

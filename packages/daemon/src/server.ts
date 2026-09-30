@@ -48,7 +48,7 @@ import {
 import { HttpGateway } from './http-gateway.js';
 import { createIdleStop } from './idle-stop.js';
 import { evaluateLicense, LicenseConfigError, type LicenseTier, tierRank } from './license.js';
-import { loopGuards } from './loop-guard.js';
+import { loopGuards, loopRpcView } from './loop-guard.js';
 import {
   getSelfDaemonId,
   heartbeatDaemonPeer,
@@ -2203,25 +2203,50 @@ registerHandler('events.wait', async (params, db, ctx) => {
 });
 
 // -- Loop guard (GAP-362 token-economy) --------------------------------------
+//
+// Callers arm a loop, then loop.tick every iteration. Omitting noopLimit
+// applies the protocol default (3). Each tick counts. After that many
+// consecutive advanced:false ticks the result is status not_advancing and
+// stop:true. An unknown loopId is an error, not an empty success.
+// loop.arm binds the loop to the caller's live session. session.end and
+// harness.prune reap it through notifyAgentEnded (see loop-guard.ts).
 
 registerHandler('loop.arm', async (params, db, ctx) => {
   const agentId = await requireVerifiedAgent(ctx, db, params);
   const loopId = str(params.loopId);
   const intervalMs = num(params.intervalMs, 0);
   const noopLimit = params.noopLimit === undefined ? undefined : num(params.noopLimit, 3);
+  const requestedSession = strOrNull(params.sessionId);
+  if (requestedSession && requestedSession !== agentId) {
+    throw new Error(`loop session ${requestedSession} does not belong to this agent`);
+  }
+  const sessionId = requestedSession ?? agentId;
+  const live = await db.query<{ id: string }>(
+    `SELECT id FROM agent_sessions WHERE id = $1 AND ended_at IS NULL`,
+    [sessionId],
+  );
+  if (live.rows.length === 0) {
+    throw new Error(`loop.arm requires a live session for ${sessionId}`);
+  }
   const state = loopGuards.arm({
     loopId,
     agentId,
     intervalMs,
     noopLimit,
+    sessionId,
   });
-  return { loop: state };
+  return loopRpcView(state);
 });
 
 registerHandler('loop.tick', async (params, db, ctx) => {
   const agentId = await requireVerifiedAgent(ctx, db, params);
   const loopId = str(params.loopId);
-  const advanced = params.advanced === true;
+  // A missing or non-boolean flag is an error. Coercing it to false would
+  // count a malformed call as a no-op; dropping it would ignore the tick.
+  if (typeof params.advanced !== 'boolean') {
+    throw new Error('loop.tick requires advanced: boolean');
+  }
+  const advanced = params.advanced;
   const tokensIn = params.tokensIn === undefined ? undefined : num(params.tokensIn, 0);
   const tokensOut = params.tokensOut === undefined ? undefined : num(params.tokensOut, 0);
   const costMicros = params.costMicros === undefined ? undefined : num(params.costMicros, 0);
@@ -2273,16 +2298,16 @@ registerHandler('loop.tick', async (params, db, ctx) => {
       ],
     );
   }
-  return { loop: state };
+  return loopRpcView(state);
 });
 
 registerHandler('loop.status', async (params, db, ctx) => {
   const agentId = await requireVerifiedAgent(ctx, db, params);
   const loopId = str(params.loopId);
   const state = loopGuards.get(loopId);
-  if (!state) return { loop: null };
+  if (!state) return loopRpcView(null);
   if (state.agentId !== agentId) throw new Error(`loop ${loopId} is owned by another agent`);
-  return { loop: state };
+  return loopRpcView(state);
 });
 
 registerHandler('loop.spend', async (params, db, ctx) => {
@@ -2872,7 +2897,7 @@ registerHandler('memory.query', async (params, db, ctx) => {
 /** Control layer first. Tests skip this. Missing CLI is not a startup failure. */
 function announceControlLayer(): void {
   if (process.env.VITEST || process.env.REVDEV_SKIP_SESSION_ADAPTER === '1') return;
-  const fleet = process.env.REVEALFLEET_ROOT || process.env.REVFLEET_ROOT;
+  const fleet = process.env.REVEALFLEET_ROOT;
   const cli = fleet ? `${fleet}/revealui/packages/harnesses/dist/cli.js` : '';
   const run =
     cli && existsSync(cli)
@@ -2990,8 +3015,8 @@ export async function startDaemon(
   // License expiry re-check (GAP-184). Daily while running: refresh metrics,
   // log expiry warnings, and record a license.* event so Studio can surface
   // expiry status in its dashboard. Startup is the fail-closed gate
-  // (initLicenseGuard above); this timer never tears the daemon down — it
-  // reports loudly and lets the next restart fail closed.
+  // (initLicenseGuard above); the timer updates authorization without tearing
+  // down free lifecycle operations. Each new paid dispatch also re-verifies.
   const licenseRecheckTimer = setInterval(
     () => {
       let ev: ReturnType<typeof runtimeLicenseRecheck>;

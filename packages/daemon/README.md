@@ -135,9 +135,25 @@ echo '{"jsonrpc":"2.0","id":1,"method":"ping"}' | \
 # → {"jsonrpc":"2.0","id":1,"result":{"pong":true,...}}
 ```
 
+## Loop guard
+
+`loop.arm`, `loop.tick`, and `loop.status` track a Studio-attached run and
+signal when it stops advancing. The default noop limit is 3 consecutive
+ticks with `advanced: false`. Omit `noopLimit` and that default is what the
+daemon applies. A tick against an unknown loop is an error.
+
+Each armed loop is bound to the caller's live session. `session.end` and
+`harness.prune` reap those loops, so a finished session does not leave a
+guard behind.
+
+The sock method names and payloads are the contract in
+`@revdev/protocol` (`src/loop-contract.ts`, also summarized in that
+package's README). Call them only when the daemon socket is reachable.
+
 ## Architecture pointers
 
 - `src/server.ts` — JSON-RPC dispatch, license guard, RPC handler registry, periodic stale-session prune (GAP-153).
+- `src/loop-guard.ts`: LoopGuard registry (`loop.arm` / `loop.tick` / `loop.status`) and session-end reap.
 - `src/agent-key-gc.ts` — agent-key GC classification by PID liveness (GAP-262). Quarantine and delete stay disabled; the sweep does not remove keys.
 - `src/storage/schema.ts` — PGlite schema (11 tables: agent_sessions, agent_messages, file_reservations, tasks, events, worktrees, agent_memory, merge_requests, agent_identity, agent_identity_keys, agent_identity_nonces).
 - `src/neon.ts` — daemon → Neon dual-write helpers (GAP-154 Phases 2 + 3). Best-effort, no-op when `POSTGRES_URL` unset. Sessions, mail, files, tasks, events dual-write; `memory.*` / `merge.*` stay local-only until Neon schema grows (documented in-module).

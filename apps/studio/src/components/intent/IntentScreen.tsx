@@ -30,9 +30,9 @@ export default function IntentScreen({ onSelect }: IntentScreenProps) {
       <div className="w-full max-w-2xl px-8">
         <div className="mb-10 text-center">
           <RevealUIMark className="mx-auto mb-4 size-16 text-fg" title="RevealUI" />
-          <h1 className="text-3xl font-bold text-fg">How will you use Studio?</h1>
+          <h1 className="text-3xl font-bold text-fg">Choose what you want to work on.</h1>
           <p className="mt-2 text-fg-muted">
-            Pick a path. One click opens that workspace. You can change this later in Settings.
+            Choose a workspace for development or deployment. You can change this later in Settings.
           </p>
         </div>
 
@@ -76,8 +76,8 @@ export default function IntentScreen({ onSelect }: IntentScreenProps) {
         <div className="mt-8 flex flex-col items-center gap-3">
           <ErrorAlert message={error} className="w-full" />
           <p className="max-w-lg text-center text-sm text-fg-subtle">
-            For this machine, choose Develop. A setup checklist may appear next. You can skip it and
-            open Agent in the sidebar, then the Approvals tab.
+            A setup checklist may appear next. Complete the steps you need, or skip it to open your
+            workspace.
           </p>
         </div>
       </div>

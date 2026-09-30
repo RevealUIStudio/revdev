@@ -189,7 +189,7 @@ export default function AgentTerminalPane() {
         <div className="flex-1 overflow-y-auto">
           {sessions.length === 0 && (
             <p className="px-3 py-4 text-xs text-fg-subtle">
-              No agent sessions. Click "+ New" to spawn an agent.
+              No agent sessions yet. Select "+ New" to start a session.
             </p>
           )}
           {sessions.map((s) => (

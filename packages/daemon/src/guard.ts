@@ -12,8 +12,8 @@
  * expiry and FAILS CLOSED (throws LicenseExpiredError) when a present
  * license is already expired — the daemon refuses to start. A license that
  * expires *while the daemon is running* is reported loudly via
- * runtimeLicenseRecheck() but does NOT tear down active sessions; the next
- * restart fails closed.
+ * runtimeLicenseRecheck() and downgrades subsequent gated dispatch. Free
+ * lifecycle operations and already-running work are not torn down.
  */
 
 import {
@@ -21,6 +21,7 @@ import {
   evaluateLicense,
   isExemptMethod,
   LICENSE_HELP_URL,
+  LicenseConfigError,
   type LicenseEvaluation,
   LicenseExpiredError,
   type LicenseTier,
@@ -42,7 +43,7 @@ function titleTier(tier: LicenseTier): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
-/** Cached license state — checked once at startup, refreshable on demand. */
+/** Latest observed state for startup/telemetry; never authority for a new dispatch. */
 let cachedLicense: { tier: LicenseTier; valid: boolean } | null = null;
 
 /** Render a signed seconds delta as a compact human duration ("12d 3h"). */
@@ -121,20 +122,21 @@ export function initLicenseGuard(): { tier: LicenseTier; valid: boolean } {
 
 /**
  * Re-evaluate the license while the daemon is running (called on a daily
- * timer). Refreshes metrics and logs warnings, but intentionally does NOT
- * tear down the running daemon or downgrade the cached tier — a license that
- * crosses expiry mid-session is reported loudly and fails closed on the next
- * restart, rather than disrupting in-flight agent work. Returns the fresh
- * evaluation so the caller can emit telemetry events.
+ * timer). Refreshes metrics, warnings, and authorization state. Invalid,
+ * revoked, or expired credentials lose paid authorization without a restart;
+ * already-running work and free lifecycle methods are not torn down.
+ * Returns the fresh evaluation so the caller can emit telemetry events.
  */
 export function runtimeLicenseRecheck(): LicenseEvaluation {
+  cachedLicense = { tier: 'free', valid: false };
   const ev = evaluateLicense();
+  cachedLicense = { tier: ev.tier, valid: ev.valid };
   recordLicenseMetrics(ev);
   if (ev.status === 'expired') {
     const at = ev.expiresAt ? new Date(ev.expiresAt * 1000).toISOString() : 'unknown';
     console.error(
       `[license] CRITICAL: license has EXPIRED while running (expired ${at}). ` +
-        `Pro features remain served until restart, which will fail closed. ` +
+        `Subsequent paid requests are denied; free lifecycle operations remain available. ` +
         `Rotate per ${LICENSE_HELP_URL}.`,
     );
   } else {
@@ -145,16 +147,19 @@ export function runtimeLicenseRecheck(): LicenseEvaluation {
 
 /** Force a license recheck (e.g. if env var was updated). */
 export function refreshLicense(): { tier: LicenseTier; valid: boolean } {
-  cachedLicense = checkLicense();
+  try {
+    cachedLicense = checkLicense();
+  } catch (error) {
+    cachedLicense = { tier: 'free', valid: false };
+    if (!(error instanceof LicenseConfigError)) throw error;
+    console.error('[license] configured license cannot be read; paid requests are denied');
+  }
   return cachedLicense;
 }
 
-/** Get current cached license state. */
+/** Verify the current token and local revocation state for each new dispatch. */
 export function getLicenseState(): { tier: LicenseTier; valid: boolean } {
-  if (!cachedLicense) {
-    cachedLicense = checkLicense();
-  }
-  return cachedLicense;
+  return refreshLicense();
 }
 
 /**

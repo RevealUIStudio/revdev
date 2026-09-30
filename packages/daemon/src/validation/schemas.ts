@@ -359,7 +359,10 @@ export const schemas: Record<string, z.ZodType> = {
     .object({
       loopId: z.string().min(1).max(MAX_NAME_LENGTH),
       intervalMs: z.number().int().min(1).max(86_400_000),
+      // Omit to apply the protocol default (3). See loop-contract.ts.
       noopLimit: z.number().int().min(1).max(100).optional(),
+      // Must match the caller. Omit to bind their own live session.
+      sessionId: z.string().min(1).max(MAX_NAME_LENGTH).optional(),
       actorAgentId,
     })
     .passthrough(),
