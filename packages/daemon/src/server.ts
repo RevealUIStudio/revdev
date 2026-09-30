@@ -891,7 +891,7 @@ export async function dispatchRpc(
   ctx: SocketContext,
 ): Promise<RpcResponse> {
   // License guard
-  const guard = guardRpcMethod(req.method);
+  const guard = await guardRpcMethod(req.method);
   if (!guard.allowed) {
     return JSON.parse(licenseErrorResponse(req.id, guard)) as RpcResponse;
   }

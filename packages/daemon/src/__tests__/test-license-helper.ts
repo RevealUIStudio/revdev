@@ -3,10 +3,12 @@
  * Creates a fresh keypair per call — no secrets needed.
  */
 
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { vi } from 'vitest';
+import { LICENSE_API_ORIGIN } from '../license-authority.js';
 
 export interface TestLicenseKit {
   /** Set as REVEALUI_LICENSE_KEY */
@@ -27,7 +29,7 @@ export interface TestLicenseKit {
 export function generateTestLicense(
   tier: 'pro' | 'max' | 'enterprise' = 'enterprise',
   perpetual = true,
-  opts: { daysUntilExpiry?: number; customerId?: string; jti?: string } = {},
+  opts: { daysUntilExpiry?: number; customerId?: string | null; jti?: string | null } = {},
 ): TestLicenseKit {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -43,10 +45,10 @@ export function generateTestLicense(
     aud: 'revealui-license',
   };
 
-  if (opts.jti) payload.jti = opts.jti;
+  if (opts.jti !== null) payload.jti = opts.jti ?? randomUUID();
 
-  if (opts.customerId) {
-    payload.customerId = opts.customerId;
+  if (opts.customerId !== null) {
+    payload.customerId = opts.customerId ?? 'synthetic-customer';
   }
 
   if (!perpetual) {
@@ -58,11 +60,37 @@ export function generateTestLicense(
   const message = `${headerB64}.${payloadB64}`;
   const sig = sign(null, Buffer.from(message), privateKey).toString('base64url');
 
+  const licenseKey = `${message}.${sig}`;
+  registeredTestLicenses.set(licenseKey, payload);
   return {
-    licenseKey: `${message}.${sig}`,
+    licenseKey,
     publicKey: publicKey as string,
     privateKey: privateKey as string,
   };
+}
+
+/** Only explicitly generated synthetic credentials are registered by this authority fixture. */
+const registeredTestLicenses = new Map<string, Record<string, unknown>>();
+
+export function installTestLicenseAuthority(): void {
+  const nativeFetch = globalThis.fetch;
+  vi.stubGlobal('fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    if (String(input) !== `${LICENSE_API_ORIGIN}/api/license/verify`) {
+      return nativeFetch(input, init);
+    }
+    const request = JSON.parse(String(init?.body));
+    const claims = registeredTestLicenses.get(request.licenseKey);
+    if (!claims?.jti || !claims.customerId || request.requireRegistration !== true) {
+      return Response.json({ valid: false, reason: 'migration_required', tier: 'free' });
+    }
+    return Response.json({
+      valid: true,
+      reason: 'valid',
+      tier: claims.tier,
+      customerId: claims.customerId,
+      licenseKeyDigest: createHash('sha256').update(request.licenseKey).digest('hex'),
+    });
+  });
 }
 
 /**

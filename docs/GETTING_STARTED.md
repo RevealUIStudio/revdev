@@ -106,17 +106,11 @@ export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ0aWVyIjoicH
 
 An inline `REVEALUI_LICENSE_KEY` always wins over Studio's file.
 
-**Stolen device:** on [revealui.com/account/license](https://revealui.com/account/license) revoke the Studio device **and** rotate the license key. Revoking the device only stops a new download. A license file already on that machine keeps working until it expires.
+**Stolen device:** revoke the Studio device and rotate its license through the authenticated hosted licensing service. Device revocation stops future downloads. The daemon checks exact hosted registration before every new paid request, so a revoked or replaced token cannot admit new paid work. Already admitted work may finish; cancellation is not implemented.
 
-The daemon ships with the vendor public key baked in, so it verifies your license with no further configuration.
+Paid activation requires a locally valid signature, a registered current token with customer identity and JTI, and reachable hosted authority. Authority outages deny new paid requests. Free operations remain available.
 
-**Advanced (key rotation / override):** `REVDEV_LICENSE_PUBLIC_KEY` overrides the baked-in vendor key with a PEM-encoded Ed25519 public key. You only need it if the vendor signing key has rotated and your build predates the rotation, or you are testing against your own keypair. The current public key is shown on your account page at [revealui.com/account/license](https://revealui.com/account/license).
-
-```bash
-export REVDEV_LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEA...
------END PUBLIC KEY-----"
-```
+The bundled public key belongs to the historical RevDev issuer. Supported provisioning of hosted issuer trust and migration of existing credentials remain open. A public-key environment override is not a supported rotation procedure. Do not claim automatic hosted activation until that owning bootstrap is implemented and verified.
 
 5. Restart the daemon (only needed for the headless copy path; Studio already restarts it):
 
@@ -180,7 +174,7 @@ This gives the tool access to agent coordination, file reservations, and task ma
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REVEALUI_LICENSE_KEY` | (none) | License key for Pro+ features — an `eyJ`-prefixed Ed25519 JWT |
-| `REVDEV_LICENSE_PUBLIC_KEY` | (none) | PEM Ed25519 public key the daemon verifies the license against. Optional; overrides the baked-in vendor key (needed only after a signing-key rotation or when testing your own keypair) |
+| `REVDEV_LICENSE_PUBLIC_KEY` | (none) | PEM Ed25519 public key the daemon verifies the license against. Existing explicit verifier configuration; supported hosted trust provisioning and rotation remain open |
 | `REVDEV_DAEMON_SOCKET` | `~/.local/share/revealui/harness.sock` | Socket path |
 | `REVDEV_DAEMON_DATA` | `~/.local/share/revealui` | Database directory |
 | `REVDEV_DAEMON_PID` | `~/.local/share/revealui/harness.pid` | PID file path |

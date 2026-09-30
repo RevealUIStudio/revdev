@@ -39,7 +39,7 @@ revdev/
 │   ├── bridge/                     # @revdev/bridge — Tauri↔daemon IPC adapter
 │   └── theme/                      # @revdev/theme — shared visual tokens
 ├── scripts/
-│   ├── issue-license.ts            # Issue Ed25519-JWT licenses + generate the signing keypair
+│   ├── issue-license.ts            # Authenticated hosted registered license issuance
 │   └── rotate-license.ts           # Calendar + emergency license rotation (manual, on demand)
 ├── docs/                           # this directory
 └── config/                         # shared config (Biome, TS, etc.)
@@ -172,10 +172,10 @@ Per `packages/daemon/src/license.ts` + `license-crypto.ts` + `scripts/issue-lice
 - **Format:** Ed25519-signed JWT (RFC 7519), header `{ alg: "EdDSA", typ: "JWT" }`. Detection: keys starting `eyJ` take the JWT path.
 - **Legacy formats are rejected** — `RVUI.v2.*` (dotted v2) and `RVUI-*` (v1) fail with an explicit message directing the holder to obtain a fresh JWT. Also rejected with named reasons: RS256/wrong-algorithm JWTs, wrong-key signatures, non-JSON payloads, unrecognized tiers, malformed 2-part tokens. <!-- doclint:allow-legacy-format -->
 - **Verification:** `node:crypto.verify(null, …)` — no third-party JWT library (avoids the algorithm-confusion CVE class). Signature is verified **before** the expiration check.
-- **Acceptance:** perpetual JWT (no `exp`), or non-perpetual with a valid `exp`.
+- **Acceptance:** a locally trusted signed perpetual JWT (no `exp`), or dated JWT with valid expiry, plus fresh exact-token hosted registration for each new paid dispatch. Local signature validity alone does not authorize paid dispatch.
 - **Tiers (whitelist):** `free` / `pro` / `max` / `enterprise`. Feature gating via the daemon's license guard.
-- **Lifecycle:** the daemon warns at 14d/7d/1d before expiry and **fails closed** (refuses to start) on a present-but-expired license. `REVDEV_LICENSE_PUBLIC_KEY` or `REVDEV_LICENSE_PUBLIC_KEY_FILE` supplies the verifier key; customers set their license as `REVEALUI_LICENSE_KEY`.
-- **Keys:** the signing keypair lives in the vault at `revdev/license-signing-{private,public}-key` (canonical since 2026-06-10; the older single-path name is retired). Generation + rotation runbook: [`KEY_GENERATION.md`](./KEY_GENERATION.md) and `scripts/rotate-license.ts`, the manual on-demand tool with calendar and emergency modes. The weekly timer was retired 2026-07-26 under the perpetual-manual policy.
+- **Lifecycle:** the daemon warns at 14d/7d/1d before expiry and **fails closed** (refuses to start) on a present-but-expired license. `REVDEV_LICENSE_PUBLIC_KEY` is the supported verifier configuration; its provisioning must align with the hosted issuer lifecycle; customers set their license as `REVEALUI_LICENSE_KEY`.
+- **Authority:** the existing hosted signer and authenticated licensing API own issuance, exact-token registration, idempotent operation receipts and containment. Independent local signing is retired. Paid dispatch requires a fresh online check and fails closed during outages; in-flight admitted work may finish. Issuer-trust migration and maintained Vault expected-current promotion remain activation blockers.
 
 ### License principals — founder vs customer
 
@@ -193,7 +193,7 @@ Tier is the pricing axis; principal type is orthogonal — staff-ness is **not**
 | CLI | Path | Purpose |
 |---|---|---|
 | `revdev-daemon` | `packages/daemon/dist/cli.js` | Daemon process; `--detach` flag; systemd installer via `setup:systemd` |
-| `issue-license` | `scripts/issue-license.ts` | `--generate-keypair` (first-time setup, vault-stores both halves) and `--tier <T> [--customer N] [--days N | --perpetual]` (issue an Ed25519 JWT) |
+| `issue-license` | `scripts/issue-license.ts` | Authenticated hosted issuance, explicit customer and stable operation UUID; explicit perpetual grant; unsafe Vault force promotion refused |
 | `rotate-license` | `scripts/rotate-license.ts` | Calendar/emergency rotation; manual, on demand (timer retired 2026-07-26) |
 | Console | `apps/console` (Go binary, `rvui`) | SSH TUI ops cockpit |
 
@@ -243,7 +243,7 @@ Pre-1.0 per the fleet versioning convention. Per-package SemVer (`@revdev/daemon
 | Other product | Relationship |
 |---|---|
 | **RevealUI** | Daemon talks to the RevealUI API for tool routing; Studio is a UI over the same. RevDev is the dev-tools surface; RevealUI is the runtime. |
-| **RevVault** | License signing keypair at `revdev/license-signing-{private,public}-key`; per-customer license records may live under `credentials/license/<customer>` |
+| License authority | Hosted signer owns private key; maintained provisioning must supply trusted public-key lifecycle and registered customer credential |
 | **RevCon** | Studio integrates with RevCon for editor configs |
 | **RevForge** | Stamped Fleet kits include a per-customer license JWT; RevForge's stamping flow will eventually call `issue-license` (Console-productization scope) |
 | **RevKit / RevSkills** | Independent |

@@ -12,6 +12,7 @@ import { isExemptMethod, LICENSE_TIER_HELP, METHOD_MIN_TIER, requiredTier } from
 import {
   clearTestLicenseEnv,
   generateTestLicense,
+  installTestLicenseAuthority,
   setTestLicenseEnv,
 } from './test-license-helper.js';
 
@@ -20,11 +21,13 @@ describe('guardRpcMethod', () => {
   const originalPubKey = process.env.REVDEV_LICENSE_PUBLIC_KEY;
 
   beforeEach(() => {
+    installTestLicenseAuthority();
     clearTestLicenseEnv();
     refreshLicense();
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     if (originalEnv !== undefined) {
       process.env.REVEALUI_LICENSE_KEY = originalEnv;
     } else {
@@ -57,8 +60,8 @@ describe('guardRpcMethod', () => {
     ];
 
     for (const method of exemptMethods) {
-      it(`allows "${method}" on free tier`, () => {
-        const result = guardRpcMethod(method);
+      it(`allows "${method}" on free tier`, async () => {
+        const result = await guardRpcMethod(method);
         expect(result.allowed).toBe(true);
       });
     }
@@ -79,8 +82,8 @@ describe('guardRpcMethod', () => {
     ];
 
     for (const method of proMethods) {
-      it(`blocks "${method}" without license`, () => {
-        const result = guardRpcMethod(method);
+      it(`blocks "${method}" without license`, async () => {
+        const result = await guardRpcMethod(method);
         expect(result.allowed).toBe(false);
         expect(result.tier).toBe('free');
         expect(result.requiredTier).toBe('pro');
@@ -101,8 +104,8 @@ describe('guardRpcMethod', () => {
     ];
 
     for (const method of maxMethods) {
-      it(`blocks "${method}" without license`, () => {
-        const result = guardRpcMethod(method);
+      it(`blocks "${method}" without license`, async () => {
+        const result = await guardRpcMethod(method);
         expect(result.allowed).toBe(false);
         expect(result.tier).toBe('free');
         expect(result.requiredTier).toBe('max');
@@ -117,34 +120,34 @@ describe('guardRpcMethod', () => {
       refreshLicense();
     });
 
-    it('allows agent.spawn', () => {
-      const result = guardRpcMethod('agent.spawn');
+    it('allows agent.spawn', async () => {
+      const result = await guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(true);
       expect(result.tier).toBe('pro');
     });
 
-    it('allows inference.status (free run surface)', () => {
-      const result = guardRpcMethod('inference.status');
+    it('allows inference.status (free run surface)', async () => {
+      const result = await guardRpcMethod('inference.status');
       expect(result.allowed).toBe(true);
     });
 
-    it('allows merge.request', () => {
-      const result = guardRpcMethod('merge.request');
+    it('allows merge.request', async () => {
+      const result = await guardRpcMethod('merge.request');
       expect(result.allowed).toBe(true);
     });
 
     // GAP-267: the whole point — a $49 Pro JWT must NOT unlock Max-marketed
     // memory.*. Previously this returned { allowed: true }.
-    it('BLOCKS memory.store (Max-only) with -32001 requiredTier max', () => {
-      const result = guardRpcMethod('memory.store');
+    it('BLOCKS memory.store (Max-only) with -32001 requiredTier max', async () => {
+      const result = await guardRpcMethod('memory.store');
       expect(result.allowed).toBe(false);
       expect(result.tier).toBe('pro');
       expect(result.requiredTier).toBe('max');
       expect(result.reason).toContain('requires a Max');
     });
 
-    it('BLOCKS inference.pull (Max-only model management)', () => {
-      const result = guardRpcMethod('inference.pull');
+    it('BLOCKS inference.pull (Max-only model management)', async () => {
+      const result = await guardRpcMethod('inference.pull');
       expect(result.allowed).toBe(false);
       expect(result.requiredTier).toBe('max');
     });
@@ -166,53 +169,53 @@ describe('guardRpcMethod', () => {
       'worktree.create',
     ];
     for (const method of proCoordination) {
-      it(`allows "${method}" on pro tier`, () => {
-        expect(guardRpcMethod(method).allowed).toBe(true);
+      it(`allows "${method}" on pro tier`, async () => {
+        expect((await guardRpcMethod(method)).allowed).toBe(true);
       });
     }
 
-    it('allows harness.health on free and pro (GAP-337)', () => {
-      expect(guardRpcMethod('harness.health').allowed).toBe(true);
+    it('allows harness.health on free and pro (GAP-337)', async () => {
+      expect((await guardRpcMethod('harness.health')).allowed).toBe(true);
     });
 
-    it('allows daemon.peers on free (GAP-154 Phase 5 discovery)', () => {
-      expect(guardRpcMethod('daemon.peers').allowed).toBe(true);
+    it('allows daemon.peers on free (GAP-154 Phase 5 discovery)', async () => {
+      expect((await guardRpcMethod('daemon.peers')).allowed).toBe(true);
     });
   });
 
   describe('max/enterprise licenses', () => {
-    it('allows Max-tier methods (memory/inference management) with max license', () => {
+    it('allows Max-tier methods (memory/inference management) with max license', async () => {
       setTestLicenseEnv(generateTestLicense('max'));
       refreshLicense();
-      expect(guardRpcMethod('memory.store').allowed).toBe(true);
-      expect(guardRpcMethod('memory.store').tier).toBe('max');
-      expect(guardRpcMethod('memory.query').allowed).toBe(true);
-      expect(guardRpcMethod('inference.pull').allowed).toBe(true);
-      expect(guardRpcMethod('inference.start').allowed).toBe(true);
-      expect(guardRpcMethod('inference.stop').allowed).toBe(true);
+      expect((await guardRpcMethod('memory.store')).allowed).toBe(true);
+      expect((await guardRpcMethod('memory.store')).tier).toBe('max');
+      expect((await guardRpcMethod('memory.query')).allowed).toBe(true);
+      expect((await guardRpcMethod('inference.pull')).allowed).toBe(true);
+      expect((await guardRpcMethod('inference.start')).allowed).toBe(true);
+      expect((await guardRpcMethod('inference.stop')).allowed).toBe(true);
     });
 
-    it('allows Pro-tier methods with max license', () => {
+    it('allows Pro-tier methods with max license', async () => {
       setTestLicenseEnv(generateTestLicense('max'));
       refreshLicense();
-      expect(guardRpcMethod('agent.spawn').allowed).toBe(true);
-      expect(guardRpcMethod('agent.spawn').tier).toBe('max');
-      expect(guardRpcMethod('merge.request').allowed).toBe(true);
+      expect((await guardRpcMethod('agent.spawn')).allowed).toBe(true);
+      expect((await guardRpcMethod('agent.spawn')).tier).toBe('max');
+      expect((await guardRpcMethod('merge.request')).allowed).toBe(true);
     });
 
-    it('allows everything (Pro + Max) with enterprise license', () => {
+    it('allows everything (Pro + Max) with enterprise license', async () => {
       setTestLicenseEnv(generateTestLicense('enterprise'));
       refreshLicense();
-      expect(guardRpcMethod('merge.request').allowed).toBe(true);
-      expect(guardRpcMethod('merge.request').tier).toBe('enterprise');
-      expect(guardRpcMethod('memory.store').allowed).toBe(true);
-      expect(guardRpcMethod('inference.pull').allowed).toBe(true);
+      expect((await guardRpcMethod('merge.request')).allowed).toBe(true);
+      expect((await guardRpcMethod('merge.request')).tier).toBe('enterprise');
+      expect((await guardRpcMethod('memory.store')).allowed).toBe(true);
+      expect((await guardRpcMethod('inference.pull')).allowed).toBe(true);
     });
   });
 
   // CLI --help must not re-introduce the old "pro includes memory" lie.
   describe('LICENSE_TIER_HELP (CLI honesty)', () => {
-    it('places memory under max and free file/git under free', () => {
+    it('places memory under max and free file/git under free', async () => {
       expect(LICENSE_TIER_HELP).toMatch(/free\s+Sessions, single-repo file\/git/);
       expect(LICENSE_TIER_HELP).toMatch(/max\s+\+ full AI memory \(memory\.\*\)/);
       // Pro line must not claim memory
@@ -227,21 +230,21 @@ describe('guardRpcMethod', () => {
   // added to METHOD_MIN_TIER, it is covered here automatically.
   describe('per-Max-method tier enforcement (parameterized)', () => {
     for (const [method, minTier] of METHOD_MIN_TIER) {
-      it(`"${method}" (min ${minTier}) is blocked on Pro`, () => {
+      it(`"${method}" (min ${minTier}) is blocked on Pro`, async () => {
         setTestLicenseEnv(generateTestLicense('pro'));
         refreshLicense();
-        const result = guardRpcMethod(method);
+        const result = await guardRpcMethod(method);
         expect(result.allowed).toBe(false);
         expect(result.requiredTier).toBe(minTier);
       });
 
-      it(`"${method}" (min ${minTier}) is allowed on ${minTier}`, () => {
+      it(`"${method}" (min ${minTier}) is allowed on ${minTier}`, async () => {
         // METHOD_MIN_TIER never holds 'free' (exempt methods aren't in it); the
         // guard both documents that and narrows the type for generateTestLicense.
         if (minTier === 'free') return;
         setTestLicenseEnv(generateTestLicense(minTier));
         refreshLicense();
-        expect(guardRpcMethod(method).allowed).toBe(true);
+        expect((await guardRpcMethod(method)).allowed).toBe(true);
       });
     }
   });
@@ -276,8 +279,8 @@ describe('guardRpcMethod', () => {
     ];
 
     for (const method of freeFileGitMethods) {
-      it(`allows "${method}" on free tier (not -32001)`, () => {
-        const result = guardRpcMethod(method);
+      it(`allows "${method}" on free tier (not -32001)`, async () => {
+        const result = await guardRpcMethod(method);
         expect(result.allowed).toBe(true);
         expect(result.tier).toBe('free');
       });
@@ -295,8 +298,8 @@ describe('guardRpcMethod', () => {
     ];
 
     for (const method of gatedCoordinationMethods) {
-      it(`still blocks gated method "${method}" on free tier`, () => {
-        const result = guardRpcMethod(method);
+      it(`still blocks gated method "${method}" on free tier`, async () => {
+        const result = await guardRpcMethod(method);
         expect(result.allowed).toBe(false);
         expect(result.tier).toBe('free');
       });
@@ -304,18 +307,18 @@ describe('guardRpcMethod', () => {
   });
 
   describe('invalid license keys', () => {
-    it('treats malformed key as free tier', () => {
+    it('treats malformed key as free tier', async () => {
       process.env.REVEALUI_LICENSE_KEY = 'not-a-valid-key';
       refreshLicense();
-      const result = guardRpcMethod('agent.spawn');
+      const result = await guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(false);
       expect(result.tier).toBe('free');
     });
 
-    it('treats empty key as free tier', () => {
+    it('treats empty key as free tier', async () => {
       process.env.REVEALUI_LICENSE_KEY = '';
       refreshLicense();
-      const result = guardRpcMethod('agent.spawn');
+      const result = await guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(false);
     });
   });
@@ -371,15 +374,15 @@ describe('handler tier-classification coverage', () => {
     return methods;
   }
 
-  it('scans a plausible number of registered handlers', () => {
+  it('scans a plausible number of registered handlers', async () => {
     // Sanity floor so a broken scanner (finding nothing) can't pass silently.
     expect(registeredMethods().size).toBeGreaterThanOrEqual(50);
   });
 
-  it('classifies every registered handler from license SSOT (exactly one tier)', () => {
+  it('classifies every registered handler from license SSOT (exactly one tier)', async () => {
     const unclassified: string[] = [];
     for (const method of registeredMethods()) {
-      const freePass = guardRpcMethod(method).allowed; // free tier: true iff exempt
+      const freePass = (await guardRpcMethod(method)).allowed; // free tier: true iff exempt
       const exempt = isExemptMethod(method);
       const isMax = METHOD_MIN_TIER.has(method);
       const tier = requiredTier(method);
@@ -407,7 +410,7 @@ describe('handler tier-classification coverage', () => {
     expect(unclassified).toEqual([]);
   });
 
-  it('does not reintroduce a hand-maintained Pro method list in this file', () => {
+  it('does not reintroduce a hand-maintained Pro method list in this file', async () => {
     const self = readFileSync(fileURLToPath(import.meta.url), 'utf-8');
     // Ban the old conflict-factory pattern without embedding the banned token
     // in a way that would match this assertion itself.
@@ -425,20 +428,20 @@ describe('initLicenseGuard', () => {
     clearTestLicenseEnv();
   });
 
-  it('returns free tier without key', () => {
+  it('returns free tier without key', async () => {
     const result = initLicenseGuard();
     expect(result.tier).toBe('free');
     expect(result.valid).toBe(false);
   });
 
-  it('returns pro tier with valid v2 key', () => {
+  it('returns pro tier with valid v2 key', async () => {
     setTestLicenseEnv(generateTestLicense('pro'));
     const result = initLicenseGuard();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);
   });
 
-  it('logs startup banner', () => {
+  it('logs startup banner', async () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     initLicenseGuard();
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('FREE'));
@@ -447,7 +450,7 @@ describe('initLicenseGuard', () => {
 });
 
 describe('licenseErrorResponse', () => {
-  it('returns valid JSON-RPC error', () => {
+  it('returns valid JSON-RPC error', async () => {
     const guard = {
       allowed: false as const,
       tier: 'pro' as const,
@@ -467,7 +470,7 @@ describe('licenseErrorResponse', () => {
     expect(parsed.error.data.upgradeUrl).toBe('https://revealui.com/pro');
   });
 
-  it('handles null id', () => {
+  it('handles null id', async () => {
     const guard = { allowed: false as const, tier: 'free' as const, reason: 'blocked' };
     const parsed = JSON.parse(licenseErrorResponse(null, guard));
     expect(parsed.id).toBeNull();

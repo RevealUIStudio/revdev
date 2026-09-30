@@ -10,11 +10,11 @@
  * - iss: "https://revealui.com"
  * - aud: "revealui-license"
  *
- * The vendor public key is read from the REVDEV_LICENSE_PUBLIC_KEY env var
- * (also stored in revvault at `revdev/license-signing-public-key`). The
- * matching private key lives in revvault at `revdev/license-signing-private-key`
- * and is only used by the key issuing CLI (`scripts/issue-license.ts`,
- * which also has a `--generate-keypair` mode for first-time setup).
+ * Issuance uses the authenticated hosted licensing API. This verifier uses
+ * the bundled public key or the existing explicit configuration below; it
+ * never loads a private key or generates an independent issuer keypair.
+ * Local signature validation alone does not authorize paid dispatch: the
+ * guard also requires exact current hosted registration before each request.
  *
  * Verification is hand-decoded (no jose dep): split on ".", base64url-decode
  * header+payload, assert alg=EdDSA, verify Ed25519 signature over the raw
@@ -35,16 +35,10 @@ export { isRevokedJti, revokedJtiPath, revokeJti };
 /**
  * Vendor Ed25519 public key (PEM) used to verify license JWTs.
  *
- * Falls back to the baked-in DEFAULT_VENDOR_PUBLIC_KEY so activation succeeds
- * with only REVEALUI_LICENSE_KEY set (no second env var on the happy path).
- * REVDEV_LICENSE_PUBLIC_KEY overrides the default for key rotation or testing;
- * an empty/whitespace override is treated as unset and falls back to the default.
- * To mint a fresh keypair:
- *
- *   pnpm exec tsx scripts/issue-license.ts --generate-keypair
- *
- * That writes both halves to revvault and prints the PEM-formatted public key;
- * refresh DEFAULT_VENDOR_PUBLIC_KEY (in vendor-public-key.ts) on rotation.
+ * Existing configuration accepts REVDEV_LICENSE_PUBLIC_KEY; blank values use
+ * the bundled default. This configuration is not a supported signing-key
+ * rotation or hosted issuer migration protocol. That trust/bootstrap work
+ * remains open; callers must not infer hosted authorization from this key.
  */
 export function getVendorPublicKey(): string {
   const override = process.env.REVDEV_LICENSE_PUBLIC_KEY;

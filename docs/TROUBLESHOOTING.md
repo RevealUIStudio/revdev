@@ -98,7 +98,7 @@ export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9..."
 systemctl --user restart revdev-daemon
 ```
 
-The daemon ships with the vendor public key baked in, so this is normally all you need. `REVDEV_LICENSE_PUBLIC_KEY` is only for key rotation or testing your own keypair; see "License key doesn't activate" below if the key is valid but still shows Free.
+Paid dispatch also requires exact current hosted registration and reachable authority. Supported hosted issuer trust provisioning remains open; an environment override is not a supported signing-key rotation procedure.
 
 <!-- doclint:allow-legacy-format:start — this section documents the REJECTED formats on purpose -->
 ### Old-format key (`RVUI-*` or `RVUI.v2.*`) rejected
@@ -126,7 +126,7 @@ echo $REVEALUI_LICENSE_KEY
 ```
 
 If the key is valid but still shows Free:
-- Ensure `REVDEV_LICENSE_PUBLIC_KEY` is set (the daemon needs the public key to verify signatures)
+- Check whether the credential belongs to the configured issuer and is registered in the hosted service. Legacy or unknown credentials require supported operator migration; do not replace verification trust to make an unrecognized credential pass.
 - Check daemon logs: `journalctl --user -u revdev-daemon | grep license`
 
 ---

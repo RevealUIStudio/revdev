@@ -11,7 +11,11 @@ import {
 } from '../guard.js';
 import { verifyLicenseJWT } from '../license-crypto.js';
 import { isRevokedJti, RevocationStateError, revokeJti } from '../revoked-jtis.js';
-import { generateTestLicense, setTestLicenseEnv } from './test-license-helper.js';
+import {
+  generateTestLicense,
+  installTestLicenseAuthority,
+  setTestLicenseEnv,
+} from './test-license-helper.js';
 
 let dir: string;
 let store: string;
@@ -24,6 +28,7 @@ const settings = [
 ] as const;
 let prior: Array<string | undefined>;
 beforeEach(() => {
+  installTestLicenseAuthority();
   prior = settings.map((key) => process.env[key]);
   dir = mkdtempSync(join(tmpdir(), 'revdev-local-revocation-'));
   store = join(dir, 'revoked.json');
@@ -35,6 +40,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   settings.forEach((key, index) => {
     if (prior[index] === undefined) delete process.env[key];
     else process.env[key] = prior[index];
@@ -42,46 +48,46 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function activeLicense() {
+async function activeLicense() {
   const kit = generateTestLicense('pro', true, { jti: 'synthetic-active-jti' });
   setTestLicenseEnv(kit);
   initLicenseGuard();
-  expect(guardRpcMethod('agent.spawn').allowed).toBe(true);
+  expect((await guardRpcMethod('agent.spawn')).allowed).toBe(true);
   return kit;
 }
 
 describe('running guard local authorization', () => {
-  it('denies the next paid dispatch after local revocation without restart or refresh', () => {
-    activeLicense();
+  it('denies the next paid dispatch after local revocation without restart or refresh', async () => {
+    await activeLicense();
     revokeJti('synthetic-active-jti');
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
-    expect(guardRpcMethod('ping').allowed).toBe(true);
-    expect(guardRpcMethod('session.end').allowed).toBe(true);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+    expect((await guardRpcMethod('ping')).allowed).toBe(true);
+    expect((await guardRpcMethod('session.end')).allowed).toBe(true);
   });
-  it('rechecks actual current token instead of retaining an earlier token authorization', () => {
-    activeLicense();
+  it('rechecks actual current token instead of retaining an earlier token authorization', async () => {
+    await activeLicense();
     process.env.REVEALUI_LICENSE_KEY = 'invalid-replacement-token';
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
-    expect(guardRpcMethod('ping').allowed).toBe(true);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+    expect((await guardRpcMethod('ping')).allowed).toBe(true);
   });
-  it('rechecks a configured token file replacement without restart', () => {
-    const kit = activeLicense();
+  it('rechecks a configured token file replacement without restart', async () => {
+    const kit = await activeLicense();
     delete process.env.REVEALUI_LICENSE_KEY;
     const path = join(dir, 'license.key');
     writeFileSync(path, kit.licenseKey);
     process.env.REVEALUI_LICENSE_KEY_FILE = path;
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(true);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(true);
     writeFileSync(path, 'invalid-token');
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
   });
-  it('denies paid dispatch when the configured token file is missing, preserving lifecycle', () => {
-    activeLicense();
+  it('denies paid dispatch when the configured token file is missing, preserving lifecycle', async () => {
+    await activeLicense();
     delete process.env.REVEALUI_LICENSE_KEY;
     process.env.REVEALUI_LICENSE_KEY_FILE = join(dir, 'missing.key');
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
-    expect(guardRpcMethod('session.end').allowed).toBe(true);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+    expect((await guardRpcMethod('session.end')).allowed).toBe(true);
   });
-  it('downgrades a runtime recheck and each dispatch after authenticated expiry', () => {
+  it('downgrades a runtime recheck and each dispatch after authenticated expiry', async () => {
     vi.useFakeTimers();
     try {
       const kit = generateTestLicense('pro', false, { daysUntilExpiry: 1, jti: 'expiring-jti' });
@@ -89,8 +95,8 @@ describe('running guard local authorization', () => {
       initLicenseGuard();
       vi.setSystemTime(Date.now() + 2 * 86400 * 1000);
       expect(runtimeLicenseRecheck().valid).toBe(false);
-      expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
-      expect(guardRpcMethod('session.end').allowed).toBe(true);
+      expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+      expect((await guardRpcMethod('session.end')).allowed).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -107,8 +113,8 @@ describe('revocation store failure is never empty permission state', () => {
     '{"jtis": [""]}',
     '{"jtis": [" synthetic-active-jti "]}',
   ]) {
-    it(`fails closed for malformed store ${contents}`, () => {
-      const kit = activeLicense();
+    it(`fails closed for malformed store ${contents}`, async () => {
+      const kit = await activeLicense();
       writeFileSync(store, contents);
       expect(() => isRevokedJti('synthetic-active-jti')).toThrow(RevocationStateError);
       expect(() => revokeJti('another')).toThrow(RevocationStateError);
@@ -117,21 +123,21 @@ describe('revocation store failure is never empty permission state', () => {
         valid: false,
         code: 'revocation-unavailable',
       });
-      expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
-      expect(guardRpcMethod('ping').allowed).toBe(true);
+      expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+      expect((await guardRpcMethod('ping')).allowed).toBe(true);
     });
   }
-  it('denies authorization for a store path that cannot be read as a file', () => {
-    const kit = activeLicense();
+  it('denies authorization for a store path that cannot be read as a file', async () => {
+    const kit = await activeLicense();
     mkdirSync(store);
     expect(verifyLicenseJWT(kit.licenseKey, kit.publicKey)).toMatchObject({
       valid: false,
       code: 'revocation-unavailable',
     });
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
   });
-  it('checks store health for supported old JWTs even when JTI is absent', () => {
-    const kit = generateTestLicense('pro');
+  it('checks store health for supported old JWTs even when JTI is absent', async () => {
+    const kit = generateTestLicense('pro', true, { jti: null });
     setTestLicenseEnv(kit);
     writeFileSync(store, 'invalid');
     expect(verifyLicenseJWT(kit.licenseKey, kit.publicKey)).toMatchObject({
@@ -139,7 +145,7 @@ describe('revocation store failure is never empty permission state', () => {
       code: 'revocation-unavailable',
     });
   });
-  it('retains a genuinely absent store as the supported initial state', () => {
+  it('retains a genuinely absent store as the supported initial state', async () => {
     expect(isRevokedJti('new')).toBe(false);
     revokeJti('new');
     expect(isRevokedJti('new')).toBe(true);
@@ -148,22 +154,22 @@ describe('revocation store failure is never empty permission state', () => {
 });
 
 describe('revocation writer conflicts', () => {
-  it('fails a competing writer and blocks paid authorization while a write is pending', () => {
-    activeLicense();
+  it('fails a competing writer and blocks paid authorization while a write is pending', async () => {
+    await activeLicense();
     writeFileSync(`${store}.lock`, 'synthetic-operation');
     expect(() => revokeJti('competing-jti')).toThrow(RevocationStateError);
     expect(readFileSync(`${store}.lock`, 'utf8')).toBe('synthetic-operation');
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
-    expect(guardRpcMethod('session.end').allowed).toBe(true);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+    expect((await guardRpcMethod('session.end')).allowed).toBe(true);
   });
-  it('treats a dangling lock symlink as unavailable rather than a missing lock', () => {
-    activeLicense();
+  it('treats a dangling lock symlink as unavailable rather than a missing lock', async () => {
+    await activeLicense();
     symlinkSync(join(dir, 'absent-operation'), `${store}.lock`);
     expect(() => revokeJti('competing-jti')).toThrow(RevocationStateError);
-    expect(guardRpcMethod('agent.spawn').allowed).toBe(false);
-    expect(guardRpcMethod('session.end').allowed).toBe(true);
+    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+    expect((await guardRpcMethod('session.end')).allowed).toBe(true);
   });
-  it('preserves all successful revocations and deduplicates retries', () => {
+  it('preserves all successful revocations and deduplicates retries', async () => {
     revokeJti('first');
     revokeJti('second');
     revokeJti('first');
