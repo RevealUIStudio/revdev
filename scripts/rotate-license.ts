@@ -11,7 +11,12 @@ import { verify } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getVendorPublicKey } from '../packages/daemon/src/license-crypto.js';
-import { issueLicense, revvaultSet, validateLicenseStorePath } from './issue-license.js';
+import {
+  issueLicense,
+  requireOperationId,
+  revvaultSet,
+  validateLicenseStorePath,
+} from './issue-license.js';
 
 const DAY_SECONDS = 86_400;
 

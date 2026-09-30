@@ -107,6 +107,26 @@ describe('license issuer and emergency rotation', () => {
     expect(() => assertSignedPriorLicense(token, keys.publicKey)).not.toThrow();
   });
 
+  it('validates the real rotation operation UUID before accessing Vault', () => {
+    const cfg = {
+      vaultPath: 'revealui/dev/founder-license-key',
+      operationId: '12345678-1234-4123-8123-123456789012',
+      tier: 'enterprise',
+      days: 90,
+      perpetual: false,
+      thresholdDays: 14,
+      emergency: false,
+    };
+    expect(() => validateRotateConfig(cfg)).not.toThrow();
+    expect(() => validateRotateConfig({ ...cfg, operationId: undefined })).toThrow(
+      'operation UUID',
+    );
+    expect(() => validateRotateConfig({ ...cfg, operationId: 'invalid' })).toThrow(
+      'operation UUID',
+    );
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed issue and rotation options before a vault write', () => {
     expect(() => validateIssueOptions({ tier: 'invalid', customer: 'synthetic' })).toThrow('tier');
     expect(() => validateIssueOptions({ tier: 'pro', customer: '../other' })).toThrow('Customer');

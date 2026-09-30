@@ -48,7 +48,7 @@
     "test": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --testPathPattern=e2e",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.scripts.json"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
