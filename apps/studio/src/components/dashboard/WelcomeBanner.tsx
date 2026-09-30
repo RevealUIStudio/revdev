@@ -29,25 +29,23 @@ export default function WelcomeBanner() {
         <IconClose size="sm" />
       </Button>
       <h2 className="text-sm font-semibold text-brand-text">
-        {settings.localMode
-          ? 'You are working on this machine'
-          : 'Run your agents on your own infrastructure'}
+        {settings.localMode ? 'You are working on this machine' : 'Your development workspace'}
       </h2>
       {settings.localMode ? (
         <div className="mt-1 space-y-2 text-xs leading-relaxed text-fg-muted">
           <p>Account features stay off until you sign in from Settings.</p>
           <p className="font-medium text-fg">Next</p>
           <ol className="list-decimal space-y-1 pl-4">
-            <li>Skip the setup checklist if it covers the window.</li>
+            <li>Complete or skip the setup checklist.</li>
             <li>Open Agent in the sidebar.</li>
             <li>Open the Approvals tab on the right.</li>
           </ol>
         </div>
       ) : (
         <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-          Studio is where you start your agents and watch them work. Each one runs as a user you
-          govern, and every action it takes is recorded so you can check it. This is an early
-          preview, so expect a few rough edges.
+          Use RevDev to manage agent sessions, review approval requests, and work with configured
+          apps and connections. Review each session and its active approval mode before starting
+          work.
         </p>
       )}
     </div>

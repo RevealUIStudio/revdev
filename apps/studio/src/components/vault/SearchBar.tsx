@@ -17,7 +17,7 @@ export default function SearchBar({ query, onChange }: SearchBarProps) {
         type="search"
         value={query}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search secrets..."
+        placeholder="Search secret names and paths"
         className="pl-9"
       />
     </div>

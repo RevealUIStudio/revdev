@@ -19,7 +19,7 @@ export default function SecretList({ secrets, selectedPath, onSelect, onDelete }
   if (secrets.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-fg-subtle">
-        No secrets found
+        No secrets to show
       </div>
     );
   }

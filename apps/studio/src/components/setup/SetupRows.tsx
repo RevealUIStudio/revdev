@@ -184,7 +184,7 @@ export function VaultRow() {
         </div>
         {vaultInitialized === false && (
           <Button variant="primary" size="sm" onClick={handleInitVault} loading={vaultLoading}>
-            Initialize Vault
+            Set up vault
           </Button>
         )}
       </div>

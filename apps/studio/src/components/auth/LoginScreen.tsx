@@ -104,7 +104,7 @@ export default function LoginScreen() {
           <div className="text-center">
             <h1 className="text-lg font-semibold text-fg">RevDev</h1>
             <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-              Studio is the desktop app for the RevDev daemon on this machine. You can start locally
+              RevDev connects to the development daemon on this machine. You can start locally
               without an account.
             </p>
           </div>
@@ -139,14 +139,14 @@ export default function LoginScreen() {
             >
               <span className="text-sm font-semibold text-fg">Sign in with email</span>
               <span className="text-xs font-normal text-fg-muted">
-                Connect Studio to a RevealUI API for account features. You will get a one-time code.
+                Connect RevDev to a RevealUI API for account features. You will get a one-time code.
               </span>
             </Button>
           </div>
 
           <p className="text-center text-[11px] leading-relaxed text-fg-subtle">
-            After local start, Studio asks whether you want to develop in repos or deploy a
-            business. You can skip the setup checklist and open Agent → Approvals from there.
+            Next, choose a development or deployment workspace. Complete the setup steps you need,
+            or skip the checklist to get started.
           </p>
         </div>
       </div>

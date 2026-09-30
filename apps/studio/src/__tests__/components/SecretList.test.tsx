@@ -10,9 +10,9 @@ const SECRETS: SecretInfo[] = [
 ];
 
 describe('SecretList', () => {
-  it('shows "No secrets found" when list is empty', () => {
+  it('shows "No secrets to show" when list is empty', () => {
     render(<SecretList secrets={[]} selectedPath={null} onSelect={vi.fn()} onDelete={vi.fn()} />);
-    expect(screen.getByText('No secrets found')).toBeInTheDocument();
+    expect(screen.getByText('No secrets to show')).toBeInTheDocument();
   });
 
   it('renders all secrets', () => {

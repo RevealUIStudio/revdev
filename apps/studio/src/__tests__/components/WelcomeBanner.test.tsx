@@ -43,7 +43,7 @@ describe('WelcomeBanner', () => {
   it('keeps the account-mode welcome when local mode is off', () => {
     renderBanner(false);
 
-    expect(screen.getByText('Run your agents on your own infrastructure')).toBeInTheDocument();
+    expect(screen.getByText('Your development workspace')).toBeInTheDocument();
     expect(screen.queryByText('You are working on this machine')).not.toBeInTheDocument();
   });
 });
