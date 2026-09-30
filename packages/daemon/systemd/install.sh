@@ -72,8 +72,9 @@ echo "If on WSL and you want survival across logouts: sudo loginctl enable-linge
 
 # --- License rotation timer: RETIRED (GAP-437 ruling, owner 2026-07-26) ----
 # The founder license is perpetual-manual: rotation happens on demand via
-# scripts/issue-license.ts mint-and-store, and rotate-license.ts remains the
-# manual calendar/emergency tool. The weekly timer had never fired
+# supported hosted operation and conditional Vault rotation. Both maintained
+# scripts require explicit mode and stable operation identity; issuer trust and
+# compatible Vault prerequisites must be established. The weekly timer had never fired
 # successfully (dead default vault path) and would no-op against a perpetual
 # key. Clean up any units a previous install left behind.
 systemctl --user disable --now revdev-license-rotation.timer 2>/dev/null || true

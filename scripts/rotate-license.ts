@@ -4,25 +4,25 @@
  * Authenticated hosted credential containment and replacement.
  * --operation-id is a stable UUID for persisted recovery. Explicit --perpetual
  * remains available. Vault promotion requires the maintained expected-current
- * primitive and is refused until that owner exists; no force-write fallback.
+ * primitive; committed hosted receipts recover before reading Vault.
  */
-import { execFileSync } from 'node:child_process';
 import { verify } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getVendorPublicKey } from '../packages/daemon/src/license-crypto.js';
 import {
-  issueLicense,
+  promoteLicense,
+  readCurrentLicense,
   requireOperationId,
-  revvaultSet,
   validateLicenseStorePath,
 } from './issue-license.js';
 
 const DAY_SECONDS = 86_400;
 
-interface RotateConfig {
+export interface RotateConfig {
   vaultPath: string;
   operationId?: string;
+  expectedMode?: 'live' | 'test';
   tier: 'pro' | 'max' | 'enterprise';
   customer?: string;
   days: number;
@@ -134,6 +134,9 @@ export function validateRotateConfig(cfg: RotateConfig): void {
     throw new Error('Threshold days must be an integer from 0 to 36500.');
   }
   requireOperationId(cfg.operationId);
+  if (cfg.expectedMode !== 'live' && cfg.expectedMode !== 'test') {
+    throw new Error('Vault promotion requires an explicit --mode live or test.');
+  }
 }
 
 function parseArgs(): RotateConfig {
@@ -156,6 +159,9 @@ function parseArgs(): RotateConfig {
     switch (args[i]) {
       case '--operation-id':
         cfg.operationId = args[++i];
+        break;
+      case '--mode':
+        cfg.expectedMode = args[++i] as RotateConfig['expectedMode'];
         break;
       case '--vault-path':
         cfg.vaultPath = args[++i] ?? cfg.vaultPath;
@@ -191,6 +197,7 @@ Usage:
 
 Options:
   --operation-id <uuid>       Stable hosted operation identifier
+  --mode <live|test>          Required expected hosted mode (no default)
   --vault-path <path>     revvault path of the license to rotate
                           (default: revealui/dev/founder-license-key)
   --tier <pro|max|enterprise>   tier for the replacement (default: enterprise)
@@ -205,96 +212,75 @@ Options:
 
 Env:
 Hosted containment uses existing REVEALUI_ADMIN_API_KEY authentication.
-Credential promotion remains unavailable until RevVault supports expected-current writes.
+Credential promotion requires matching issuer trust and the maintained conditional RevVault CLI.
 A stable operation UUID recovers a committed hosted result across signer outages.
 `);
         process.exit(0);
+        break;
+      default:
+        throw new Error('Unknown license rotation option.');
     }
   }
 
   return cfg;
 }
 
-function readCurrentLicense(vaultPath: string): string {
-  try {
-    // `get --full`: plain `get` returns a masked preview, not the value
-    // (same defect class as issue-license getPrivateKey, fixed 2026-07-26).
-    return execFileSync('revvault', ['get', '--full', vaultPath], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-  } catch {
-    return '';
+/** Existing rotation flow recovers a committed operation before examining today's prior. */
+export async function rotateLicense(
+  cfg: RotateConfig,
+): Promise<{ status: 'not-needed' } | { status: 'promoted'; operationId: string; path: string }> {
+  validateRotateConfig(cfg);
+  if (cfg.emergency && !cfg.reason?.trim()) {
+    throw new Error('--emergency requires a reason.');
   }
-}
-
-function isoOrPerpetual(exp: number | null): string {
-  return exp === null ? 'perpetual' : new Date(exp * 1000).toISOString();
+  return promoteLicense(
+    {
+      operationId: cfg.operationId,
+      expectedMode: cfg.expectedMode,
+      tier: cfg.tier,
+      customer: cfg.customer,
+      days: cfg.perpetual ? undefined : cfg.days,
+      perpetual: cfg.perpetual,
+    },
+    { kind: 'rotation', path: cfg.vaultPath },
+    () => {
+      const stored = readCurrentLicense(cfg.vaultPath);
+      const prior = decodeLicense(stored.token);
+      assertSignedPriorLicense(stored.token, getVendorPublicKey());
+      assertEmergencyRevocable(prior, cfg.emergency);
+      if (prior.malformed) throw new Error('Current license is malformed; refusing rotation.');
+      if (
+        !shouldRotate(prior.exp, Math.floor(Date.now() / 1000), cfg.thresholdDays, cfg.emergency)
+      ) {
+        return null;
+      }
+      if (
+        prior.customerId !== cfg.customer ||
+        !prior.jti?.trim() ||
+        prior.jti !== prior.jti.trim()
+      ) {
+        throw new Error('Current license lacks matching customer or revocable identity.');
+      }
+      return {
+        expectedCurrentLicenseKey: stored.token,
+        expected: { kind: 'sha256', sha256: stored.sha256 },
+      };
+    },
+  );
 }
 
 async function main(): Promise<void> {
-  const cfg = parseArgs();
-
   try {
-    validateRotateConfig(cfg);
-  } catch (err) {
-    console.error(`[rotate] ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
-  }
-
-  if (cfg.emergency && !cfg.reason) {
-    console.error('[rotate] --emergency requires --reason "<why>"');
-    process.exit(1);
-  }
-
-  const current = readCurrentLicense(cfg.vaultPath);
-  if (!current) {
-    console.error(
-      `[rotate] no current license found at revvault path "${cfg.vaultPath}" ` +
-        '(is revvault unlocked + the path correct?)',
-    );
-    process.exit(1);
-  }
-
-  const prior = decodeLicense(current);
-  try {
-    assertSignedPriorLicense(current, getVendorPublicKey());
-    assertEmergencyRevocable(prior, cfg.emergency);
-  } catch (err) {
-    console.error(`[rotate] ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
-  }
-  if (prior.malformed && !cfg.emergency) {
-    console.error(
-      `[rotate] current license at "${cfg.vaultPath}" is not a parseable JWT — refusing to ` +
-        'silently skip rotation. Investigate the vault entry and use signing-key ' +
-        'rotation or an explicit recovery path; this token cannot be revoked by jti.',
-    );
-    process.exit(1);
-  }
-  const nowSeconds = Math.floor(Date.now() / 1000);
-
-  if (!shouldRotate(prior.exp, nowSeconds, cfg.thresholdDays, cfg.emergency)) {
+    const outcome = await rotateLicense(parseArgs());
     console.log(
-      `[rotate] no rotation needed — ${cfg.vaultPath} expires ${isoOrPerpetual(prior.exp)} ` +
-        `(> ${cfg.thresholdDays}d away).`,
+      `[rotate] ${outcome.status === 'promoted' ? 'Local license promotion committed.' : 'No calendar rotation needed.'}`,
     );
-    process.exit(0);
+  } catch (error) {
+    console.error(
+      `[rotate] ${error instanceof Error ? error.message : 'License rotation failed.'}`,
+    );
+    process.exitCode = 1;
   }
-
-  const newJwt = await issueLicense({
-    operationId: cfg.operationId,
-    expectedCurrentLicenseKey: current,
-    tier: cfg.tier,
-    customer: cfg.customer ?? prior.customerId ?? undefined,
-    days: cfg.perpetual ? undefined : cfg.days,
-    perpetual: cfg.perpetual,
-  });
-  // Hosted containment/receipt has committed. Vault promotion is a separate owner boundary.
-  // A retry with the same operation UUID can recover this committed result.
-  revvaultSet(cfg.vaultPath, newJwt);
-
-  process.exit(0);
 }
 
 /** True when this file is the process entrypoint (not imported). */
