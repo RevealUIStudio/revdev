@@ -66,8 +66,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     )?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let mount = MenuItem::with_id(app, "mount", "Mount Studio Drive", true, None::<&str>)?;
-    let unmount =
-        MenuItem::with_id(app, "unmount", "Unmount Studio Drive", true, None::<&str>)?;
+    let unmount = MenuItem::with_id(app, "unmount", "Unmount Studio Drive", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit RevDev", true, None::<&str>)?;
 

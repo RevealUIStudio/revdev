@@ -78,7 +78,10 @@ async fn spawn_daemon(tag: &str) -> DaemonGuard {
 
 async fn spawn_daemon_at(dir: &Path, socket: &Path) -> DaemonGuard {
     std::fs::create_dir_all(dir).expect("create daemon dir");
-    let data_dir = dir.join(format!("db-{}", DIR_COUNTER.fetch_add(1, Ordering::Relaxed)));
+    let data_dir = dir.join(format!(
+        "db-{}",
+        DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
 
     // The daemon enforces a root-owned trust anchor (review B-2) that an env
     // override cannot relax, so client-key enrollment is provisioned out-of-band
@@ -116,7 +119,10 @@ async fn spawn_daemon_at(dir: &Path, socket: &Path) -> DaemonGuard {
 async fn wait_until_ready() {
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
-        if harness::rpc_call("ping", serde_json::json!({})).await.is_ok() {
+        if harness::rpc_call("ping", serde_json::json!({}))
+            .await
+            .is_ok()
+        {
             return;
         }
         assert!(
@@ -260,7 +266,9 @@ async fn fresh_connection_per_call_survives_daemon_restart() {
 
     let mut first = spawn_daemon_at(&dir, &socket).await;
     assert!(
-        harness::rpc_call("ping", serde_json::json!({})).await.is_ok(),
+        harness::rpc_call("ping", serde_json::json!({}))
+            .await
+            .is_ok(),
         "first daemon answers"
     );
 

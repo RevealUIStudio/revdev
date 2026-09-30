@@ -15,13 +15,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::Ed25519Keypair;
+use russh::keys::PrivateKey;
 use russh::server::{Auth, Msg, Server as _, Session};
-use russh::{Channel, ChannelId, client};
+use russh::{client, Channel, ChannelId};
 use tokio::sync::mpsc;
 
-use studio_lib::ssh::{PumpEvent, pump_output};
+use studio_lib::ssh::{pump_output, PumpEvent};
 
 // ── A silent echo server ─────────────────────────────────────────────────────
 // Accepts any user, opens a session, and sends NOTHING until it receives data.
@@ -121,7 +121,11 @@ async fn idle_prompt_does_not_block_writes() {
 
     let mut handle = handle;
     assert!(
-        handle.authenticate_none("tester").await.expect("auth").success(),
+        handle
+            .authenticate_none("tester")
+            .await
+            .expect("auth")
+            .success(),
         "server should accept auth_none"
     );
 
@@ -189,7 +193,11 @@ async fn idle_prompt_does_not_block_resize() {
     .expect("connect");
 
     assert!(
-        handle.authenticate_none("tester").await.expect("auth").success(),
+        handle
+            .authenticate_none("tester")
+            .await
+            .expect("auth")
+            .success(),
         "server should accept auth_none"
     );
 
@@ -209,8 +217,11 @@ async fn idle_prompt_does_not_block_resize() {
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let resized =
-        tokio::time::timeout(Duration::from_secs(3), write_half.window_change(120, 40, 0, 0)).await;
+    let resized = tokio::time::timeout(
+        Duration::from_secs(3),
+        write_half.window_change(120, 40, 0, 0),
+    )
+    .await;
     assert!(
         resized.is_ok(),
         "resize blocked while the reader was parked at an idle prompt"

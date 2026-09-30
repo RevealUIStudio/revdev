@@ -57,7 +57,9 @@ pub fn ollama_status() -> OllamaStatus {
         .ok()
         .and_then(|o| {
             if o.status.success() {
-                String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string())
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
             } else {
                 None
             }
@@ -212,8 +214,14 @@ pub struct SnapModel {
 /// Product Inference Snaps catalog (US-origin allowlist only).
 /// Lockstep with `@revealui/ai` `US_ORIGIN_INFERENCE_SNAP_IDS`.
 const KNOWN_SNAPS: &[(&str, &str)] = &[
-    ("nemotron-3-nano", "NVIDIA (US) — general + tools; product default"),
-    ("nemotron-3-nano-omni", "NVIDIA (US) — multimodal (text/image/video/audio)"),
+    (
+        "nemotron-3-nano",
+        "NVIDIA (US) — general + tools; product default",
+    ),
+    (
+        "nemotron-3-nano-omni",
+        "NVIDIA (US) — multimodal (text/image/video/audio)",
+    ),
     ("gemma4", "Google (US) — general + vision + tools"),
     ("gemma3", "Google (US) — general + vision (allowlisted)"),
 ];
@@ -246,9 +254,10 @@ pub fn snap_status(snap_name: &str) -> SnapStatus {
             if o.status.success() {
                 let stdout = String::from_utf8_lossy(&o.stdout).to_string();
                 // Second line, second column is the version
-                stdout.lines().nth(1).and_then(|line| {
-                    line.split_whitespace().nth(1).map(|v| v.to_string())
-                })
+                stdout
+                    .lines()
+                    .nth(1)
+                    .and_then(|line| line.split_whitespace().nth(1).map(|v| v.to_string()))
             } else {
                 None
             }
@@ -332,7 +341,6 @@ pub fn snap_remove(snap_name: &str) -> Result<(), String> {
         Err(format!("snap remove failed: {stderr}"))
     }
 }
-
 
 // ── Local AI profile tiers (lockstep harnesses InferenceService + @revealui/ai) ─
 
@@ -448,7 +456,9 @@ fn chrono_like_now() -> String {
         .ok()
         .and_then(|o| {
             if o.status.success() {
-                String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string())
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
             } else {
                 None
             }
@@ -653,9 +663,7 @@ pub fn profile_get() -> LocalAiProfileView {
 pub fn profile_apply(tier: &str) -> Result<LocalAiProfileView, String> {
     let tier = tier.trim().to_lowercase();
     if !matches!(tier.as_str(), "idle" | "daily" | "snaps" | "heavy") {
-        return Err(format!(
-            "Unknown tier '{tier}'. Use idle|daily|snaps|heavy"
-        ));
+        return Err(format!("Unknown tier '{tier}'. Use idle|daily|snaps|heavy"));
     }
 
     let mut profile = empty_idle_profile_json();
@@ -750,10 +758,7 @@ const WEIGHT_FILE_SUFFIXES: &[&str] = &[".safetensors", ".gguf", ".onnx"];
 
 fn last_path_segment(value: &str) -> &str {
     let trimmed = value.trim();
-    let cut = trimmed
-        .rfind(['/', '\\'])
-        .map(|i| i + 1)
-        .unwrap_or(0);
+    let cut = trimmed.rfind(['/', '\\']).map(|i| i + 1).unwrap_or(0);
     let rest = &trimmed[cut..];
     match rest.find('?') {
         Some(q) => &rest[..q],
@@ -795,7 +800,10 @@ mod tests {
 
     #[test]
     fn allows_registry_names() {
-        assert_eq!(assert_ollama_pull_ref("gemma3:latest").unwrap(), "gemma3:latest");
+        assert_eq!(
+            assert_ollama_pull_ref("gemma3:latest").unwrap(),
+            "gemma3:latest"
+        );
         assert_eq!(assert_ollama_pull_ref("  llama3  ").unwrap(), "llama3");
     }
 

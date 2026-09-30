@@ -13,9 +13,7 @@ pub fn focus_window(process_name: String) -> Result<bool, StudioError> {
 fn focus_window_platform(process_name: &str) -> Result<bool, StudioError> {
     // Use PowerShell to activate a window by process name
     // Strip .exe suffix for Get-Process matching
-    let clean_name = process_name
-        .strip_suffix(".exe")
-        .unwrap_or(process_name);
+    let clean_name = process_name.strip_suffix(".exe").unwrap_or(process_name);
 
     let script = format!(
         r#"$p = Get-Process -Name '{}' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($p -and $p.MainWindowHandle -ne 0) {{ [void][System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer((Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name W -Namespace U -PassThru)::SetForegroundWindow, [Func[IntPtr,bool]]).Invoke($p.MainWindowHandle); $true }} else {{ $false }}"#,
@@ -36,9 +34,7 @@ fn focus_window_platform(process_name: &str) -> Result<bool, StudioError> {
 #[cfg(target_os = "linux")]
 fn focus_window_platform(process_name: &str) -> Result<bool, StudioError> {
     // Try wmctrl first (most reliable), fall back to xdotool
-    let wmctrl = Command::new("wmctrl")
-        .args(["-a", process_name])
-        .output();
+    let wmctrl = Command::new("wmctrl").args(["-a", process_name]).output();
 
     if let Ok(output) = wmctrl {
         if output.status.success() {

@@ -72,10 +72,9 @@ pub fn start(app: AppHandle) {
 
         loop {
             // Check daemon health
-            let connected =
-                crate::harness::rpc_call("ping", serde_json::json!({}))
-                    .await
-                    .is_ok();
+            let connected = crate::harness::rpc_call("ping", serde_json::json!({}))
+                .await
+                .is_ok();
 
             if !connected {
                 // Emit state change on transition or first connecting attempt
@@ -141,8 +140,8 @@ pub fn start(app: AppHandle) {
                 .unwrap_or_default();
 
             // Hash current state to detect changes
-            let state_json = serde_json::to_string(&(&sessions, &tasks, &reservations))
-                .unwrap_or_default();
+            let state_json =
+                serde_json::to_string(&(&sessions, &tasks, &reservations)).unwrap_or_default();
             let state_hash = hash_string(&state_json);
 
             if state_hash != last_state_hash {

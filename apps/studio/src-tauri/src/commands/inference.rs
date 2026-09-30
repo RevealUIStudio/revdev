@@ -15,7 +15,9 @@ pub fn inference_ollama_models() -> Result<Vec<inference::OllamaModel>, StudioEr
 
 /// Pull (download) an Ollama model.
 #[tauri::command]
-pub fn inference_ollama_pull(model_name: String) -> Result<inference::ModelPullResult, StudioError> {
+pub fn inference_ollama_pull(
+    model_name: String,
+) -> Result<inference::ModelPullResult, StudioError> {
     inference::ollama_pull(&model_name).map_err(|e| StudioError::Process(e))
 }
 
@@ -53,7 +55,9 @@ pub fn inference_snap_list() -> Vec<inference::SnapModel> {
 
 /// Install an inference snap.
 #[tauri::command]
-pub fn inference_snap_install(snap_name: String) -> Result<inference::ModelPullResult, StudioError> {
+pub fn inference_snap_install(
+    snap_name: String,
+) -> Result<inference::ModelPullResult, StudioError> {
     inference::snap_install(&snap_name).map_err(|e| StudioError::Process(e))
 }
 

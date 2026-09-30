@@ -88,7 +88,9 @@ async fn daemon_lifecycle_start_status_stop() {
     assert!(!before.running, "no daemon should be running yet");
 
     // Start: daemon_start itself polls until the socket answers ping.
-    let pid = daemon_ctl::daemon_start().await.expect("daemon_start succeeds");
+    let pid = daemon_ctl::daemon_start()
+        .await
+        .expect("daemon_start succeeds");
     assert!(pid > 0);
 
     // Up: pid file + process + reachable socket. Poll briefly: start
@@ -99,10 +101,7 @@ async fn daemon_lifecycle_start_status_stop() {
         if status.running {
             break status;
         }
-        assert!(
-            Instant::now() < deadline,
-            "daemon should be running"
-        );
+        assert!(Instant::now() < deadline, "daemon should be running");
         tokio::time::sleep(Duration::from_millis(50)).await;
     };
     assert_eq!(during.pid, Some(pid), "pid file matches the spawned pid");
@@ -116,13 +115,17 @@ async fn daemon_lifecycle_start_status_stop() {
     );
 
     // Stop: SIGTERM via pid file, graceful exit.
-    daemon_ctl::daemon_stop().await.expect("daemon_stop succeeds");
+    daemon_ctl::daemon_stop()
+        .await
+        .expect("daemon_stop succeeds");
 
     // The daemon's SIGTERM handler removes its pid file on the way out;
     // give it a moment, then confirm the process is gone.
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let after = daemon_ctl::daemon_status().await.expect("status (down again)");
+        let after = daemon_ctl::daemon_status()
+            .await
+            .expect("status (down again)");
         if !after.running {
             assert!(!after.reachable, "stopped daemon must not answer ping");
             break;

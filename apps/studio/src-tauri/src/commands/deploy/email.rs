@@ -23,7 +23,10 @@ pub(crate) fn take_test_send_slot() -> Result<(), StudioError> {
         .lock()
         .map_err(|e| StudioError::LockPoisoned(e.to_string()))?;
     let now = Instant::now();
-    while times.front().is_some_and(|t| now.duration_since(*t) > TEST_SEND_WINDOW) {
+    while times
+        .front()
+        .is_some_and(|t| now.duration_since(*t) > TEST_SEND_WINDOW)
+    {
         times.pop_front();
     }
     if times.len() >= TEST_SEND_MAX {
@@ -35,9 +38,15 @@ pub(crate) fn take_test_send_slot() -> Result<(), StudioError> {
     Ok(())
 }
 
-fn require_test_inputs(to_email: &str, from_email: &str, private_key: &str) -> Result<(), StudioError> {
+fn require_test_inputs(
+    to_email: &str,
+    from_email: &str,
+    private_key: &str,
+) -> Result<(), StudioError> {
     if to_email.trim().is_empty() {
-        return Err(StudioError::Config("Test recipient address is required".into()));
+        return Err(StudioError::Config(
+            "Test recipient address is required".into(),
+        ));
     }
     if from_email.trim().is_empty() {
         return Err(StudioError::Config(
@@ -45,7 +54,9 @@ fn require_test_inputs(to_email: &str, from_email: &str, private_key: &str) -> R
         ));
     }
     if private_key.trim().is_empty() {
-        return Err(StudioError::Config("Service account private key is required".into()));
+        return Err(StudioError::Config(
+            "Service account private key is required".into(),
+        ));
     }
     Ok(())
 }
@@ -84,9 +95,8 @@ pub async fn smtp_send_test(
     to_email: String,
 ) -> Result<bool, StudioError> {
     use lettre::{
-        message::Mailbox,
-        transport::smtp::authentication::Credentials,
-        AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+        message::Mailbox, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
+        AsyncTransport, Message, Tokio1Executor,
     };
 
     // Use the SMTP user as the "from" address — self-hosters won't have noreply@revealui.com
@@ -130,7 +140,9 @@ pub async fn gmail_send_test(
 ) -> Result<EmailTestResult, StudioError> {
     require_test_inputs(&to_email, &from_email, &private_key)?;
     if service_account_email.trim().is_empty() {
-        return Err(StudioError::Config("Service account email is required".into()));
+        return Err(StudioError::Config(
+            "Service account email is required".into(),
+        ));
     }
     take_test_send_slot()?;
 
@@ -147,15 +159,20 @@ pub async fn gmail_send_test(
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(StudioError::Network(classify_gmail_error(status.as_u16(), &body)));
+        return Err(StudioError::Network(classify_gmail_error(
+            status.as_u16(),
+            &body,
+        )));
     }
 
-    let parsed: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| StudioError::Network(format!("Gmail response: {e}")))?;
+    let parsed: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| StudioError::Network(format!("Gmail response: {e}")))?;
     let message_id = parsed
         .get("id")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| StudioError::Network("Gmail send succeeded but returned no message id".into()))?
+        .ok_or_else(|| {
+            StudioError::Network("Gmail send succeeded but returned no message id".into())
+        })?
         .to_string();
 
     Ok(EmailTestResult {
@@ -207,9 +224,13 @@ async fn google_access_token(
         iat: now,
         exp: now + 3600,
     };
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(private_key_pem.trim().as_bytes()).map_err(|e| {
-        StudioError::Crypto(format!("Invalid service-account private key (need PKCS8 PEM): {e}"))
-    })?;
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(private_key_pem.trim().as_bytes()).map_err(
+        |e| {
+            StudioError::Crypto(format!(
+                "Invalid service-account private key (need PKCS8 PEM): {e}"
+            ))
+        },
+    )?;
     let assertion = jsonwebtoken::encode(
         &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
         &claims,
@@ -229,7 +250,10 @@ async fn google_access_token(
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(StudioError::Network(classify_gmail_error(status.as_u16(), &body)));
+        return Err(StudioError::Network(classify_gmail_error(
+            status.as_u16(),
+            &body,
+        )));
     }
     let parsed: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| StudioError::Network(format!("Token response: {e}")))?;

@@ -15,9 +15,7 @@ fn find_nix_mesa_egl_vendor() -> Result<String, ()> {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
             if name_str.contains("mesa-") && !name_str.contains("-dev") {
-                let vendor_json = entry
-                    .path()
-                    .join("share/glvnd/egl_vendor.d/50_mesa.json");
+                let vendor_json = entry.path().join("share/glvnd/egl_vendor.d/50_mesa.json");
                 if vendor_json.exists() {
                     return Ok(vendor_json.to_string_lossy().into_owned());
                 }

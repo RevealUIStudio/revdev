@@ -22,8 +22,7 @@ mod win_process;
 use commands::{
     agent as agent_cmds, apps, config as config_cmds, deploy, fleet_map, git as git_cmds,
     harness as harness_cmds, inference as inference_cmds, launcher, local_shell as shell_cmds,
-    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, tiles,
-    vault,
+    mount, setup, spawner as spawner_cmds, ssh as ssh_cmds, status, sync, terminal, tiles, vault,
 };
 use config::ConfigState;
 use local_shell::LocalShellState;

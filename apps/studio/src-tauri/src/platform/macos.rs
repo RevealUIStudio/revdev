@@ -104,5 +104,4 @@ impl PlatformOps for MacPlatform {
 
         Ok(())
     }
-
 }
