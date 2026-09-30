@@ -79,6 +79,7 @@ export function prepareTools(rootDir = root, run = command) {
 }
 export function licenseFiles(packageDir, sourcePaths = []) {
   const files = [];
+  let embeddedGrant = false;
   const visit = (dir, depth) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (['node_modules', '.git'].includes(entry.name)) continue;
@@ -92,6 +93,28 @@ export function licenseFiles(packageDir, sourcePaths = []) {
         if (!text.trim() || text.includes('\uFFFD'))
           throw new Error(`Unreadable license text: ${path}`);
         files.push({ name: path.slice(packageDir.length + 1), text });
+      } else if (entry.isFile() && /^readme([._-]|$)/i.test(entry.name)) {
+        const text = readFileSync(path, 'utf8');
+        // Some published packages include the complete grant in their README
+        // rather than a standalone LICENSE. Preserve that actual source file;
+        // a declaration, heading or upstream link alone cannot replace it.
+        const section = text.match(
+          /^#{1,6}\s+licen[cs]e\s*\r?\n([\s\S]*?)(?=^#{1,6}\s|$(?![\s\S]))/im,
+        )?.[1];
+        if (
+          section &&
+          /copyright/i.test(section) &&
+          /permission is hereby granted, free of charge/i.test(section) &&
+          /the above copyright notice and this permission notice shall be included/i.test(
+            section,
+          ) &&
+          /the software is provided ["“]as is["”]/i.test(section) &&
+          /in no event shall the authors or copyright holders be liable/i.test(section)
+        ) {
+          if (text.includes('\uFFFD')) throw new Error(`Unreadable license text: ${path}`);
+          embeddedGrant = true;
+          files.push({ name: path.slice(packageDir.length + 1), text });
+        }
       }
     }
   };
@@ -108,6 +131,7 @@ export function licenseFiles(packageDir, sourcePaths = []) {
   }
   if (
     sourcePaths.length === 0 &&
+    !embeddedGrant &&
     !files.some((file) => /^(licen[cs]e|copying)([._-]|$)/i.test(file.name.split('/').at(-1)))
   )
     throw new Error(`Missing installed license files: ${packageDir}`);
