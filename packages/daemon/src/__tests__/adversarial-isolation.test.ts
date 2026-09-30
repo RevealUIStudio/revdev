@@ -46,6 +46,7 @@ import '../filegit.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
+  installTestLicenseAuthority,
   setTestLicenseEnv,
 } from './test-license-helper.js';
 
@@ -194,6 +195,7 @@ describe('adversarial agent isolation (B6 §6)', () => {
     // isolation assertions below exercise real handlers rather than tier -32001s.
     // License OFF tests (§6.g) are covered by the §6.a/§6.d cases above which
     // use no licensed surface.
+    installTestLicenseAuthority();
     setTestLicenseEnv(generateTestLicense('max'));
     await startFreshDaemon();
     await registerAgent(agentIdA, kpA.publicKeyPem);
@@ -743,3 +745,6 @@ describe('adversarial agent isolation (B6 §6)', () => {
     });
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

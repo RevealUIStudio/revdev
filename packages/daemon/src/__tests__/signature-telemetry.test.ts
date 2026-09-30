@@ -152,8 +152,11 @@ describe('P2 signature-status telemetry', () => {
     // Some non-exempt methods (tasks.*) are license-gated; a real enterprise key
     // lets those calls reach the telemetry point rather than being rejected by
     // the license guard first.
-    const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+    const { generateTestLicense, installTestLicenseAuthority, setTestLicenseEnv } = await import(
+      './test-license-helper.js'
+    );
     originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
+    installTestLicenseAuthority();
     setTestLicenseEnv(generateTestLicense('enterprise'));
 
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-telemetry-'));
@@ -272,3 +275,6 @@ describe('P2 signature-status telemetry', () => {
     expect(ids).not.toContain('prune-old-marker');
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

@@ -29,7 +29,12 @@ export interface TestLicenseKit {
 export function generateTestLicense(
   tier: 'pro' | 'max' | 'enterprise' = 'enterprise',
   perpetual = true,
-  opts: { daysUntilExpiry?: number; customerId?: string | null; jti?: string | null } = {},
+  opts: {
+    daysUntilExpiry?: number;
+    customerId?: string | null;
+    jti?: string | null;
+    registered?: boolean;
+  } = {},
 ): TestLicenseKit {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -61,7 +66,7 @@ export function generateTestLicense(
   const sig = sign(null, Buffer.from(message), privateKey).toString('base64url');
 
   const licenseKey = `${message}.${sig}`;
-  registeredTestLicenses.set(licenseKey, payload);
+  if (opts.registered !== false) registeredTestLicenses.set(licenseKey, payload);
   return {
     licenseKey,
     publicKey: publicKey as string,

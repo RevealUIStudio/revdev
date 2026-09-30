@@ -106,8 +106,11 @@ let recordedCalls: RecordedCall[];
 let nextResult: unknown[];
 
 beforeAll(async () => {
-  const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+  const { generateTestLicense, installTestLicenseAuthority, setTestLicenseEnv } = await import(
+    './test-license-helper.js'
+  );
   originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
+  installTestLicenseAuthority();
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-neon-'));
   socketPath = join(dataDir, 'harness.sock');
@@ -668,3 +671,6 @@ describe('GAP-154 Phase 3: events.log dual-write', () => {
     expect(payloadValue).toBeDefined();
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

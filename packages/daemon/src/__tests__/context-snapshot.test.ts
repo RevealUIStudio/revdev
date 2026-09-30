@@ -54,7 +54,10 @@ let close: () => Promise<void>;
 let db: PGlite;
 
 beforeAll(async () => {
-  const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+  const { generateTestLicense, installTestLicenseAuthority, setTestLicenseEnv } = await import(
+    './test-license-helper.js'
+  );
+  installTestLicenseAuthority();
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-ctx-'));
   socketPath = join(dataDir, 'harness.sock');
@@ -157,3 +160,6 @@ describe('context.snapshot RPC', () => {
     expect(me?.isSelf).toBe(true);
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

@@ -98,6 +98,7 @@ import '../spawn.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
+  installTestLicenseAuthority,
   setTestLicenseEnv,
 } from './test-license-helper.js';
 
@@ -200,6 +201,7 @@ beforeAll(async () => {
   // fail closed on a CI runner without bwrap. Run these under the operator
   // escape hatch: spawns are unconfined and record confinement='none'.
   process.env.REVDEV_SPAWN_CONFINEMENT = 'none';
+  installTestLicenseAuthority();
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-spawn-test-'));
   socketPath = join(dataDir, 'harness.sock');
@@ -771,3 +773,6 @@ describe('agent.remove', () => {
     ).rejects.toThrow(/unknown processId/);
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

@@ -90,6 +90,7 @@ import '../spawn.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
+  installTestLicenseAuthority,
   setTestLicenseEnv,
 } from './test-license-helper.js';
 
@@ -223,6 +224,7 @@ async function pairForBearerToken(): Promise<string> {
 
 beforeAll(async () => {
   process.env.REVDEV_SPAWN_CONFINEMENT = 'none';
+  installTestLicenseAuthority();
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-stream-auth-'));
   socketPath = join(dataDir, 'harness.sock');
@@ -416,3 +418,6 @@ describe('B1: GET /api/stream requires a signed, ownership-checked ticket', () =
     ptyB?._fireExit(0);
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

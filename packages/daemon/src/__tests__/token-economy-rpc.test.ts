@@ -70,7 +70,10 @@ let socketPath: string;
 let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+  const { generateTestLicense, installTestLicenseAuthority, setTestLicenseEnv } = await import(
+    './test-license-helper.js'
+  );
+  installTestLicenseAuthority();
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-tok-'));
   socketPath = join(dataDir, 'harness.sock');
@@ -375,3 +378,6 @@ describe('GAP-362 work.completed + loop guard', () => {
     expect(sawReaped).toBe(true);
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

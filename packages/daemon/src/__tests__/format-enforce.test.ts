@@ -151,16 +151,9 @@ describe('assertFormattedContent (biome check-and-reject)', () => {
   });
 
   it('accepts already-formatted TypeScript content', async () => {
-    // Derive the exact formatted form from the same biome the daemon uses.
-    const formatted = execFileSync(
-      join(biomeBinDir, 'biome'),
-      ['format', '--stdin-file-path', 'src/ok.ts'],
-      {
-        cwd: root,
-        input: 'const x = 1\n',
-        encoding: 'utf8',
-      },
-    );
+    // Independent expected fixture; the maintained formatter invocation below
+    // owns its timeout rather than a synchronous fixture-generation child.
+    const formatted = 'const x = 1;\n';
     const abs = join(root, 'src', 'ok.ts');
     await mkdir(dirname(abs), { recursive: true });
     await expect(

@@ -180,15 +180,9 @@ describe('file.write format enforcement (GAP-309 e2e)', () => {
   });
 
   it('accepts formatted content and writes it through', async () => {
-    const formatted = execFileSync(
-      join(biomeBinDir, 'biome'),
-      ['format', '--stdin-file-path', 'src/ok.ts'],
-      {
-        cwd: repo,
-        input: 'const x = 1;\n',
-        encoding: 'utf8',
-      },
-    );
+    // Expected bytes are independent of the formatter under test. The actual
+    // signed write exercises the maintained bounded formatter invocation.
+    const formatted = 'const x = 1;\n';
     const writeParams = {
       repoPath: repo,
       filePath: 'src/ok.ts',

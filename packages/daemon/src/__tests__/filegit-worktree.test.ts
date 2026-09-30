@@ -48,6 +48,7 @@ import { startDaemon } from '../server.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
+  installTestLicenseAuthority,
   setTestLicenseEnv,
 } from './test-license-helper.js';
 // Side-effect import: registers project.open / file.* / git.* / worktree.* handlers.
@@ -155,6 +156,7 @@ describe('worktree.* signature gate + confinement (B-WT)', () => {
   beforeAll(async () => {
     // worktree.* is Pro-gated; provision a Pro license BEFORE startDaemon so the
     // license guard passes and the SIGNATURE gate is the barrier under test.
+    installTestLicenseAuthority();
     setTestLicenseEnv(generateTestLicense('pro'));
     dataDir = await mkdtemp(join(tmpdir(), 'revdev-worktree-'));
     socketPath = join(dataDir, 'harness.sock');
@@ -281,3 +283,6 @@ describe('worktree.* signature gate + confinement (B-WT)', () => {
     await rm(repo, { recursive: true, force: true });
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());

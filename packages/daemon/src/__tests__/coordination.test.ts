@@ -80,8 +80,11 @@ let originalLicenseKey: string | undefined;
 beforeAll(async () => {
   // Coordination RPCs are license-gated (Pro+). Tests generate a real
   // Ed25519-signed v2 key so the guard lets calls through.
-  const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+  const { generateTestLicense, installTestLicenseAuthority, setTestLicenseEnv } = await import(
+    './test-license-helper.js'
+  );
   originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
+  installTestLicenseAuthority();
   setTestLicenseEnv(generateTestLicense('enterprise'));
   dataDir = await mkdtemp(join(tmpdir(), 'revdev-coord-'));
   socketPath = join(dataDir, 'harness.sock');
@@ -1179,3 +1182,6 @@ describe('GAP-307: events.log tool-use heartbeats session.list active', () => {
     expect(row?.active).toBe(false);
   });
 });
+
+// Restore the suite-owned synthetic authority transport after daemon teardown.
+afterAll(() => vi.unstubAllGlobals());
