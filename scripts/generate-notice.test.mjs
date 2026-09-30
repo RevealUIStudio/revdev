@@ -424,3 +424,29 @@ test('nested Rust source license cannot replace missing crate identity attributi
   expect(() => generate(dir, unrelated)).toThrow('missing attribution for rustDep@2');
   expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe('existing notice');
 });
+
+test('installed README grant text is retained while heading, declaration and link alone fail', () => {
+  const dir = fixture();
+  for (const text of [
+    '## License\nMIT',
+    '## License\nhttps://example.org/LICENSE',
+    '## License\n',
+  ]) {
+    writeFileSync(join(dir, 'README.md'), text);
+    expect(() => licenseFiles(dir)).toThrow('Missing installed license files');
+  }
+  const grant = `# Package documentation
+
+## License
+Copyright (c) fixture author
+Permission is hereby granted, free of charge, to any person obtaining a copy.
+The above copyright notice and this permission notice shall be included in all copies.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM.
+
+## Usage
+Preserved surrounding package documentation.
+`;
+  writeFileSync(join(dir, 'README.md'), grant);
+  expect(licenseFiles(dir)).toContainEqual({ name: 'README.md', text: grant });
+});
