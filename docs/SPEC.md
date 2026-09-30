@@ -193,9 +193,11 @@ Tier is the pricing axis; principal type is orthogonal — staff-ness is **not**
 | CLI | Path | Purpose |
 |---|---|---|
 | `revdev-daemon` | `packages/daemon/dist/cli.js` | Daemon process; `--detach` flag; systemd installer via `setup:systemd` |
-| `issue-license` | `scripts/issue-license.ts` | Authenticated hosted issuance, explicit customer and stable operation UUID; explicit perpetual grant; unsafe Vault force promotion refused |
-| `rotate-license` | `scripts/rotate-license.ts` | Calendar/emergency rotation; manual, on demand (timer retired 2026-07-26) |
+| `issue-license` | `scripts/issue-license.ts` | Authenticated hosted issuance; explicit customer and stable operation UUID; Vault promotion additionally requires explicit mode and a recover-first immutable operation receipt; conditional Vault creation requires an absent leaf and configured issuer trust |
+| `rotate-license` | `scripts/rotate-license.ts` | Calendar/emergency rotation; explicit mode and stable operation UUID; recover-first original expectation followed by conditional Vault promotion; manual, on demand (timer retired 2026-07-26) |
 | Console | `apps/console` (Go binary, `rvui`) | SSH TUI ops cockpit |
+
+License promotion receipts record the declared request and the effective signed grant separately. A null declared limit means unspecified; it does not promise unlimited use. The issuer records any supported perpetual site default once, and recovery retains that original selection. The consumer validates the signed token against the recorded effective grant before conditional Vault promotion.
 
 ---
 

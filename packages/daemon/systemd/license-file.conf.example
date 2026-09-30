@@ -11,11 +11,12 @@
 #     1. REVEALUI_LICENSE_KEY        (inline — must be UNSET to use the file)
 #     2. REVEALUI_LICENSE_KEY_FILE   (this pattern)
 #
-# Studio daily-driver / goal spine: mint an enterprise (or pro+)
-# Ed25519 JWT into revvault path revealui/dev/founder-license-key
-# via revdev/scripts/issue-license.ts --tier enterprise --customer founder
-# --perpetual, then systemctl --user restart revdev-daemon.
-# Legacy RVUI-* keys are rejected (daemon runs FREE silently).
+# License issuance and rotation require authenticated hosted operation receipts,
+# an explicit live/test mode assertion, a stable operation UUID, compatible
+# conditional RevVault support, and configured issuer trust. Issuance expects
+# an absent Vault leaf; replacing an existing license uses rotation. Default
+# issuer-trust bootstrap remains unresolved; this example does not provision it.
+# Invalid license material fails verification and grants no licensed features.
 #
 # Install:
 #     mkdir -p ~/.config/systemd/user/revdev-daemon.service.d
@@ -30,9 +31,11 @@
 #     below (find yours with `command -v revvault`).
 #   - The base unit sets PrivateTmp=true, so /tmp here is private to this
 #     service and torn down on stop; the ExecStopPost shred is belt-and-braces.
-#   - If `revvault get ... --full` writes an empty file (a known quirk inside
-#     some non-interactive shells), use the JSON form instead:
-#       revvault --json get revealui/dev/founder-license-key | jq -r .value > "$F"
+#   - This retained plaintext materialization example is bootstrap debt. Its
+#     shell redirection does not validate the maintained JSON path/value/bytes
+#     contract. Replace it in the supported service credential loader before
+#     treating it as a validated automatic provisioning path; there is no
+#     alternate shell fallback.
 #   - Ensure REVEALUI_LICENSE_KEY is NOT exported in the daemon's environment,
 #     or it will win over this file.
 #   - Studio auto-provision writes a *separate* drop-in
