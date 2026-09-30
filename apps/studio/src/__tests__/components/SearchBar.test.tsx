@@ -5,7 +5,7 @@ import SearchBar from '../../components/vault/SearchBar';
 describe('SearchBar', () => {
   it('renders a search input', () => {
     render(<SearchBar query="" onChange={vi.fn()} />);
-    expect(screen.getByPlaceholderText('Search secrets...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search secret names and paths')).toBeInTheDocument();
   });
 
   it('displays the current query value', () => {
@@ -16,7 +16,7 @@ describe('SearchBar', () => {
   it('calls onChange when typing', () => {
     const onChange = vi.fn();
     render(<SearchBar query="" onChange={onChange} />);
-    fireEvent.change(screen.getByPlaceholderText('Search secrets...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search secret names and paths'), {
       target: { value: 'neon' },
     });
     expect(onChange).toHaveBeenCalledWith('neon');
@@ -24,7 +24,7 @@ describe('SearchBar', () => {
 
   it('has search input type', () => {
     render(<SearchBar query="" onChange={vi.fn()} />);
-    const input = screen.getByPlaceholderText('Search secrets...');
+    const input = screen.getByPlaceholderText('Search secret names and paths');
     expect(input).toHaveAttribute('type', 'search');
   });
 });

@@ -19,9 +19,11 @@ describe('IntentScreen', () => {
   it('renders a path question and next-step copy', () => {
     render(<IntentScreen onSelect={vi.fn()} />);
 
-    expect(screen.getByText('How will you use Studio?')).toBeInTheDocument();
-    expect(screen.getByText(/Pick a path. One click opens that workspace/)).toBeInTheDocument();
-    expect(screen.getByText(/open Agent in the sidebar/)).toBeInTheDocument();
+    expect(screen.getByText('Choose what you want to work on.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Choose a workspace for development or deployment/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Complete the steps you need/)).toBeInTheDocument();
   });
 
   it('renders Develop and Deploy options', () => {

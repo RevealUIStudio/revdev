@@ -78,10 +78,10 @@ describe('VaultPanel', () => {
     render(<VaultPanel />);
 
     expect(screen.getByText('Vault not initialized')).toBeInTheDocument();
-    expect(screen.getByText('Initialize Vault')).toBeInTheDocument();
+    expect(screen.getByText('Set up vault')).toBeInTheDocument();
   });
 
-  it('calls initStore when Initialize Vault button is clicked', () => {
+  it('calls initStore when Set up vault button is clicked', () => {
     const initStore = vi.fn();
     mockUseVault.mockReturnValue({
       initialized: false,
@@ -104,7 +104,7 @@ describe('VaultPanel', () => {
 
     render(<VaultPanel />);
 
-    fireEvent.click(screen.getByText('Initialize Vault'));
+    fireEvent.click(screen.getByText('Set up vault'));
     expect(initStore).toHaveBeenCalledOnce();
   });
 

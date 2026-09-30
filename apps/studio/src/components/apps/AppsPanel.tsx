@@ -30,7 +30,7 @@ export default function AppsPanel() {
 
       {apps.length === 0 && !loading && !error && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-sm text-fg-subtle">No apps yet</p>
+          <p className="text-sm text-fg-subtle">No apps are configured yet</p>
           <p className="mt-1 text-xs text-fg-subtle">
             Apps configured in your harness will appear here.
           </p>

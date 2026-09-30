@@ -49,7 +49,7 @@ export default function VaultPanel() {
         </div>
         <ErrorAlert message={error} className="max-w-sm text-center" />
         <Button variant="primary" size="lg" onClick={initStore}>
-          Initialize Vault
+          Set up vault
         </Button>
       </div>
     );

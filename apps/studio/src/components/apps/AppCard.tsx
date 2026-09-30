@@ -27,7 +27,7 @@ export default function AppCard({ status, isOperating, onStart, onStop }: AppCar
       const content = await readAppLog(app.name, 50);
       setLogContent(content);
     } catch {
-      setLogContent('[Failed to read log]');
+      setLogContent('We could not read this log. Try opening it again.');
     }
   }, [app.name]);
 
@@ -93,7 +93,7 @@ export default function AppCard({ status, isOperating, onStart, onStop }: AppCar
       {showLogs && running && (
         <div className="border-t border-edge">
           <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap p-3 font-mono text-xs text-fg-muted">
-            {logContent || 'No log output yet...'}
+            {logContent || 'No log output is available yet.'}
           </pre>
         </div>
       )}
