@@ -82,7 +82,10 @@ let originalLicenseKey: string | undefined;
 let originalPublicKey: string | undefined;
 
 beforeAll(async () => {
-  const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+  const { installTestLicenseAuthority, generateTestLicense, setTestLicenseEnv } = await import(
+    './test-license-helper.js'
+  );
+  installTestLicenseAuthority();
   originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
   originalPublicKey = process.env.REVDEV_LICENSE_PUBLIC_KEY;
   setTestLicenseEnv(generateTestLicense('enterprise'));
@@ -93,6 +96,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllGlobals();
   await close?.();
   await rm(dataDir, { recursive: true, force: true });
   const { clearTestLicenseEnv } = await import('./test-license-helper.js');

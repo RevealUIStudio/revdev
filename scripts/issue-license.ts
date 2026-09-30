@@ -1,44 +1,15 @@
 #!/usr/bin/env -S node --import=tsx
 
-/**
- * Issue a RevDev license key (Ed25519-signed JWT), or generate the
- * Ed25519 keypair the daemon uses to verify those keys.
- *
- * Usage:
- *   # First-time setup — mint vendor keypair, auto-store in revvault.
- *   npx tsx scripts/issue-license.ts --generate-keypair
- *
- *   # Issue customer licenses. DEFAULT: mint-and-store straight into revvault
- *   # (owner directive 2026-07-26) — the key never touches disk, stdout, or a
- *   # clipboard. The vault path is derived from --customer (founder →
- *   # revealui/dev/founder-license-key, else forge/customers/<id>/license-key)
- *   # or given explicitly with --store <path>.
- *   npx tsx scripts/issue-license.ts --tier enterprise --customer founder --perpetual
- *   npx tsx scripts/issue-license.ts --tier pro --customer "acme-corp"
- *
- *   # Opt-out for delivery flows that need the value on stdout:
- *   npx tsx scripts/issue-license.ts --tier max --days 365 --customer acme --print
- *
- * Signing private key is read from revvault at revdev/license-signing-private-key
- * (or REVDEV_LICENSE_PRIVATE_KEY env, or ~/.revealui/license-private.pem).
- *
- * Output: Ed25519-signed JWT (RFC 7519). Header: { alg: "EdDSA", typ: "JWT" }.
- * Payload: { tier, iat, iss, aud, jti, customerId?, exp? }.
- * Format matches the RevealUI license API issuer (revealui#735, Phase A).
- *
- * The signing helpers (issueLicense / getPrivateKey / revvaultSet) are
- * exported so sibling tooling (e.g. scripts/rotate-license.ts) can reuse the
- * exact mint path. The CLI body only runs when this file is the entrypoint
- * (import.meta main-guard), so importing it has no side effects.
- */
-
-import { execFileSync } from 'node:child_process';
-import { createPrivateKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { readFileSync, realpathSync } from 'node:fs';
+/** Authenticated hosted issuance. Local signing keys cannot establish shared revocation authority. */
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { LICENSE_API_ORIGIN } from '../packages/daemon/src/license-authority.js';
+import { getVendorPublicKey, verifyLicenseJWT } from '../packages/daemon/src/license-crypto.js';
 
 export interface Options {
   tier: 'pro' | 'max' | 'enterprise';
+  operationId?: string;
+  expectedCurrentLicenseKey?: string;
   customer?: string;
   days?: number;
   perpetual?: boolean;
@@ -77,9 +48,9 @@ export function validateIssueOptions(opts: Options): void {
   }
   if (
     opts.days !== undefined &&
-    (!Number.isInteger(opts.days) || opts.days < 1 || opts.days > 36_500)
+    (!Number.isInteger(opts.days) || opts.days < 1 || opts.days > 3650)
   ) {
-    throw new Error('License days must be an integer from 1 to 36500.');
+    throw new Error('License days must be an integer from 1 to 3650.');
   }
   if (opts.perpetual && opts.days !== undefined) {
     throw new Error('Use either --perpetual or --days, not both.');
@@ -97,6 +68,9 @@ function parseArgs(): Options {
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
+      case '--operation-id':
+        opts.operationId = args[++i];
+        break;
       case '--tier':
         opts.tier = args[++i] as Options['tier'];
         break;
@@ -118,19 +92,16 @@ function parseArgs(): Options {
       case '--help':
       case '-h':
         console.log(`
-Issue RevDev License Key (Ed25519-signed JWT)
+Issue registered RevDev license through hosted authority
 
 Usage:
-  npx tsx scripts/issue-license.ts --generate-keypair
   npx tsx scripts/issue-license.ts --tier <pro|max|enterprise> [options]
 
 Options:
-  --generate-keypair            Mint vendor Ed25519 keypair and store in revvault
-                                (revdev/license-signing-{private,public}-key).
-                                Exits before signing.
-  --tier <pro|max|enterprise>   License tier (required for signing)
+  --operation-id <uuid>         Stable identifier retained across retries.
+  --tier <pro|max|enterprise>   License tier (authenticated hosted grant)
   --customer <name>             Customer identifier (embedded in JWT payload)
-  --days <n>                    Expiry in days (default: 365)
+  --days <n>                    Expiry in days (default: 90)
   --perpetual                   Never expires (omits exp claim)
   --store <revvault-path>       Vault destination (default derived: founder →
                                 revealui/dev/founder-license-key, else
@@ -138,10 +109,9 @@ Options:
   --print                       Print the JWT to stdout instead of storing
   --help                        Show this help
 
-Default behavior is mint-and-store: the signed JWT goes straight into revvault
-via stdin (never disk, never stdout) and the stored value is verified by
-readback. Use --print only when a delivery flow needs the raw value.
-Format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the daemon.
+Hosted issuance uses existing REVEALUI_ADMIN_API_KEY authentication.
+Store promotion is unavailable until RevVault supports expected-current credential writes.
+--print explicitly delivers the registered token; it does not activate a machine.
 `);
         process.exit(0);
     }
@@ -150,158 +120,79 @@ Format: Ed25519-signed JWT (RFC 7519). Set as REVEALUI_LICENSE_KEY on the daemon
   return opts;
 }
 
-/** PKCS#8 private-key PEM header — matching a generic BEGIN marker would also
- * accept the PUBLIC key, which sits one vault path segment away. Assembled
- * from parts so secret-scanners keying on the literal header don't flag this
- * source file. */
-const PRIVATE_PEM_HEADER = ['-----BEGIN', 'PRIVATE', 'KEY-----'].join(' ');
-
-export function getPrivateKey(): string {
-  // 1. Environment variable — explicitly set, so a malformed value is a loud
-  // error, not a silent fall-through to the next source.
-  if (process.env.REVDEV_LICENSE_PRIVATE_KEY) {
-    if (!process.env.REVDEV_LICENSE_PRIVATE_KEY.includes(PRIVATE_PEM_HEADER)) {
-      console.error(
-        'Error: REVDEV_LICENSE_PRIVATE_KEY is set but is not a PKCS#8 private-key PEM.',
-      );
-      process.exit(1);
-    }
-    return process.env.REVDEV_LICENSE_PRIVATE_KEY;
+export function requireOperationId(value: string | undefined): string {
+  if (
+    !value ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  ) {
+    throw new Error('Hosted issuance requires a stable operation UUID.');
   }
-
-  // 2. Revvault — MUST be `get --full`: plain `get` returns a masked preview
-  // (~28 bytes), which createPrivateKey rejects with ERR_OSSL_UNSUPPORTED
-  // (hit live 2026-07-26).
-  try {
-    const key = execFileSync('revvault', ['get', '--full', 'revdev/license-signing-private-key'], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-    if (key.includes(PRIVATE_PEM_HEADER)) return key;
-    if (key) {
-      console.error(
-        'Error: revvault returned a value for revdev/license-signing-private-key that is not a PKCS#8 private-key PEM (masked preview, corrupt entry, or the public key).',
-      );
-      process.exit(1);
-    }
-  } catch {
-    // revvault not available
-  }
-
-  // 3. Local file
-  const localPath = `${process.env.HOME}/.revealui/license-private.pem`;
-  try {
-    return readFileSync(localPath, 'utf-8');
-  } catch {
-    // not found
-  }
-
-  console.error('Error: No signing key found.');
-  console.error(
-    'Set REVDEV_LICENSE_PRIVATE_KEY, or store in revvault at revdev/license-signing-private-key',
-  );
-  process.exit(1);
+  return value;
 }
 
-export function issueLicense(opts: Options): string {
+export async function issueLicense(opts: Options): Promise<string> {
   validateIssueOptions(opts);
-  const privateKeyPem = getPrivateKey();
-  const privateKey = createPrivateKey(privateKeyPem);
-
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'EdDSA', typ: 'JWT' };
-  const payload: Record<string, unknown> = {
-    tier: opts.tier,
-    iat: now,
-    iss: 'https://revealui.com',
-    aud: 'revealui-license',
-    jti: randomUUID(),
-  };
-
-  if (opts.customer) {
-    payload.customerId = opts.customer;
-  }
-
-  if (!opts.perpetual) {
-    payload.exp = now + (opts.days ?? 365) * 86400;
-  }
-
-  const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const message = `${headerB64}.${payloadB64}`;
-  const signature = sign(null, Buffer.from(message), privateKey).toString('base64url');
-
-  return `${message}.${signature}`;
-}
-
-export function revvaultSet(path: string, value: string): void {
-  validateLicenseStorePath(path);
+  const operationId = requireOperationId(opts.operationId);
+  if (!opts.customer) throw new Error('Hosted issuance requires customer identity.');
+  const adminKey = process.env.REVEALUI_ADMIN_API_KEY;
+  if (!adminKey?.trim()) throw new Error('Hosted operator admin authentication is not configured.');
+  let response: Response;
   try {
-    execFileSync('revvault', ['set', '--force', path], {
-      input: value,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
+    response = await fetch(`${LICENSE_API_ORIGIN}/api/license/generate`, {
+      method: 'POST',
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+      headers: { 'Content-Type': 'application/json', 'X-Admin-API-Key': adminKey },
+      body: JSON.stringify({
+        operationId,
+        tier: opts.tier,
+        customerId: opts.customer,
+        perpetual: opts.perpetual === true,
+        expiresInDays: opts.days,
+        expectedCurrentLicenseKey: opts.expectedCurrentLicenseKey,
+      }),
     });
-  } catch (err) {
-    console.error(`Failed to store ${path} in revvault.`);
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
-}
-
-function revvaultCreate(path: string, value: string): void {
-  try {
-    execFileSync('revvault', ['set', path], {
-      input: value,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-  } catch (err) {
-    console.error(`Failed to create ${path} in revvault without overwriting an existing key.`);
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
-}
-
-function revvaultPathExists(path: string): boolean {
-  try {
-    execFileSync('revvault', ['get', '--full', path], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return true;
+    if (!response.ok || response.redirected) throw new Error('denied');
   } catch {
-    return false;
+    throw new Error('Hosted license operation unavailable or migration required.');
   }
+  let body: Record<string, unknown>;
+  try {
+    body = (await response.json()) as Record<string, unknown>;
+  } catch {
+    throw new Error('Hosted license operation returned invalid identity.');
+  }
+  if (
+    typeof body.licenseKey !== 'string' ||
+    body.tier !== opts.tier ||
+    body.customerId !== opts.customer
+  ) {
+    throw new Error('Hosted license operation returned invalid identity.');
+  }
+  const verified = verifyLicenseJWT(body.licenseKey, getVendorPublicKey());
+  if (!verified.valid || verified.tier !== opts.tier) {
+    throw new Error('Hosted issuer trust migration required; returned token rejected.');
+  }
+  const claims = JSON.parse(
+    Buffer.from(body.licenseKey.split('.')[1] as string, 'base64url').toString('utf8'),
+  ) as Record<string, unknown>;
+  if (
+    claims.customerId !== opts.customer ||
+    typeof claims.jti !== 'string' ||
+    !claims.jti.trim() ||
+    (opts.perpetual === true ? claims.exp !== undefined : typeof claims.exp !== 'number')
+  ) {
+    throw new Error('Hosted license operation returned invalid identity.');
+  }
+  return body.licenseKey;
 }
 
-export function generateKeypair(): void {
-  const privatePath = 'revdev/license-signing-private-key';
-  const publicPath = 'revdev/license-signing-public-key';
-  if (revvaultPathExists(privatePath) || revvaultPathExists(publicPath)) {
-    console.error(
-      'Error: a signing key already exists. First-time key generation will not overwrite it.',
-    );
-    process.exit(1);
-  }
-  const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  });
-
-  revvaultCreate(privatePath, privateKey as string);
-  revvaultCreate(publicPath, publicKey as string);
-
-  console.log('');
-  console.log('  Ed25519 Keypair Generated');
-  console.log('  ─────────────────────────');
-  console.log('  Stored in revvault:');
-  console.log('    revdev/license-signing-private-key');
-  console.log('    revdev/license-signing-public-key');
-  console.log('');
-  console.log('  Public key (set as REVDEV_LICENSE_PUBLIC_KEY in daemon env):');
-  console.log('');
-  console.log(publicKey);
+/** Force overwrite cannot provide expected-current credential promotion. */
+export function revvaultSet(path: string, _value: string): never {
+  validateLicenseStorePath(path);
+  throw new Error(
+    'Credential promotion requires the maintained RevVault expected-current operation; force overwrite is refused.',
+  );
 }
 
 /** True when this file is the process entrypoint (not imported). */
@@ -317,23 +208,28 @@ function isMainModule(): boolean {
 
 // --- CLI ---
 // Only runs when invoked directly; importing this module is side-effect-free
-// so rotate-license.ts can reuse issueLicense()/getPrivateKey()/revvaultSet().
+// so rotate-license.ts can reuse the authenticated issueLicense primitive.
 if (isMainModule()) {
-  // Honor --help before any state-changing action: --generate-keypair writes to
-  // revvault, so a `--generate-keypair --help` call must NOT rotate keys.
+  // Help is side-effect-free; retired local key generation always refuses.
   if (process.argv.includes('--help') || process.argv.includes('-h')) {
     parseArgs(); // prints help and exits
   }
 
   if (process.argv.includes('--generate-keypair')) {
-    generateKeypair();
-    process.exit(0);
+    throw new Error(
+      'Local signing key generation retired; hosted issuer trust migration required.',
+    );
   }
 
   const opts = parseArgs();
+  if (!opts.print) {
+    throw new Error(
+      'Credential promotion requires the maintained RevVault expected-current operation.',
+    );
+  }
   let key: string;
   try {
-    key = issueLicense(opts);
+    key = await issueLicense(opts);
   } catch (err) {
     console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
@@ -344,7 +240,7 @@ if (isMainModule()) {
   console.log('  ──────────────────');
   console.log(`  Tier:     ${opts.tier.toUpperCase()}`);
   console.log(`  Customer: ${opts.customer ?? '(not specified)'}`);
-  console.log(`  Expires:  ${opts.perpetual ? 'Never (perpetual)' : `${opts.days ?? 365} days`}`);
+  console.log(`  Expires:  ${opts.perpetual ? 'Never (perpetual)' : `${opts.days ?? 90} days`}`);
   console.log(`  Format:   Ed25519-signed JWT (RFC 7519)`);
   console.log('');
 
@@ -354,39 +250,6 @@ if (isMainModule()) {
     console.log('');
     console.log('  Deliver this key to the customer. They set it as:');
     console.log('  REVEALUI_LICENSE_KEY=<key>');
-    console.log('');
-  } else {
-    // Default: mint-and-store. The key goes to revvault via stdin — never
-    // disk, never stdout, nothing to copy-paste (owner directive 2026-07-26).
-    const storePath = deriveStorePath(opts);
-    if (!storePath) {
-      console.error(
-        'Error: no vault destination. Pass --customer (path is derived) or --store <revvault-path>, or use --print for stdout delivery.',
-      );
-      process.exit(1);
-    }
-    revvaultSet(storePath, key);
-    // Readback verification: the stored value must be the exact minted JWT.
-    // The value is never displayed.
-    let readback = '';
-    try {
-      readback = execFileSync('revvault', ['get', '--full', storePath], {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-    } catch {
-      // handled below
-    }
-    if (readback !== key) {
-      console.error(
-        `Error: readback from ${storePath} differs from the minted JWT — store may have failed.`,
-      );
-      process.exit(1);
-    }
-    console.log(`  Stored:   ${storePath} (readback verified; value not displayed)`);
-    console.log('');
-    console.log('  Load it with:');
-    console.log(`  export REVEALUI_LICENSE_KEY="$(revvault get --full ${storePath})"`);
     console.log('');
   }
 }

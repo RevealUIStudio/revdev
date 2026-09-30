@@ -68,6 +68,7 @@
     "@types/node": "^25.9.4",
     "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.0",
+    "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "vitest": "^4.1.11"
   },

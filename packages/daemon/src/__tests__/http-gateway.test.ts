@@ -66,7 +66,10 @@ describe('HttpGateway — off by default', () => {
   let originalPublicKey: string | undefined;
 
   beforeEach(async () => {
-    const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+    const { installTestLicenseAuthority, generateTestLicense, setTestLicenseEnv } = await import(
+      './test-license-helper.js'
+    );
+    installTestLicenseAuthority();
     originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
     originalPublicKey = process.env.REVDEV_LICENSE_PUBLIC_KEY;
     setTestLicenseEnv(generateTestLicense('enterprise'));
@@ -75,6 +78,7 @@ describe('HttpGateway — off by default', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await rm(dataDir, { recursive: true, force: true });
     const { clearTestLicenseEnv } = await import('./test-license-helper.js');
     clearTestLicenseEnv();
@@ -110,7 +114,10 @@ describe('HttpGateway — pairing + shared authorization path', () => {
   let originalPublicKey: string | undefined;
 
   beforeEach(async () => {
-    const { generateTestLicense, setTestLicenseEnv } = await import('./test-license-helper.js');
+    const { installTestLicenseAuthority, generateTestLicense, setTestLicenseEnv } = await import(
+      './test-license-helper.js'
+    );
+    installTestLicenseAuthority();
     originalLicenseKey = process.env.REVEALUI_LICENSE_KEY;
     originalPublicKey = process.env.REVDEV_LICENSE_PUBLIC_KEY;
     setTestLicenseEnv(generateTestLicense('enterprise'));
@@ -123,6 +130,7 @@ describe('HttpGateway — pairing + shared authorization path', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await close?.();
     await rm(dataDir, { recursive: true, force: true });
     const { clearTestLicenseEnv } = await import('./test-license-helper.js');

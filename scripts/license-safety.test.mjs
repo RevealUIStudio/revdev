@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { revokeJti, verifyLicenseJWT } from '../packages/daemon/src/license-crypto.ts';
-import { generateKeypair, issueLicense, revvaultSet } from './issue-license.ts';
+import { issueLicense, revvaultSet, validateIssueOptions } from './issue-license.ts';
 import {
   assertEmergencyRevocable,
   assertSignedPriorLicense,
@@ -22,18 +22,21 @@ const keys = generateKeyPairSync('ed25519', {
 let scratch;
 beforeEach(() => {
   scratch = mkdtempSync(join(tmpdir(), 'revdev-license-audit-'));
-  process.env.REVDEV_LICENSE_PRIVATE_KEY = keys.privateKey;
+  process.env.REVDEV_LICENSE_PUBLIC_KEY = keys.publicKey;
+  process.env.REVEALUI_ADMIN_API_KEY = 'synthetic-admin';
   process.env.REVEALUI_REVOKED_JTI_FILE = join(scratch, 'revoked.json');
 });
 afterEach(() => {
-  delete process.env.REVDEV_LICENSE_PRIVATE_KEY;
+  delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
+  delete process.env.REVEALUI_ADMIN_API_KEY;
   delete process.env.REVEALUI_REVOKED_JTI_FILE;
   rmSync(scratch, { recursive: true, force: true });
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.resetAllMocks();
 });
 
-function legacyToken() {
+function legacyToken(extra = {}) {
   const header = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(
     JSON.stringify({
@@ -41,6 +44,7 @@ function legacyToken() {
       iat: Math.floor(Date.now() / 1000),
       iss: 'https://revealui.com',
       aud: 'revealui-license',
+      ...extra,
     }),
   ).toString('base64url');
   const message = `${header}.${payload}`;
@@ -48,8 +52,31 @@ function legacyToken() {
 }
 
 describe('license issuer and emergency rotation', () => {
-  it('mints a perpetual key that the daemon can revoke by its unique jti', () => {
-    const token = issueLicense({ tier: 'enterprise', customer: 'synthetic', perpetual: true });
+  it('accepts only authenticated hosted registered issuance, with explicit perpetual grant', async () => {
+    const token = legacyToken({
+      customerId: 'synthetic',
+      jti: '12345678-1234-4123-8123-123456789012',
+    });
+    const transport = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ licenseKey: token, tier: 'enterprise', customerId: 'synthetic' }),
+        ),
+      );
+    vi.stubGlobal('fetch', transport);
+    expect(
+      await issueLicense({
+        operationId: '12345678-1234-4123-8123-123456789012',
+        tier: 'enterprise',
+        customer: 'synthetic',
+        perpetual: true,
+      }),
+    ).toBe(token);
+    expect(transport).toHaveBeenCalledWith(
+      'https://api.revealui.com/api/license/generate',
+      expect.objectContaining({ redirect: 'error', body: expect.stringContaining('operationId') }),
+    );
     const prior = decodeLicense(token);
     expect(prior.jti).toMatch(/^[0-9a-f-]{36}$/);
     expect(prior.exp).toBeNull();
@@ -70,7 +97,7 @@ describe('license issuer and emergency rotation', () => {
   });
 
   it('refuses a parseable prior jti whose signature was changed', () => {
-    const token = issueLicense({ tier: 'pro', customer: 'synthetic', perpetual: true });
+    const token = legacyToken({ customerId: 'synthetic', jti: 'synthetic-jti' });
     const parts = token.split('.');
     const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
     payload.jti = 'forged-revocation-identity';
@@ -81,11 +108,13 @@ describe('license issuer and emergency rotation', () => {
   });
 
   it('rejects malformed issue and rotation options before a vault write', () => {
-    expect(() => issueLicense({ tier: 'invalid', customer: 'synthetic' })).toThrow('tier');
-    expect(() => issueLicense({ tier: 'pro', customer: '../other' })).toThrow('Customer');
-    expect(() => issueLicense({ tier: 'pro', days: -1 })).toThrow('days');
-    expect(() => issueLicense({ tier: 'pro', days: Number.NaN })).toThrow('days');
-    expect(() => issueLicense({ tier: 'pro', days: 30, perpetual: true })).toThrow('either');
+    expect(() => validateIssueOptions({ tier: 'invalid', customer: 'synthetic' })).toThrow('tier');
+    expect(() => validateIssueOptions({ tier: 'pro', customer: '../other' })).toThrow('Customer');
+    expect(() => validateIssueOptions({ tier: 'pro', days: -1 })).toThrow('days');
+    expect(() => validateIssueOptions({ tier: 'pro', days: Number.NaN })).toThrow('days');
+    expect(() => validateIssueOptions({ tier: 'pro', days: 30, perpetual: true })).toThrow(
+      'either',
+    );
     const cfg = {
       vaultPath: 'revealui/dev/founder-license-key',
       tier: 'enterprise',
@@ -103,7 +132,7 @@ describe('license issuer and emergency rotation', () => {
     'forge/customers/../license-key',
     '--force',
   ])('rejects unsupported vault destination %s before key access or storage', (store) => {
-    expect(() => issueLicense({ tier: 'pro', customer: 'synthetic', store })).toThrow(
+    expect(() => validateIssueOptions({ tier: 'pro', customer: 'synthetic', store })).toThrow(
       'supported license-key path',
     );
     expect(() => revvaultSet(store, 'synthetic-jwt')).toThrow('supported license-key path');
@@ -118,28 +147,42 @@ describe('license issuer and emergency rotation', () => {
     expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
   });
 
-  it('will not overwrite either existing signing key during first-time setup', () => {
-    vi.mocked(execFileSync).mockReturnValue('existing');
-    vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('blocked exit');
-    });
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => generateKeypair()).toThrow('blocked exit');
-    expect(vi.mocked(execFileSync).mock.calls.every(([, args]) => args[0] === 'get')).toBe(true);
+  it('refuses unsafe Vault force promotion', () => {
+    expect(() => revvaultSet('revealui/dev/founder-license-key', 'synthetic')).toThrow(
+      'force overwrite',
+    );
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
   });
-
-  it('creates a new signing pair without force when both paths are absent', () => {
-    const writes = [];
-    vi.mocked(execFileSync).mockImplementation((_, args) => {
-      if (args[0] === 'get') throw new Error('not found');
-      writes.push(args);
-      return '';
+  it('fails closed on wrong customer, wrong signature, outage or missing operator identity', async () => {
+    const opts = {
+      operationId: '12345678-1234-4123-8123-123456789012',
+      tier: 'enterprise',
+      customer: 'synthetic',
+      perpetual: true,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('synthetic outage')));
+    await expect(issueLicense(opts)).rejects.toThrow('unavailable');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              licenseKey: legacyToken({ customerId: 'other', jti: 'j' }),
+              customerId: 'synthetic',
+              tier: 'enterprise',
+            }),
+          ),
+      ),
+    );
+    await expect(issueLicense(opts)).rejects.toThrow('invalid identity');
+    const other = generateKeyPairSync('ed25519', {
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
     });
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    generateKeypair();
-    expect(writes).toEqual([
-      ['set', 'revdev/license-signing-private-key'],
-      ['set', 'revdev/license-signing-public-key'],
-    ]);
+    process.env.REVDEV_LICENSE_PUBLIC_KEY = other.publicKey;
+    await expect(issueLicense(opts)).rejects.toThrow('trust migration');
+    delete process.env.REVEALUI_ADMIN_API_KEY;
+    await expect(issueLicense(opts)).rejects.toThrow('authentication');
   });
 });

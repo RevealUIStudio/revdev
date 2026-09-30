@@ -37,42 +37,17 @@ shred -u "$D/pw" "$D/revdev-studio.key" && rm -rf "$D"
 
 ---
 
-## 2. License Signing Key (Ed25519)
+## 2. License Authority
 
-Signs customer license keys (Ed25519-signed JWTs — the daemon rejects legacy `RVUI.v2.*` / `RVUI-*` formats) so the daemon can verify them. <!-- doclint:allow-legacy-format -->
+Customer credentials are minted and registered by the existing authenticated RevealUI license API. The RevDev issuer no longer generates an independent signing key or reads a local private key. Every new paid dispatch requires exact-token registration and current revocation evidence from the hosted authority; outages deny paid dispatch.
 
-```bash
-# Mint Ed25519 keypair; auto-stores both halves in revvault (exact store paths
-# are kept in the internal key index) and prints the public PEM.
-# No plaintext key files ever land on disk.
-cd ~/revealfleet/revdev
-npx tsx scripts/issue-license.ts --generate-keypair
+The supported daemon public-key trust must match the hosted issuer lifecycle. Existing separately signed credentials require authenticated operator migration. No signing-key or installed-token migration is performed by this document.
 
-# Wire the public key into the local daemon's environment.
-echo 'export REVDEV_LICENSE_PUBLIC_KEY="$(revvault get --full revdev/license-signing-public-key)"' >> ~/.bashrc
-export REVDEV_LICENSE_PUBLIC_KEY="$(revvault get --full revdev/license-signing-public-key)"
-```
+## 3. Issuance and Rotation
 
----
+The maintained issuance tool requires an explicit customer, a stable operation UUID, and existing hosted admin authentication. An explicit perpetual grant preserves the perpetual purchase model. The API commits registration, prior-token containment, and the operation receipt before returning a token; retries recover the same current result.
 
-## 3. Issue a Test License
-
-Verify the key works by issuing yourself an enterprise license:
-
-```bash
-cd ~/revealfleet/revdev
-npx tsx scripts/issue-license.ts --tier enterprise --perpetual
-```
-
-Set the output as your license key:
-
-```bash
-export REVEALUI_LICENSE_KEY="<paste key from above>"
-echo 'export REVEALUI_LICENSE_KEY="<paste key>"' >> ~/.bashrc
-systemctl --user restart revdev-daemon
-journalctl --user -u revdev-daemon | tail -5
-# Should show: "running with ENTERPRISE license"
-```
+Credential activation remains blocked on a maintained RevVault expected-current promotion primitive. The tools refuse force overwrite. A hosted containment receipt does not acknowledge Vault promotion, daemon configuration delivery, or power-loss durability across systems. Synthetic signing and isolated database tests verify the contract without installed credentials.
 
 ---
 

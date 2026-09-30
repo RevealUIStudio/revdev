@@ -25,9 +25,12 @@ import {
   type LicenseEvaluation,
   LicenseExpiredError,
   type LicenseTier,
+  loadLicenseKey,
   requiredTier,
   tierRank,
 } from './license.js';
+import { verifyRegisteredLicense } from './license-authority.js';
+import { getVendorPublicKey, verifyLicenseJWT } from './license-crypto.js';
 import { recordLicenseMetrics } from './observability.js';
 
 export interface RpcGuardResult {
@@ -176,7 +179,7 @@ export function getLicenseState(): { tier: LicenseTier; valid: boolean } {
  * `METHOD_MIN_TIER`. This replaces the previous BINARY check (any valid JWT =
  * full access) that let Pro reach Max-marketed methods (GAP-267).
  */
-export function guardRpcMethod(method: string): RpcGuardResult {
+function evaluateRpcLicense(method: string): RpcGuardResult {
   const license = getLicenseState();
 
   // Exempt methods always pass (session management, ping, file/git, local-inference run)
@@ -212,6 +215,54 @@ export function guardRpcMethod(method: string): RpcGuardResult {
 
   // Valid license at or above the required tier: allowed.
   return { allowed: true, tier: license.tier };
+}
+
+/** Shared socket/HTTP dispatch guard: local validation precedes fresh hosted registration. */
+export async function guardRpcMethod(method: string): Promise<RpcGuardResult> {
+  const local = evaluateRpcLicense(method);
+  if (!local.allowed || isExemptMethod(method)) return local;
+  try {
+    const { key } = loadLicenseKey();
+    if (!key) return { allowed: false, tier: 'free', requiredTier: requiredTier(method) };
+    const verified = verifyLicenseJWT(key, getVendorPublicKey());
+    if (!verified.valid || verified.tier !== local.tier) {
+      return { allowed: false, tier: 'free', requiredTier: requiredTier(method) };
+    }
+    const claims = JSON.parse(
+      Buffer.from(key.split('.')[1] ?? '', 'base64url').toString('utf8'),
+    ) as Record<string, unknown>;
+    if (
+      typeof claims.jti !== 'string' ||
+      !claims.jti.trim() ||
+      claims.jti !== claims.jti.trim() ||
+      typeof claims.customerId !== 'string' ||
+      !claims.customerId.trim() ||
+      claims.customerId !== claims.customerId.trim() ||
+      !(await verifyRegisteredLicense(key, {
+        tier: local.tier as 'pro' | 'max' | 'enterprise',
+        customerId: claims.customerId,
+      }))
+    ) {
+      return {
+        allowed: false,
+        tier: 'free',
+        requiredTier: requiredTier(method),
+        reason: 'Hosted license authority unavailable, revoked, or migration required.',
+      };
+    }
+    // Configuration replacement during the request cannot authorize a different credential.
+    if (loadLicenseKey().key !== key || !evaluateRpcLicense(method).allowed) {
+      return { allowed: false, tier: 'free', requiredTier: requiredTier(method) };
+    }
+    return local;
+  } catch {
+    return {
+      allowed: false,
+      tier: 'free',
+      requiredTier: requiredTier(method),
+      reason: 'Hosted license authority unavailable or migration required.',
+    };
+  }
 }
 
 /**
