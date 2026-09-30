@@ -3015,8 +3015,8 @@ export async function startDaemon(
   // License expiry re-check (GAP-184). Daily while running: refresh metrics,
   // log expiry warnings, and record a license.* event so Studio can surface
   // expiry status in its dashboard. Startup is the fail-closed gate
-  // (initLicenseGuard above); this timer never tears the daemon down — it
-  // reports loudly and lets the next restart fail closed.
+  // (initLicenseGuard above); the timer updates authorization without tearing
+  // down free lifecycle operations. Each new paid dispatch also re-verifies.
   const licenseRecheckTimer = setInterval(
     () => {
       let ev: ReturnType<typeof runtimeLicenseRecheck>;

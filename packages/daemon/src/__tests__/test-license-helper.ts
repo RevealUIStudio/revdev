@@ -27,7 +27,7 @@ export interface TestLicenseKit {
 export function generateTestLicense(
   tier: 'pro' | 'max' | 'enterprise' = 'enterprise',
   perpetual = true,
-  opts: { daysUntilExpiry?: number; customerId?: string } = {},
+  opts: { daysUntilExpiry?: number; customerId?: string; jti?: string } = {},
 ): TestLicenseKit {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -42,6 +42,8 @@ export function generateTestLicense(
     iss: 'https://revealui.com',
     aud: 'revealui-license',
   };
+
+  if (opts.jti) payload.jti = opts.jti;
 
   if (opts.customerId) {
     payload.customerId = opts.customerId;

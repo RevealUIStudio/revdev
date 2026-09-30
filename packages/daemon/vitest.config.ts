@@ -1,4 +1,5 @@
 import { freemem } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,9 @@ const maxWorkers = availableMb > 4096 ? 4 : 2;
 
 export default defineConfig({
   test: {
+    setupFiles: [
+      fileURLToPath(new URL('./src/__tests__/setup-license-isolation.ts', import.meta.url)),
+    ],
     maxWorkers,
     minWorkers: 1,
     hookTimeout: 45_000,
