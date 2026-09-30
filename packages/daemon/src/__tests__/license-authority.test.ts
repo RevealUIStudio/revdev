@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { guardRpcMethod } from '../guard.js';
 import { verifyRegisteredLicense } from '../license-authority.js';
-import { generateTestLicense, setTestLicenseEnv } from './test-license-helper.js';
+import {
+  generateTestLicense,
+  installTestLicenseAuthority,
+  setTestLicenseEnv,
+} from './test-license-helper.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -95,4 +99,24 @@ it('requires registered identity and avoids authority calls for exempt/free disp
   expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
   expect((await guardRpcMethod('ping')).allowed).toBe(true);
   expect(transport).not.toHaveBeenCalled();
+});
+
+it('the synthetic authority denies a signed complete identity without exact registration', async () => {
+  installTestLicenseAuthority();
+  setTestLicenseEnv(generateTestLicense('pro', true, { registered: false }));
+  expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+});
+
+it('restores and reinstalls exact registration without masking an explicit outage', async () => {
+  const nativeFetch = globalThis.fetch;
+  const kit = generateTestLicense('pro');
+  setTestLicenseEnv(kit);
+  installTestLicenseAuthority();
+  expect((await guardRpcMethod('agent.spawn')).allowed).toBe(true);
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new Error('synthetic outage')));
+  expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
+  vi.unstubAllGlobals();
+  expect(globalThis.fetch).toBe(nativeFetch);
+  installTestLicenseAuthority();
+  expect((await guardRpcMethod('agent.spawn')).allowed).toBe(true);
 });
