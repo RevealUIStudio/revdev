@@ -101,15 +101,14 @@ export function licenseFiles(packageDir, sourcePaths = []) {
         const section = text.match(
           /^#{1,6}\s+licen[cs]e\s*\r?\n([\s\S]*?)(?=^#{1,6}\s|$(?![\s\S]))/im,
         )?.[1];
+        const grant = section?.replace(/\s+/g, ' ');
         if (
-          section &&
-          /copyright/i.test(section) &&
-          /permission is hereby granted, free of charge/i.test(section) &&
-          /the above copyright notice and this permission notice shall be included/i.test(
-            section,
-          ) &&
-          /the software is provided ["“]as is["”]/i.test(section) &&
-          /in no event shall the authors or copyright holders be liable/i.test(section)
+          grant &&
+          /copyright/i.test(grant) &&
+          /permission is hereby granted, free of charge/i.test(grant) &&
+          /the above copyright notice and this permission notice shall be included/i.test(grant) &&
+          /the software is provided ["“]as is["”]/i.test(grant) &&
+          /in no event shall the authors or copyright holders be liable/i.test(grant)
         ) {
           if (text.includes('\uFFFD')) throw new Error(`Unreadable license text: ${path}`);
           embeddedGrant = true;
