@@ -449,4 +449,9 @@ Preserved surrounding package documentation.
 `;
   writeFileSync(join(dir, 'README.md'), grant);
   expect(licenseFiles(dir)).toContainEqual({ name: 'README.md', text: grant });
+  const wrapped = grant.replaceAll(' ', '\n');
+  // Preserve normal Markdown heading syntax while wrapping grant words.
+  const wrappedSource = wrapped.replace('##\nLicense', '## License');
+  writeFileSync(join(dir, 'README.md'), wrappedSource);
+  expect(licenseFiles(dir)).toContainEqual({ name: 'README.md', text: wrappedSource });
 });
