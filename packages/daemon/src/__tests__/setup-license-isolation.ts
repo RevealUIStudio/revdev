@@ -2,7 +2,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll } from 'vitest';
+import { afterAll, vi } from 'vitest';
+import { installTestLicenseAuthority } from './test-license-helper.js';
 
 const settings = [
   'REVEALUI_LICENSE_KEY',
@@ -20,8 +21,12 @@ delete process.env.REVEALUI_LICENSE_KEY_FILE;
 delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
 process.env.REVDEV_DAEMON_DATA = fixtureRoot;
 process.env.REVEALUI_REVOKED_JTI_FILE = join(fixtureRoot, 'revoked-jtis.json');
+// Every licensed daemon suite uses the same exact-token synthetic registration
+// fixture. Focused authority tests can still replace the transport explicitly.
+installTestLicenseAuthority();
 
 afterAll(() => {
+  vi.unstubAllGlobals();
   settings.forEach((name, index) => {
     if (prior[index] === undefined) delete process.env[name];
     else process.env[name] = prior[index];
