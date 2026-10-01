@@ -5,9 +5,11 @@ on:
     branches: [main, test]
   pull_request:
     branches: [main, test]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
+  issues: read
 
 # Cancel superseded runs on non-main refs. Never cancel the promote SHA on main.
 concurrency:
@@ -181,6 +183,8 @@ jobs:
       - name: Prove changed TypeScript tests are red against base
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: typescript
           # JSON array, not a comma-joined string (GAP-393 review remediation):
           # lossless regardless of what characters a label name allows.
@@ -221,16 +225,20 @@ jobs:
         with:
           go-version-file: apps/console/go.mod
           cache-dependency-path: apps/console/go.sum
-      # Node runs the gate script itself (Node stdlib only, no pnpm needed here).
+      # The same maintained package dependency supplies the signed door in every language job.
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
+      - run: pnpm install --frozen-lockfile
       # Reverts the changed Go source to base, then runs each changed test's
       # package (`go test ./pkg/`) and requires >=1 red. Package granularity is
       # inherent to `go test`; see scripts/ci/prove-red.mjs header.
       - name: Prove changed Go tests are red against base
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: go
           # JSON array, not a comma-joined string (GAP-393 review remediation):
           # lossless regardless of what characters a label name allows.

@@ -96,3 +96,46 @@ export function indicatesNoWorkDone(output) {
   if (!output) return false;
   return NO_WORK_DONE_MARKERS.some((marker) => output.includes(marker));
 }
+
+// The label requests an exception; only the shared owner-signed door grants it.
+// Called solely after prove-red finds no failing-first evidence. Ordinary red
+// proofs never load the optional gate package or require the owner trust anchor.
+export async function verifyProveRedException({
+  event,
+  allowedSigners,
+  readComments,
+  loadVerifier = async () =>
+    (await import('@revealui/harnesses/gates')).verifyOwnerOverrideComments,
+}) {
+  const pr = event?.pull_request;
+  const labels = (pr?.labels || []).map((label) => label.name);
+  if (!hasExemptLabel(labels, 'verify:no-behavior-change'))
+    return { ok: false, reason: 'no-request-label' };
+  if (!allowedSigners?.trim()) return { ok: false, reason: 'missing-owner-trust-anchor' };
+  const repo = event?.repository?.full_name;
+  if (
+    typeof repo !== 'string' ||
+    repo !== pr?.base?.repo?.full_name ||
+    !Number.isInteger(pr?.number) ||
+    pr.number < 1 ||
+    typeof pr?.head?.sha !== 'string'
+  )
+    return { ok: false, reason: 'invalid-pull-request-context' };
+  try {
+    const verify = await loadVerifier();
+    if (typeof verify !== 'function') return { ok: false, reason: 'shared-verifier-unavailable' };
+    const comments = await readComments(repo, pr.number);
+    return verify({
+      comments,
+      allowedSigners,
+      expected: {
+        repo,
+        pr: pr.number,
+        head: pr.head.sha,
+        gate: 'prove-red',
+      },
+    });
+  } catch {
+    return { ok: false, reason: 'shared-verifier-or-comments-unavailable' };
+  }
+}

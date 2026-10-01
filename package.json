@@ -2,7 +2,7 @@
   "name": "revdev",
   "version": "0.3.0",
   "private": true,
-  "description": "RevDev — Native developer tools for RevealUI",
+  "description": "RevDev \u2014 Native developer tools for RevealUI",
   "repository": {
     "type": "git",
     "url": "https://github.com/RevealUIStudio/revdev.git"
@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
+    "@revealui/harnesses": "0.20.0",
     "typescript": "7.0.2",
     "vitest": "^4.1.11"
   },
