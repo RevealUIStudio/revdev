@@ -483,7 +483,6 @@ describe('prove-red script ordering', () => {
               GH_TOKEN: 'read-only-fixture-token',
               GITHUB_TOKEN: 'read-only-fixture-token',
               PROVE_RED_LANGS: 'typescript',
-              PR_LABELS: '["verify:no-behavior-change"]',
               GITHUB_EVENT_PATH: '',
               REVFLEET_OVERRIDE_SIGNERS: 'fixture-owner-anchor',
             },

@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  issues: read
 
 # Cancel superseded runs on non-main refs. Never cancel the promote SHA on main.
 concurrency:
@@ -139,6 +138,9 @@ jobs:
   prove-red:
     name: Prove-Red (TypeScript changed tests must fail against base)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     needs: quality
     # PR-only: a merge-base is meaningless on a direct push to test/main. Also
     # skip test -> main promotion PRs (GAP-393): a promotion diff carries a
@@ -186,9 +188,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: typescript
-          # JSON array, not a comma-joined string (GAP-393 review remediation):
-          # lossless regardless of what characters a label name allows.
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           # Script-side mirror of this job's same-repo `if:` guard, so the
           # script's own early-exit is exactly as strong as the layer it backs.
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -198,6 +197,9 @@ jobs:
   prove-red-go:
     name: Prove-Red (Go changed tests must fail against base)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     needs: quality
     # PR-only: a merge-base is meaningless on a direct push to test/main. Also
     # skip test -> main promotion PRs (GAP-393): a promotion diff carries a
@@ -240,9 +242,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: go
-          # JSON array, not a comma-joined string (GAP-393 review remediation):
-          # lossless regardless of what characters a label name allows.
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           # Script-side mirror of this job's same-repo `if:` guard, so the
           # script's own early-exit is exactly as strong as the layer it backs.
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
