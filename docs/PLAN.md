@@ -201,13 +201,16 @@ comments rejects the exception. Ordinary failing-first evidence needs none of
 those resources. Posting a grant then applying the request label reevaluates
 the existing jobs; there is no alternative verifier or gate bypass.
 
-Integration remains blocked until the paired RevealUI `@revealui/harnesses@0.20.0` release exports
-`verifyOwnerOverrideComments` and this repository pins and installs that release
-through its maintained dependency/lockfile contract in every prove-red job,
-including Go. Validate a synthetic owner-signed grant, wrong-head rejection and
-ordinary-red success through that installed package before declaring the door
-operational. GAP-313 tracks that paired release and owner trust-anchor bootstrap;
-no live key, credential or required-check setting is changed here.
+The paired RevealUI `@revealui/harnesses@0.20.0` release is published by normal
+release run 36922599967 from main 231fc18e; registry readback confirms its exact
+version and integrity. This repository pins that release through the maintained
+dependency/lockfile contract in every prove-red job, including Go. Normal and
+frozen installs resolve the published package; no borrowed source or file link
+is an operational dependency. Installed-package synthetic signature tests and
+normal hosted checks must validate the consumer before declaring activation
+complete. GAP-313 remains open for live consumer evidence, credential custody
+and owner settings dispositions; no live key, credential or required-check
+setting is changed here.
 
 The prove-red workflow checks out PR-head scripts and installs the PR's dependency
 graph. Same-PR gate/workflow tampering remains GAP-313 surface 2, explicitly
