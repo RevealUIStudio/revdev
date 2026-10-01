@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -443,4 +443,71 @@ describe('prove-red script ordering', () => {
     },
     30000,
   );
+});
+
+// Exercise the consumer's default npm package loader, not an injected verifier.
+// Synthetic owner/forger keys are test-only and are destroyed with the fixture.
+describe('published shared SSHSIG prove-red boundary', () => {
+  it('grants exact context and rejects head/gate transplant, forgery and expiry', async () => {
+    const { buildOwnerOverridePayload, buildOwnerOverrideComment } = await import(
+      '@revealui/harnesses/gates'
+    );
+    const root = mkdtempSync(join(tmpdir(), 'revdev-published-sshsig-'));
+    try {
+      const owner = join(root, 'synthetic-owner');
+      const forger = join(root, 'synthetic-forger');
+      for (const key of [owner, forger]) {
+        execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key]);
+      }
+      const context = {
+        repo: 'RevealUIStudio/revdev',
+        pr: 270,
+        head: 'a'.repeat(40),
+        gate: 'prove-red',
+      };
+      const event = {
+        repository: { full_name: context.repo },
+        pull_request: {
+          number: context.pr,
+          head: { sha: context.head },
+          base: { repo: { full_name: context.repo } },
+          labels: [{ name: 'verify:no-behavior-change' }],
+        },
+      };
+      const allowedSigners = `owner@revealui.com ${readFileSync(`${owner}.pub`, 'utf8').trim()}\n`;
+      const future = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const expired = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      let counter = 0;
+      const signed = (expected, expires, key = owner) => {
+        const payload = buildOwnerOverridePayload(expected, expires);
+        const file = join(root, `payload-${counter++}`);
+        writeFileSync(file, payload);
+        execFileSync('ssh-keygen', ['-Y', 'sign', '-f', key, '-n', 'revealfleet-override', file]);
+        return buildOwnerOverrideComment(payload, readFileSync(`${file}.sig`, 'utf8'));
+      };
+      const verify = (body) =>
+        verifyProveRedException({
+          event,
+          allowedSigners,
+          readComments: async () => [
+            { body, url: 'https://example.invalid/synthetic-owner-receipt' },
+          ],
+          // Deliberately omit loadVerifier: this is the actual published package boundary.
+        });
+      expect(await verify(signed(context, future))).toEqual({
+        ok: true,
+        url: 'https://example.invalid/synthetic-owner-receipt',
+      });
+      for (const body of [
+        signed({ ...context, head: 'b'.repeat(40) }, future),
+        signed({ ...context, gate: 'sec-review' }, future),
+        signed(context, future, forger),
+        signed(context, expired),
+      ]) {
+        expect((await verify(body)).ok).toBe(false);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30000);
 });
