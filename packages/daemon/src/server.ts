@@ -47,7 +47,17 @@ import {
 } from './guard.js';
 import { HttpGateway } from './http-gateway.js';
 import { createIdleStop } from './idle-stop.js';
-import { evaluateLicense, LicenseConfigError, type LicenseTier, tierRank } from './license.js';
+import {
+  evaluateLicense,
+  LicenseConfigError,
+  type LicenseTier,
+  loadLicenseKey,
+} from './license.js';
+import {
+  beginLicenseTrustLifecycle,
+  fetchLicenseTrustSet,
+  getAcceptedLicenseTrustSet,
+} from './license-authority.js';
 import { loopGuards, loopRpcView } from './loop-guard.js';
 import {
   getSelfDaemonId,
@@ -2529,6 +2539,7 @@ function licenseHealthSummary(): {
   secondsRemaining: number | null;
   goalRpcMinTier: 'pro';
   goalRpcReady: boolean;
+  goalRpcReadiness: 'free' | 'requires-online-check' | 'trust-unavailable';
   reason?: string;
 } {
   // Never include key material — agents/Studio diagnose FREE vs Pro+ only.
@@ -2543,7 +2554,12 @@ function licenseHealthSummary(): {
       expiresAt: ev.expiresAt,
       secondsRemaining: ev.secondsRemaining,
       goalRpcMinTier: 'pro',
-      goalRpcReady: ev.valid && tierRank(ev.tier) >= tierRank('pro'),
+      goalRpcReady: false,
+      goalRpcReadiness: !ev.present
+        ? 'free'
+        : getAcceptedLicenseTrustSet()
+          ? 'requires-online-check'
+          : 'trust-unavailable',
       ...(ev.reason ? { reason: ev.reason } : {}),
     };
   } catch (err) {
@@ -2563,6 +2579,7 @@ function licenseHealthSummary(): {
       secondsRemaining: null,
       goalRpcMinTier: 'pro',
       goalRpcReady: false,
+      goalRpcReadiness: 'requires-online-check',
       reason,
     };
   }
@@ -2928,6 +2945,19 @@ export async function startDaemon(
   // at the start of close() and reset to false at the end.
   _shutdownController = new AbortController();
   _closing = false;
+
+  // A configured paid credential must start with current hosted issuer trust.
+  // Failure leaves local diagnostics/free methods available; every paid RPC
+  // still performs its own fresh trust and registration checks.
+  beginLicenseTrustLifecycle();
+  if (loadLicenseKey().key?.startsWith('eyJ')) {
+    const trustSet = await fetchLicenseTrustSet();
+    if (!trustSet) {
+      process.stderr.write(
+        '[license] WARN: hosted issuer trust unavailable; free diagnostics remain available\n',
+      );
+    }
+  }
 
   // Initialize license guard (logs banner)
   initLicenseGuard();

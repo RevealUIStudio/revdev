@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  getVendorPublicKey,
+  getVendorPublicKeys,
   isRevokedJti,
   revokeJti,
   verifyLicenseJWT,
+  verifyLicenseJWTForPriorRotation,
 } from '../license-crypto.js';
-import { DEFAULT_VENDOR_PUBLIC_KEY } from '../vendor-public-key.js';
 
 function makeToken(
   payload: Record<string, unknown>,
@@ -113,6 +113,25 @@ describe('verifyLicenseJWT — nbf check', () => {
   });
 });
 
+describe('verifyLicenseJWT — expiration boundary', () => {
+  it('rejects at exp while retaining the prior-rotation expiry exception', () => {
+    const exp = NOW_S + 60;
+    const token = makeToken({ ...VALID_PAYLOAD, exp }, privateKey);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(exp * 1000);
+      const normal = verifyLicenseJWT(token, publicKey);
+      expect(normal.valid).toBe(false);
+      if (!normal.valid) expect(normal.code).toBe('expired');
+
+      const rotation = verifyLicenseJWTForPriorRotation(token, [publicKey]);
+      expect(rotation.valid).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('verifyLicenseJWT — jti revocation hook', () => {
   it('returns false when the denylist file is empty or absent', () => {
     expect(isRevokedJti('any-jti')).toBe(false);
@@ -143,28 +162,18 @@ describe('verifyLicenseJWT — jti revocation hook', () => {
   });
 });
 
-describe('getVendorPublicKey — baked default + override', () => {
-  it('falls back to the baked default when REVDEV_LICENSE_PUBLIC_KEY is unset', () => {
+describe('getVendorPublicKey — hosted trust only', () => {
+  it('does not establish trust from a baked key or machine override', () => {
     delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
-    const key = getVendorPublicKey();
-    expect(key).toBe(DEFAULT_VENDOR_PUBLIC_KEY);
-    expect(key.startsWith('-----BEGIN PUBLIC KEY-----')).toBe(true);
-  });
-
-  it('treats an empty/whitespace override as unset and uses the baked default', () => {
-    process.env.REVDEV_LICENSE_PUBLIC_KEY = '   ';
-    expect(getVendorPublicKey()).toBe(DEFAULT_VENDOR_PUBLIC_KEY);
-  });
-
-  it('uses REVDEV_LICENSE_PUBLIC_KEY as an override when set', () => {
+    expect(getVendorPublicKeys()).toEqual([]);
     process.env.REVDEV_LICENSE_PUBLIC_KEY = publicKey;
-    expect(getVendorPublicKey()).toBe(publicKey);
+    expect(getVendorPublicKeys()).toEqual([]);
   });
 
-  it('stays fail-closed: a tampered/foreign token degrades to Free under the baked default', () => {
+  it('stays fail-closed when no hosted trust has been loaded', () => {
     delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
     const token = makeToken(VALID_PAYLOAD, privateKey); // signed by a non-vendor key
-    const result = verifyLicenseJWT(token, getVendorPublicKey());
+    const result = verifyLicenseJWT(token, getVendorPublicKeys());
     expect(result.valid).toBe(false);
     expect(result.tier).toBe('free');
   });

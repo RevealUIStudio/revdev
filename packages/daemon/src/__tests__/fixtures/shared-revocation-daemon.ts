@@ -4,12 +4,28 @@ import { startDaemon } from '../../server.js';
 
 process.once(
   'message',
-  async (message: { dataDir: string; socketPath: string; httpPort: number; authority: string }) => {
+  async (message: {
+    dataDir: string;
+    socketPath: string;
+    httpPort: number;
+    authority: string;
+    trustManifest: unknown;
+  }) => {
     const nativeFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) =>
-      String(input) === `${LICENSE_API_ORIGIN}/api/license/verify`
-        ? nativeFetch(message.authority, init)
-        : nativeFetch(input, init);
+    globalThis.fetch = (input, init) => {
+      const url = String(input);
+      if (url === `${LICENSE_API_ORIGIN}/api/license/public-key`) {
+        return Promise.resolve(
+          Response.json(message.trustManifest, {
+            headers: { 'Cache-Control': 'no-store' },
+          }),
+        );
+      }
+      if (url === `${LICENSE_API_ORIGIN}/api/license/verify`) {
+        return nativeFetch(message.authority, init);
+      }
+      return nativeFetch(input, init);
+    };
     try {
       const daemon = await startDaemon({
         dataDir: message.dataDir,

@@ -98,7 +98,7 @@ export REVEALUI_LICENSE_KEY="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9..."
 systemctl --user restart revdev-daemon
 ```
 
-Paid dispatch also requires exact current hosted registration and reachable authority. Supported hosted issuer trust provisioning remains open; an environment override is not a supported signing-key rotation procedure.
+Paid dispatch loads the ordered current/NEXT Ed25519 trust set from the fixed hosted licensing authority and requires exact current registration. If trust or registration is unavailable, paid operations stay denied while free operations remain available.
 
 <!-- doclint:allow-legacy-format:start — this section documents the REJECTED formats on purpose -->
 ### Old-format key (`RVUI-*` or `RVUI.v2.*`) rejected

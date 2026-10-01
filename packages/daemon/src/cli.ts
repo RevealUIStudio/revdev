@@ -9,7 +9,6 @@
  *
  * Environment:
  *   REVEALUI_LICENSE_KEY     # License key (v2 Ed25519-signed)
- *   REVDEV_LICENSE_PUBLIC_KEY # Public key matching REVEALUI_LICENSE_KEY signature
  *   REVDEV_DAEMON_SOCKET     # Override socket path
  *   REVDEV_DAEMON_DATA       # Override data directory
  *   REVDEV_DAEMON_PID        # Override PID file path
@@ -93,7 +92,6 @@ Options:
 
 Environment:
   REVEALUI_LICENSE_KEY        License key (v2 Ed25519-signed; required for Pro features)
-  REVDEV_LICENSE_PUBLIC_KEY   Public key for license verification
   REVDEV_DAEMON_SOCKET        Socket path (default: ${DAEMON_DEFAULTS.socketPath})
   REVDEV_DAEMON_DATA          Data directory (default: ${DAEMON_DEFAULTS.dataDir})
   REVDEV_DAEMON_PID           PID file path (default: ${DAEMON_DEFAULTS.pidFile})
@@ -131,7 +129,7 @@ if (args[0] === 'approvals') {
 if (args[0] === 'license-verify') {
   const { readFileSync } = await import('node:fs');
   const { runLicenseVerifyCommand } = await import('./license-verify-cli.js');
-  const { stdout, exitCode } = runLicenseVerifyCommand(readFileSync(0, 'utf8'));
+  const { stdout, exitCode } = await runLicenseVerifyCommand(readFileSync(0, 'utf8'));
   process.stdout.write(stdout);
   process.exit(exitCode);
 }

@@ -110,7 +110,7 @@ An inline `REVEALUI_LICENSE_KEY` always wins over Studio's file.
 
 Paid activation requires a locally valid signature, a registered current token with customer identity and JTI, and reachable hosted authority. Authority outages deny new paid requests. Free operations remain available.
 
-The bundled public key belongs to the historical RevDev issuer. Supported provisioning of hosted issuer trust and migration of existing credentials remain open. A public-key environment override is not a supported rotation procedure. Do not claim automatic hosted activation until that owning bootstrap is implemented and verified.
+Before paid activation, the daemon loads the ordered current/NEXT Ed25519 trust set from the fixed hosted licensing authority and checks the license against the exact registered signer. If trust or registration is unavailable, paid operations stay denied while free operations remain available.
 
 5. Restart the daemon (only needed for the headless copy path; Studio already restarts it):
 
@@ -174,7 +174,6 @@ This gives the tool access to agent coordination, file reservations, and task ma
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REVEALUI_LICENSE_KEY` | (none) | License key for Pro+ features — an `eyJ`-prefixed Ed25519 JWT |
-| `REVDEV_LICENSE_PUBLIC_KEY` | (none) | PEM Ed25519 public key the daemon verifies the license against. Existing explicit verifier configuration; supported hosted trust provisioning and rotation remain open |
 | `REVDEV_DAEMON_SOCKET` | `~/.local/share/revealui/harness.sock` | Socket path |
 | `REVDEV_DAEMON_DATA` | `~/.local/share/revealui` | Database directory |
 | `REVDEV_DAEMON_PID` | `~/.local/share/revealui/harness.pid` | PID file path |

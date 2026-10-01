@@ -9,6 +9,7 @@ import {
   refreshLicense,
 } from '../guard.js';
 import { isExemptMethod, LICENSE_TIER_HELP, METHOD_MIN_TIER, requiredTier } from '../license.js';
+import { fetchLicenseTrustSet } from '../license-authority.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
@@ -124,6 +125,26 @@ describe('guardRpcMethod', () => {
       const result = await guardRpcMethod('agent.spawn');
       expect(result.allowed).toBe(true);
       expect(result.tier).toBe('pro');
+    });
+
+    it('denies a paid request at the exact JWT expiration second', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        const kit = generateTestLicense('pro', false, { daysUntilExpiry: 1 / 86400 });
+        setTestLicenseEnv(kit);
+        const claims = JSON.parse(
+          Buffer.from(kit.licenseKey.split('.')[1] ?? '', 'base64url').toString(),
+        ) as { exp: number };
+        expect(claims.exp).toBe(now + 1);
+        vi.setSystemTime(claims.exp * 1000);
+
+        const result = await guardRpcMethod('agent.spawn');
+        expect(result.allowed).toBe(false);
+        expect(result.tier).toBe('free');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('allows inference.status (free run surface)', async () => {
@@ -422,6 +443,7 @@ describe('handler tier-classification coverage', () => {
 describe('initLicenseGuard', () => {
   beforeEach(() => {
     clearTestLicenseEnv();
+    installTestLicenseAuthority();
   });
 
   afterEach(() => {
@@ -436,6 +458,7 @@ describe('initLicenseGuard', () => {
 
   it('returns pro tier with valid v2 key', async () => {
     setTestLicenseEnv(generateTestLicense('pro'));
+    await fetchLicenseTrustSet();
     const result = initLicenseGuard();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);
