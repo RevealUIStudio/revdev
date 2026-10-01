@@ -22,6 +22,7 @@ on:
       - "pnpm-workspace.yaml"
   pull_request:
     branches: [main, test]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "apps/studio/src-tauri/**"
       - "apps/studio/relay/**"
@@ -34,6 +35,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
 
 # Cancel superseded runs on non-main refs. Never cancel the promote SHA on main.
 concurrency:
@@ -207,6 +209,8 @@ jobs:
       - name: Prove changed Rust tests are red against base
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: rust
           # JSON array, not a comma-joined string (GAP-393 review remediation):
           # lossless regardless of what characters a label name allows.
