@@ -29,8 +29,12 @@ import {
   requiredTier,
   tierRank,
 } from './license.js';
-import { verifyRegisteredLicense } from './license-authority.js';
-import { getVendorPublicKey, verifyLicenseJWT } from './license-crypto.js';
+import {
+  fetchLicenseTrustSet,
+  isCurrentLicenseTrustSet,
+  verifyRegisteredLicense,
+} from './license-authority.js';
+import { verifyLicenseJWT } from './license-crypto.js';
 import { recordLicenseMetrics } from './observability.js';
 
 export interface RpcGuardResult {
@@ -217,51 +221,78 @@ function evaluateRpcLicense(method: string): RpcGuardResult {
   return { allowed: true, tier: license.tier };
 }
 
-/** Shared socket/HTTP dispatch guard: local validation precedes fresh hosted registration. */
+/** Shared socket/HTTP dispatch guard: fresh trust precedes local paid validation. */
 export async function guardRpcMethod(method: string): Promise<RpcGuardResult> {
-  const local = evaluateRpcLicense(method);
-  if (!local.allowed || isExemptMethod(method)) return local;
+  if (isExemptMethod(method)) return evaluateRpcLicense(method);
+  const required = requiredTier(method);
+  const deny = (reason?: string): RpcGuardResult => ({
+    allowed: false,
+    tier: 'free',
+    requiredTier: required,
+    ...(reason ? { reason } : {}),
+  });
+
   try {
     const { key } = loadLicenseKey();
-    if (!key) return { allowed: false, tier: 'free', requiredTier: requiredTier(method) };
-    const verified = verifyLicenseJWT(key, getVendorPublicKey());
-    if (!verified.valid || verified.tier !== local.tier) {
-      return { allowed: false, tier: 'free', requiredTier: requiredTier(method) };
+    if (!key) {
+      return deny(
+        `Method "${method}" requires a ${titleTier(required)} or higher license. ` +
+          'Set REVEALUI_LICENSE_KEY or upgrade at https://revealui.com/pro',
+      );
     }
-    const claims = JSON.parse(
-      Buffer.from(key.split('.')[1] ?? '', 'base64url').toString('utf8'),
-    ) as Record<string, unknown>;
-    if (
-      typeof claims.jti !== 'string' ||
-      !claims.jti.trim() ||
-      claims.jti !== claims.jti.trim() ||
-      typeof claims.customerId !== 'string' ||
-      !claims.customerId.trim() ||
-      claims.customerId !== claims.customerId.trim() ||
-      !(await verifyRegisteredLicense(key, {
-        tier: local.tier as 'pro' | 'max' | 'enterprise',
-        customerId: claims.customerId,
-      }))
-    ) {
+
+    const trustSet = await fetchLicenseTrustSet();
+    if (!trustSet) {
+      return deny('Hosted issuer trust unavailable; paid requests are denied.');
+    }
+
+    const verified = verifyLicenseJWT(key, trustSet.keys);
+    if (!verified.valid || !verified.verifiedKeyId) return deny();
+    if (tierRank(verified.tier) < tierRank(required)) {
       return {
         allowed: false,
-        tier: 'free',
-        requiredTier: requiredTier(method),
-        reason: 'Hosted license authority unavailable, revoked, or migration required.',
+        tier: verified.tier,
+        requiredTier: required,
+        reason:
+          `Method "${method}" requires a ${titleTier(required)} license; ` +
+          `your license is ${titleTier(verified.tier)}. Upgrade at https://revealui.com/pro`,
       };
     }
-    // Configuration replacement during the request cannot authorize a different credential.
-    if (loadLicenseKey().key !== key || !evaluateRpcLicense(method).allowed) {
-      return { allowed: false, tier: 'free', requiredTier: requiredTier(method) };
+    const customerId = verified.customerId;
+    const jti = verified.jti;
+    if (
+      !jti ||
+      !customerId ||
+      !(await verifyRegisteredLicense(
+        key,
+        {
+          tier: verified.tier,
+          customerId,
+          verifiedKeyId: verified.verifiedKeyId,
+        },
+        trustSet,
+      ))
+    ) {
+      return deny('Hosted license authority unavailable, revoked, or migration required.');
     }
-    return local;
+
+    // Recheck the exact token, accepted generation, local expiry and revocation
+    // state after both network awaits and immediately before dispatch.
+    if (!isCurrentLicenseTrustSet(trustSet) || loadLicenseKey().key !== key) return deny();
+    const final = verifyLicenseJWT(key, trustSet.keys);
+    if (
+      !final.valid ||
+      final.tier !== verified.tier ||
+      final.verifiedKeyId !== verified.verifiedKeyId ||
+      final.customerId !== customerId ||
+      final.jti !== jti ||
+      tierRank(final.tier) < tierRank(required)
+    ) {
+      return deny();
+    }
+    return { allowed: true, tier: final.tier };
   } catch {
-    return {
-      allowed: false,
-      tier: 'free',
-      requiredTier: requiredTier(method),
-      reason: 'Hosted license authority unavailable or migration required.',
-    };
+    return deny('Hosted license authority unavailable or migration required.');
   }
 }
 

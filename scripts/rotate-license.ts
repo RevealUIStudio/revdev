@@ -6,10 +6,10 @@
  * remains available. Vault promotion requires the maintained expected-current
  * primitive; committed hosted receipts recover before reading Vault.
  */
-import { verify } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { getVendorPublicKey } from '../packages/daemon/src/license-crypto.js';
+import { fetchLicenseTrustSet } from '../packages/daemon/src/license-authority.js';
+import { verifyLicenseJWTForPriorRotation } from '../packages/daemon/src/license-crypto.js';
 import {
   promoteLicense,
   readCurrentLicense,
@@ -70,30 +70,14 @@ export function decodeLicense(jwt: string): DecodedLicense {
   }
 }
 
-/** Authenticate the stored token with the public half of the current signing
- * key before trusting its expiry or revocation identity. Expired tokens still
- * pass this signature check so they can be replaced on a calendar run. */
-export function assertSignedPriorLicense(jwt: string, publicKey: string): void {
-  try {
-    const parts = jwt.trim().split('.');
-    if (parts.length !== 3) throw new Error('invalid JWT shape');
-    const [headerB64, payloadB64, signatureB64] = parts as [string, string, string];
-    const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf-8')) as Record<
-      string,
-      unknown
-    >;
-    if (header.alg !== 'EdDSA') throw new Error('invalid algorithm');
-    if (
-      !verify(
-        null,
-        Buffer.from(`${headerB64}.${payloadB64}`),
-        publicKey,
-        Buffer.from(signatureB64, 'base64url'),
-      )
-    ) {
-      throw new Error('invalid signature');
-    }
-  } catch {
+/** Validate the prior token through the shared verifier, allowing only expiry. */
+export function assertSignedPriorLicense(
+  jwt: string,
+  publicKeys: string | readonly (string | { publicKey: string; keyId: string })[],
+): void {
+  const candidates = typeof publicKeys === 'string' ? [publicKeys] : publicKeys;
+  const result = verifyLicenseJWTForPriorRotation(jwt, candidates);
+  if (!result.valid) {
     throw new Error('Current license signature cannot be verified; refusing rotation.');
   }
 }
@@ -230,6 +214,8 @@ export async function rotateLicense(
   cfg: RotateConfig,
 ): Promise<{ status: 'not-needed' } | { status: 'promoted'; operationId: string; path: string }> {
   validateRotateConfig(cfg);
+  const trustSet = await fetchLicenseTrustSet();
+  if (!trustSet) throw new Error('Hosted issuer trust unavailable; refusing license rotation.');
   if (cfg.emergency && !cfg.reason?.trim()) {
     throw new Error('--emergency requires a reason.');
   }
@@ -246,7 +232,7 @@ export async function rotateLicense(
     () => {
       const stored = readCurrentLicense(cfg.vaultPath);
       const prior = decodeLicense(stored.token);
-      assertSignedPriorLicense(stored.token, getVendorPublicKey());
+      assertSignedPriorLicense(stored.token, trustSet.keys);
       assertEmergencyRevocable(prior, cfg.emergency);
       if (prior.malformed) throw new Error('Current license is malformed; refusing rotation.');
       if (

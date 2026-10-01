@@ -174,7 +174,7 @@ Per `packages/daemon/src/license.ts` + `license-crypto.ts` + `scripts/issue-lice
 - **Verification:** `node:crypto.verify(null, …)` — no third-party JWT library (avoids the algorithm-confusion CVE class). Signature is verified **before** the expiration check.
 - **Acceptance:** a locally trusted signed perpetual JWT (no `exp`), or dated JWT with valid expiry, plus fresh exact-token hosted registration for each new paid dispatch. Local signature validity alone does not authorize paid dispatch.
 - **Tiers (whitelist):** `free` / `pro` / `max` / `enterprise`. Feature gating via the daemon's license guard.
-- **Lifecycle:** the daemon warns at 14d/7d/1d before expiry and **fails closed** (refuses to start) on a present-but-expired license. `REVDEV_LICENSE_PUBLIC_KEY` is the supported verifier configuration; its provisioning must align with the hosted issuer lifecycle; customers set their license as `REVEALUI_LICENSE_KEY`.
+- **Lifecycle:** the daemon warns at 14d/7d/1d before expiry and **fails closed** (refuses to start) on a present-but-expired license. The daemon obtains issuer trust from the fixed hosted license authority for each paid authorization; customers set their license as `REVEALUI_LICENSE_KEY`.
 - **Authority:** the existing hosted signer and authenticated licensing API own issuance, exact-token registration, idempotent operation receipts and containment. Independent local signing is retired. Paid dispatch requires a fresh online check and fails closed during outages; in-flight admitted work may finish. Issuer-trust migration and maintained Vault expected-current promotion remain activation blockers.
 
 ### License principals — founder vs customer

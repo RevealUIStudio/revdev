@@ -5,8 +5,13 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { LICENSE_API_ORIGIN } from '../packages/daemon/src/license-authority.js';
-import { getVendorPublicKey, verifyLicenseJWT } from '../packages/daemon/src/license-crypto.js';
+import {
+  fetchLicenseTrustSet,
+  isCurrentLicenseTrustSet,
+  LICENSE_API_ORIGIN,
+  verifyRegisteredLicense,
+} from '../packages/daemon/src/license-authority.js';
+import { verifyLicenseJWT } from '../packages/daemon/src/license-crypto.js';
 
 export interface Options {
   tier: 'pro' | 'max' | 'enterprise';
@@ -367,7 +372,9 @@ async function requestLicenseOperation(
   ) {
     throw new Error('Hosted license operation returned invalid identity.');
   }
-  const verified = verifyLicenseJWT(result.licenseKey, getVendorPublicKey());
+  const trustSet = await fetchLicenseTrustSet();
+  if (!trustSet) throw new Error('Hosted issuer trust unavailable; returned token rejected.');
+  const verified = verifyLicenseJWT(result.licenseKey, trustSet.keys);
   if (!verified.valid || verified.tier !== opts.tier) {
     throw new Error('Hosted issuer trust migration required; returned token rejected.');
   }
@@ -382,6 +389,30 @@ async function requestLicenseOperation(
     (opts.perpetual === true ? claims.exp !== undefined : typeof claims.exp !== 'number')
   ) {
     throw new Error('Hosted license operation returned invalid identity.');
+  }
+  if (
+    !verified.verifiedKeyId ||
+    !(await verifyRegisteredLicense(
+      result.licenseKey,
+      {
+        tier: verified.tier,
+        customerId: opts.customer,
+        verifiedKeyId: verified.verifiedKeyId,
+      },
+      trustSet,
+    ))
+  ) {
+    throw new Error('Hosted license operation returned no current registration receipt.');
+  }
+  const finalVerification = verifyLicenseJWT(result.licenseKey, trustSet.keys);
+  if (
+    !finalVerification.valid ||
+    !isCurrentLicenseTrustSet(trustSet) ||
+    finalVerification.verifiedKeyId !== verified.verifiedKeyId ||
+    finalVerification.customerId !== opts.customer ||
+    finalVerification.jti !== claims.jti
+  ) {
+    throw new Error('Hosted license changed during registration verification.');
   }
   const operation = identity ? operationIdentity(result, opts, identity, expected) : null;
   if (operation) {

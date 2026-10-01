@@ -9,6 +9,7 @@ import {
   refreshLicense,
   runtimeLicenseRecheck,
 } from '../guard.js';
+import { fetchLicenseTrustSet } from '../license-authority.js';
 import { verifyLicenseJWT } from '../license-crypto.js';
 import { isRevokedJti, RevocationStateError, revokeJti } from '../revoked-jtis.js';
 import {
@@ -51,6 +52,7 @@ afterEach(() => {
 async function activeLicense() {
   const kit = generateTestLicense('pro', true, { jti: 'synthetic-active-jti' });
   setTestLicenseEnv(kit);
+  await fetchLicenseTrustSet();
   initLicenseGuard();
   expect((await guardRpcMethod('agent.spawn')).allowed).toBe(true);
   return kit;
@@ -76,7 +78,8 @@ describe('running guard local authorization', () => {
     const path = join(dir, 'license.key');
     writeFileSync(path, kit.licenseKey);
     process.env.REVEALUI_LICENSE_KEY_FILE = path;
-    expect((await guardRpcMethod('agent.spawn')).allowed).toBe(true);
+    const fileResult = await guardRpcMethod('agent.spawn');
+    expect(fileResult.allowed).toBe(true);
     writeFileSync(path, 'invalid-token');
     expect((await guardRpcMethod('agent.spawn')).allowed).toBe(false);
   });

@@ -3,7 +3,7 @@
  * Creates a fresh keypair per call — no secrets needed.
  */
 
-import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +13,7 @@ import { LICENSE_API_ORIGIN } from '../license-authority.js';
 export interface TestLicenseKit {
   /** Set as REVEALUI_LICENSE_KEY */
   licenseKey: string;
-  /** Set as REVDEV_LICENSE_PUBLIC_KEY */
+  /** Synthetic hosted trust key associated with this generated fixture */
   publicKey: string;
   /** The private key PEM — available for constructing adversarial fixtures */
   privateKey: string;
@@ -67,6 +67,8 @@ export function generateTestLicense(
 
   const licenseKey = `${message}.${sig}`;
   if (opts.registered !== false) registeredTestLicenses.set(licenseKey, payload);
+  testPublicKeyByToken.set(licenseKey, publicKey as string);
+  activeTestPublicKey = publicKey as string;
   return {
     licenseKey,
     publicKey: publicKey as string,
@@ -76,14 +78,51 @@ export function generateTestLicense(
 
 /** Only explicitly generated synthetic credentials are registered by this authority fixture. */
 const registeredTestLicenses = new Map<string, Record<string, unknown>>();
+const testPublicKeyByToken = new Map<string, string>();
+let activeTestPublicKey = '';
+
+function makeTestTrustManifest(publicKey: string) {
+  const normalizedKey = publicKey.trim();
+  const der = createPublicKey(normalizedKey).export({ format: 'der', type: 'spki' });
+  const key = {
+    role: 'current',
+    algorithm: 'EdDSA',
+    publicKey: normalizedKey,
+    jwtKid: createHash('sha256').update(normalizedKey).digest('hex').slice(0, 8),
+    keyId: createHash('sha256').update(der).digest('hex'),
+  };
+  const digestInput = JSON.stringify({
+    version: 1,
+    issuer: 'https://revealui.com',
+    audience: 'revealui-license',
+    keys: [{ role: key.role, algorithm: key.algorithm, keyId: key.keyId }],
+  });
+  return {
+    version: 1,
+    issuer: 'https://revealui.com',
+    audience: 'revealui-license',
+    keys: [key],
+    digest: createHash('sha256').update(digestInput).digest('hex'),
+    publicKey: normalizedKey,
+  };
+}
 
 export function installTestLicenseAuthority(): void {
   const nativeFetch = globalThis.fetch;
   vi.stubGlobal('fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    if (String(input) !== `${LICENSE_API_ORIGIN}/api/license/verify`) {
+    const url = String(input);
+    if (url === `${LICENSE_API_ORIGIN}/api/license/public-key`) {
+      return activeTestPublicKey
+        ? Response.json(makeTestTrustManifest(activeTestPublicKey), {
+            headers: { 'Cache-Control': 'no-store' },
+          })
+        : Response.json({ message: 'synthetic trust unavailable' }, { status: 503 });
+    }
+    if (url !== `${LICENSE_API_ORIGIN}/api/license/verify`) {
       return nativeFetch(input, init);
     }
     const request = JSON.parse(String(init?.body));
+    const publicKey = testPublicKeyByToken.get(request.licenseKey);
     const claims = registeredTestLicenses.get(request.licenseKey);
     if (!claims?.jti || !claims.customerId || request.requireRegistration !== true) {
       return Response.json({ valid: false, reason: 'migration_required', tier: 'free' });
@@ -94,6 +133,8 @@ export function installTestLicenseAuthority(): void {
       tier: claims.tier,
       customerId: claims.customerId,
       licenseKeyDigest: createHash('sha256').update(request.licenseKey).digest('hex'),
+      trustSetDigest: makeTestTrustManifest(publicKey ?? '').digest,
+      verifiedKeyId: makeTestTrustManifest(publicKey ?? '').keys[0]?.keyId,
     });
   });
 }
@@ -103,7 +144,6 @@ export function installTestLicenseAuthority(): void {
  */
 export function setTestLicenseEnv(kit: TestLicenseKit): void {
   process.env.REVEALUI_LICENSE_KEY = kit.licenseKey;
-  process.env.REVDEV_LICENSE_PUBLIC_KEY = kit.publicKey;
 }
 
 /**
@@ -111,7 +151,6 @@ export function setTestLicenseEnv(kit: TestLicenseKit): void {
  */
 export function clearTestLicenseEnv(): void {
   delete process.env.REVEALUI_LICENSE_KEY;
-  delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
   const homeData = join(homedir(), '.local', 'share', 'revealui');
   if (!process.env.REVDEV_DAEMON_DATA || process.env.REVDEV_DAEMON_DATA === homeData) {
     const isolated = join(tmpdir(), 'revdev-license-isolation');

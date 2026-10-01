@@ -1,61 +1,62 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { revokeJti } from '../license-crypto.js';
 import { runLicenseVerifyCommand } from '../license-verify-cli.js';
-
-function makeToken(payload: Record<string, unknown>, privateKey: string): string {
-  const headerB64 = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT' })).toString('base64url');
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const message = `${headerB64}.${payloadB64}`;
-  const signatureB64 = sign(null, Buffer.from(message, 'utf-8'), privateKey).toString('base64url');
-  return `${headerB64}.${payloadB64}.${signatureB64}`;
-}
-
-const { privateKey, publicKey } = generateKeyPairSync('ed25519', {
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-});
-
-const NOW_S = Math.floor(Date.now() / 1000);
-
-beforeEach(() => {
-  process.env.REVDEV_LICENSE_PUBLIC_KEY = publicKey;
-});
+import {
+  generateTestLicense,
+  installTestLicenseAuthority,
+  setTestLicenseEnv,
+} from './test-license-helper.js';
 
 afterEach(() => {
-  delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
+  delete process.env.REVEALUI_LICENSE_KEY;
   vi.restoreAllMocks();
 });
 
 describe('runLicenseVerifyCommand', () => {
-  it('returns valid JSON and exit 0 for a good JWT', () => {
-    const token = makeToken(
-      {
-        tier: 'pro',
-        iss: 'https://revealui.com',
-        aud: 'revealui-license',
-        jti: 'verify-cli',
-        nbf: NOW_S - 10,
-        iat: NOW_S - 10,
-        exp: NOW_S + 3600,
-      },
-      privateKey,
-    );
-    const { stdout, exitCode } = runLicenseVerifyCommand(token);
+  it('returns registered authorization for a hosted-verified JWT', async () => {
+    const kit = generateTestLicense('pro');
+    setTestLicenseEnv(kit);
+    installTestLicenseAuthority();
+    const { stdout, exitCode } = await runLicenseVerifyCommand(kit.licenseKey);
     expect(exitCode).toBe(0);
-    const parsed = JSON.parse(stdout) as { valid: boolean; tier: string };
+    const parsed = JSON.parse(stdout) as {
+      valid: boolean;
+      tier: string;
+      authorization: string;
+    };
     expect(parsed.valid).toBe(true);
     expect(parsed.tier).toBe('pro');
+    expect(parsed.authorization).toBe('registered');
   });
 
-  it('returns exit 1 for expired / invalid JWT without throwing', () => {
-    const { stdout, exitCode } = runLicenseVerifyCommand('not-a-jwt');
+  it('returns exit 1 for an invalid JWT without throwing', async () => {
+    const kit = generateTestLicense('pro');
+    setTestLicenseEnv(kit);
+    installTestLicenseAuthority();
+    const { stdout, exitCode } = await runLicenseVerifyCommand('not-a-jwt');
     expect(exitCode).toBe(1);
     const parsed = JSON.parse(stdout) as { valid: boolean; code?: string };
     expect(parsed.valid).toBe(false);
     expect(parsed.code).toBe('invalid-format');
+  });
+
+  it('rechecks local revocation after the hosted registration request', async () => {
+    const kit = generateTestLicense('pro', true, { jti: 'cli-revoked-during-registration' });
+    setTestLicenseEnv(kit);
+    installTestLicenseAuthority();
+    const fixtureFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      if (String(input).endsWith('/api/license/verify')) {
+        revokeJti('cli-revoked-during-registration');
+      }
+      return fixtureFetch(input, init);
+    });
+    const { stdout, exitCode } = await runLicenseVerifyCommand(kit.licenseKey);
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout)).toMatchObject({ valid: false, code: 'revoked' });
   });
 });
 
