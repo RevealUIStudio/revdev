@@ -81,7 +81,7 @@ const registeredTestLicenses = new Map<string, Record<string, unknown>>();
 const testPublicKeyByToken = new Map<string, string>();
 let activeTestPublicKey = '';
 
-function makeTestTrustManifest(publicKey: string) {
+export function makeTestTrustManifest(publicKey: string) {
   const normalizedKey = publicKey.trim();
   const der = createPublicKey(normalizedKey).export({ format: 'der', type: 'spki' });
   const key = {
@@ -124,8 +124,14 @@ export function installTestLicenseAuthority(): void {
     const request = JSON.parse(String(init?.body));
     const publicKey = testPublicKeyByToken.get(request.licenseKey);
     const claims = registeredTestLicenses.get(request.licenseKey);
+    const currentManifest = activeTestPublicKey ? makeTestTrustManifest(activeTestPublicKey) : null;
+    const signerKeyId = publicKey ? makeTestTrustManifest(publicKey).keys[0]?.keyId : undefined;
+    const verifiedKeyId = currentManifest?.keys.find((key) => key.keyId === signerKeyId)?.keyId;
     if (!claims?.jti || !claims.customerId || request.requireRegistration !== true) {
       return Response.json({ valid: false, reason: 'migration_required', tier: 'free' });
+    }
+    if (!currentManifest || !verifiedKeyId) {
+      return Response.json({ valid: false, reason: 'untrusted_signer', tier: 'free' });
     }
     return Response.json({
       valid: true,
@@ -133,8 +139,8 @@ export function installTestLicenseAuthority(): void {
       tier: claims.tier,
       customerId: claims.customerId,
       licenseKeyDigest: createHash('sha256').update(request.licenseKey).digest('hex'),
-      trustSetDigest: makeTestTrustManifest(publicKey ?? '').digest,
-      verifiedKeyId: makeTestTrustManifest(publicKey ?? '').keys[0]?.keyId,
+      trustSetDigest: currentManifest.digest,
+      verifiedKeyId,
     });
   });
 }
