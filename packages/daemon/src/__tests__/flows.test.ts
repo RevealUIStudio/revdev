@@ -2,6 +2,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { DAEMON_DEFAULTS } from '../config.js';
 import { checkLicense, isExemptMethod, LICENSE_TIERS } from '../license.js';
+import { fetchLicenseTrustSet } from '../license-authority.js';
 import { verifyLicenseJWT } from '../license-crypto.js';
 import { SCHEMA_SQL } from '../storage/schema.js';
 import {
@@ -22,32 +23,36 @@ describe('license', () => {
     if (original) process.env.REVEALUI_LICENSE_KEY = original;
   });
 
-  it('validates a pro JWT license key', () => {
+  it('validates a pro JWT license key', async () => {
     setTestLicenseEnv(generateTestLicense('pro'));
+    expect(await fetchLicenseTrustSet()).not.toBeNull();
     const result = checkLicense();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);
     clearTestLicenseEnv();
   });
 
-  it('validates a max JWT license key', () => {
+  it('validates a max JWT license key', async () => {
     setTestLicenseEnv(generateTestLicense('max'));
+    expect(await fetchLicenseTrustSet()).not.toBeNull();
     const result = checkLicense();
     expect(result.tier).toBe('max');
     expect(result.valid).toBe(true);
     clearTestLicenseEnv();
   });
 
-  it('validates an enterprise JWT license key', () => {
+  it('validates an enterprise JWT license key', async () => {
     setTestLicenseEnv(generateTestLicense('enterprise'));
+    expect(await fetchLicenseTrustSet()).not.toBeNull();
     const result = checkLicense();
     expect(result.tier).toBe('enterprise');
     expect(result.valid).toBe(true);
     clearTestLicenseEnv();
   });
 
-  it('validates a non-perpetual JWT license key (with exp)', () => {
+  it('validates a non-perpetual JWT license key (with exp)', async () => {
     setTestLicenseEnv(generateTestLicense('pro', false, { daysUntilExpiry: 30 }));
+    expect(await fetchLicenseTrustSet()).not.toBeNull();
     const result = checkLicense();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);

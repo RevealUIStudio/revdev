@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as licenseAuthority from '../packages/daemon/src/license-authority.ts';
 import { revokeJti, verifyLicenseJWT } from '../packages/daemon/src/license-crypto.ts';
 import {
   issueLicense,
@@ -27,14 +28,64 @@ const keys = generateKeyPairSync('ed25519', {
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 let scratch;
+let trustPublicKey;
+function makeTrustManifest(publicKey) {
+  const normalized = publicKey.trim();
+  const der = createPublicKey(normalized).export({ format: 'der', type: 'spki' });
+  const key = {
+    role: 'current',
+    algorithm: 'EdDSA',
+    publicKey: normalized,
+    jwtKid: createHash('sha256').update(normalized).digest('hex').slice(0, 8),
+    keyId: createHash('sha256').update(der).digest('hex'),
+  };
+  const digestInput = JSON.stringify({
+    version: 1,
+    issuer: 'https://revealui.com',
+    audience: 'revealui-license',
+    keys: [{ role: key.role, algorithm: key.algorithm, keyId: key.keyId }],
+  });
+  return {
+    version: 1,
+    issuer: 'https://revealui.com',
+    audience: 'revealui-license',
+    keys: [key],
+    digest: createHash('sha256').update(digestInput).digest('hex'),
+    publicKey: normalized,
+  };
+}
+function stubGlobal(name, transport) {
+  if (name !== 'fetch') return vi.stubGlobal(name, transport);
+  return vi.stubGlobal(name, async (input, init) => {
+    if (String(input) === 'https://api.revealui.com/api/license/public-key') {
+      return Response.json(makeTrustManifest(trustPublicKey));
+    }
+    if (String(input) === 'https://api.revealui.com/api/license/verify') {
+      const request = JSON.parse(String(init?.body));
+      const claims = JSON.parse(
+        Buffer.from(request.licenseKey.split('.')[1], 'base64url').toString('utf8'),
+      );
+      const manifest = makeTrustManifest(trustPublicKey);
+      return Response.json({
+        valid: true,
+        reason: 'valid',
+        tier: claims.tier,
+        customerId: claims.customerId,
+        licenseKeyDigest: createHash('sha256').update(request.licenseKey).digest('hex'),
+        trustSetDigest: manifest.digest,
+        verifiedKeyId: manifest.keys[0].keyId,
+      });
+    }
+    return transport(input, init);
+  });
+}
 beforeEach(() => {
   scratch = mkdtempSync(join(tmpdir(), 'revdev-license-audit-'));
-  process.env.REVDEV_LICENSE_PUBLIC_KEY = keys.publicKey;
+  trustPublicKey = keys.publicKey;
   process.env.REVEALUI_ADMIN_API_KEY = 'synthetic-admin';
   process.env.REVEALUI_REVOKED_JTI_FILE = join(scratch, 'revoked.json');
 });
 afterEach(() => {
-  delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
   delete process.env.REVEALUI_ADMIN_API_KEY;
   delete process.env.REVEALUI_REVOKED_JTI_FILE;
   rmSync(scratch, { recursive: true, force: true });
@@ -71,7 +122,7 @@ describe('license issuer and emergency rotation', () => {
           JSON.stringify({ licenseKey: token, tier: 'enterprise', customerId: 'synthetic' }),
         ),
       );
-    vi.stubGlobal('fetch', transport);
+    stubGlobal('fetch', transport);
     expect(
       await issueLicense({
         operationId: '12345678-1234-4123-8123-123456789012',
@@ -93,6 +144,40 @@ describe('license issuer and emergency rotation', () => {
       valid: false,
       code: 'revoked',
     });
+  });
+
+  it('rejects an issuance receipt if the accepted trust generation changes before return', async () => {
+    const token = legacyToken({
+      customerId: 'synthetic',
+      jti: '12345678-1234-4123-8123-123456789012',
+    });
+    stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ licenseKey: token, tier: 'enterprise', customerId: 'synthetic' }),
+          ),
+        ),
+    );
+    const foreign = generateKeyPairSync('ed25519', {
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+    vi.spyOn(licenseAuthority, 'verifyRegisteredLicense').mockImplementationOnce(async () => {
+      trustPublicKey = foreign.publicKey;
+      await licenseAuthority.fetchLicenseTrustSet();
+      return true;
+    });
+    await expect(
+      issueLicense({
+        operationId: '12345678-1234-4123-8123-123456789012',
+        tier: 'enterprise',
+        customer: 'synthetic',
+        perpetual: true,
+      }),
+    ).rejects.toThrow('changed during registration verification');
   });
 
   it('refuses emergency replacement of a valid legacy key with no jti', () => {
@@ -188,9 +273,9 @@ describe('license issuer and emergency rotation', () => {
       customer: 'synthetic',
       perpetual: true,
     };
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('synthetic outage')));
+    stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('synthetic outage')));
     await expect(issueLicense(opts)).rejects.toThrow('unavailable');
-    vi.stubGlobal(
+    stubGlobal(
       'fetch',
       vi.fn().mockImplementation(
         async () =>
@@ -208,7 +293,7 @@ describe('license issuer and emergency rotation', () => {
       publicKeyEncoding: { type: 'spki', format: 'pem' },
       privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
     });
-    process.env.REVDEV_LICENSE_PUBLIC_KEY = other.publicKey;
+    trustPublicKey = other.publicKey;
     await expect(issueLicense(opts)).rejects.toThrow('trust migration');
     delete process.env.REVEALUI_ADMIN_API_KEY;
     await expect(issueLicense(opts)).rejects.toThrow('authentication');
@@ -404,7 +489,7 @@ describe('hosted durable promotion recovery', () => {
       throw new Error('must not read');
     });
     const fetch = vi.fn().mockResolvedValue(response(receipt()));
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     await expect(promoteLicense(opts, identity, read)).resolves.toMatchObject({
       status: 'promoted',
     });
@@ -425,7 +510,7 @@ describe('hosted durable promotion recovery', () => {
       .fn()
       .mockResolvedValueOnce(miss())
       .mockResolvedValueOnce(response(receipt('initial'), 201));
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     await promoteLicense(opts, { kind: 'initial', path }, () => ({ expected: { kind: 'absent' } }));
     expect(JSON.parse(fetch.mock.calls[1][1].body).promotion.expected).toEqual({ kind: 'absent' });
     expect(execFileSync.mock.calls[0][1]).toContain('--expected-absent');
@@ -438,7 +523,7 @@ describe('hosted durable promotion recovery', () => {
       .mockResolvedValueOnce(miss())
       .mockRejectedValueOnce(new Error('timeout'))
       .mockResolvedValueOnce(response(receipt()));
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     await promoteLicense(opts, identity, read);
     expect(read).toHaveBeenCalledTimes(1);
     const requests = fetch.mock.calls.map((call) => JSON.parse(call[1].body));
@@ -456,7 +541,7 @@ describe('hosted durable promotion recovery', () => {
   ])('denies unproven miss before reading or minting', async (bad) => {
     const read = vi.fn(prepare);
     const fetch = vi.fn().mockResolvedValue(bad);
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     await expect(promoteLicense(opts, identity, read)).rejects.toThrow();
     expect(read).not.toHaveBeenCalled();
     expect(execFileSync).not.toHaveBeenCalled();
@@ -464,7 +549,7 @@ describe('hosted durable promotion recovery', () => {
   });
   it('denies a creation status on a recover-only response before Vault access', async () => {
     const read = vi.fn(prepare);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(receipt(), 201)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(receipt(), 201)));
     await expect(promoteLicense(opts, identity, read)).rejects.toThrow();
     expect(read).not.toHaveBeenCalled();
     expect(execFileSync).not.toHaveBeenCalled();
@@ -476,14 +561,14 @@ describe('hosted durable promotion recovery', () => {
       .mockResolvedValueOnce(miss())
       .mockResolvedValueOnce(response(receipt(), 200))
       .mockResolvedValueOnce(miss());
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     await expect(promoteLicense(opts, identity, read)).rejects.toThrow();
     expect(read).toHaveBeenCalledTimes(1);
     expect(execFileSync).not.toHaveBeenCalled();
   });
   it('requires explicit realm before any transport or Vault access', async () => {
     const fetch = vi.fn();
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     const read = vi.fn(prepare);
     await expect(
       promoteLicense({ ...opts, expectedMode: undefined }, identity, read),
@@ -500,14 +585,14 @@ describe('hosted durable promotion recovery', () => {
   ])('rejects changed descriptor %s before Vault', async (field) => {
     const body = receipt();
     body.operation[field] = 'changed';
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(promoteLicense(opts, identity, vi.fn(prepare))).rejects.toThrow();
     expect(execFileSync).not.toHaveBeenCalled();
   });
   it('rotation entrypoint resumes completed promotion before calendar or Vault read', async () => {
     vaultReceipt();
     const fetch = vi.fn().mockResolvedValue(response(receipt()));
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     await expect(
       rotateLicense({
         vaultPath: path,
@@ -536,7 +621,7 @@ describe('hosted durable promotion recovery', () => {
       .digest('hex');
     body.operation.promotion.expected.sha256 = createHash('sha256').update(raw).digest('hex');
     const fetch = vi.fn().mockResolvedValueOnce(miss()).mockResolvedValueOnce(response(body, 201));
-    vi.stubGlobal('fetch', fetch);
+    stubGlobal('fetch', fetch);
     vi.mocked(execFileSync)
       .mockReturnValueOnce(JSON.stringify({ path, value: raw, bytes: Buffer.byteLength(raw) }))
       .mockReturnValueOnce(
@@ -578,7 +663,7 @@ describe('hosted durable promotion recovery', () => {
       perpetual: true,
       ...extra,
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(promoteLicense(opts, identity, vi.fn(prepare))).rejects.toThrow();
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -595,7 +680,7 @@ describe('hosted durable promotion recovery', () => {
       iat,
       exp: iat + 7200,
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(
       promoteLicense({ ...opts, perpetual: false, days: 1 }, identity, vi.fn(prepare)),
     ).rejects.toThrow('signed grant duration mismatch');
@@ -612,7 +697,7 @@ describe('hosted durable promotion recovery', () => {
     ]) {
       const body = receipt();
       change(body);
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+      stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
       await expect(promoteLicense(opts, identity, vi.fn(prepare))).rejects.toThrow();
     }
     expect(execFileSync).not.toHaveBeenCalled();
@@ -631,7 +716,7 @@ describe('hosted durable promotion recovery', () => {
       maxSites: 5,
     });
     vaultReceipt();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(
       promoteLicense({ ...opts, tier: 'pro' }, identity, vi.fn(prepare)),
     ).resolves.toMatchObject({ status: 'promoted' });
@@ -639,7 +724,7 @@ describe('hosted durable promotion recovery', () => {
   it.each([0, -1, 1.5, 10001, '5'])('rejects unsupported recorded site default %j', async (cap) => {
     const body = receipt();
     body.operation.effectiveGrant.maxSites = cap;
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(promoteLicense(opts, identity, vi.fn(prepare))).rejects.toThrow();
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -652,14 +737,14 @@ describe('hosted durable promotion recovery', () => {
       perpetual: true,
       maxSites: 6,
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(promoteLicense(opts, identity, vi.fn(prepare))).rejects.toThrow('signed grant');
     expect(execFileSync).not.toHaveBeenCalled();
   });
   it('rejects descriptor missing recorded effective grant rather than recomputing it', async () => {
     const body = receipt();
     delete body.operation.effectiveGrant;
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(promoteLicense(opts, identity, vi.fn(prepare))).rejects.toThrow();
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -677,7 +762,7 @@ describe('hosted durable promotion recovery', () => {
       exp: iat + 86400,
     });
     vaultReceipt();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(
       promoteLicense({ ...opts, perpetual: false, days: 1 }, identity, vi.fn(prepare)),
     ).resolves.toMatchObject({ status: 'promoted' });
@@ -685,7 +770,7 @@ describe('hosted durable promotion recovery', () => {
   it('rejects retired legacy receipt without reconstructing expectation', async () => {
     const body = receipt();
     delete body.operation;
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
     await expect(promoteLicense(opts, identity, vi.fn(prepare))).rejects.toThrow();
     expect(execFileSync).not.toHaveBeenCalled();
   });

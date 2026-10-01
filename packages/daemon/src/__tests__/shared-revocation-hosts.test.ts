@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { generateTestLicense } from './test-license-helper.js';
+import { generateTestLicense, makeTestTrustManifest } from './test-license-helper.js';
 
 type Reply = { error?: { code: number }; result?: unknown };
 const children: ChildProcess[] = [];
@@ -29,13 +29,16 @@ const authority = createServer(async (request, response) => {
     response.end('{}');
     return;
   }
+  const registrationRequired = presented.requireRegistration === true;
   response.end(
     JSON.stringify({
-      valid: !revoked && presented.licenseKey === kit.licenseKey,
-      reason: revoked ? 'revoked' : 'valid',
+      valid: !revoked && registrationRequired && presented.licenseKey === kit.licenseKey,
+      reason: revoked ? 'revoked' : registrationRequired ? 'valid' : 'migration_required',
       tier: 'enterprise',
       customerId: 'synthetic-customer',
       licenseKeyDigest: createHash('sha256').update(kit.licenseKey).digest('hex'),
+      trustSetDigest: makeTestTrustManifest(kit.publicKey).digest,
+      verifiedKeyId: makeTestTrustManifest(kit.publicKey).keys[0]?.keyId,
     }),
   );
 });
@@ -118,7 +121,6 @@ beforeAll(async () => {
           HOME: dir,
           NODE_ENV: 'test',
           REVEALUI_LICENSE_KEY: kit.licenseKey,
-          REVDEV_LICENSE_PUBLIC_KEY: kit.publicKey,
           REVDEV_DAEMON_DATA: dir,
           REVEALUI_REVOKED_JTI_FILE: join(dir, 'revoked.json'),
         },
@@ -151,6 +153,7 @@ beforeAll(async () => {
         socketPath: socket,
         httpPort: port,
         authority: `http://127.0.0.1:${address.port}/verify`,
+        trustManifest: makeTestTrustManifest(kit.publicKey),
       });
     });
     const base = `http://127.0.0.1:${port}`;

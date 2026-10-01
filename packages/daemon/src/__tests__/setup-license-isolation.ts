@@ -8,7 +8,6 @@ import { installTestLicenseAuthority } from './test-license-helper.js';
 const settings = [
   'REVEALUI_LICENSE_KEY',
   'REVEALUI_LICENSE_KEY_FILE',
-  'REVDEV_LICENSE_PUBLIC_KEY',
   'REVEALUI_REVOKED_JTI_FILE',
   'REVDEV_DAEMON_DATA',
 ] as const;
@@ -18,7 +17,6 @@ const fixtureRoot = mkdtempSync(join(tmpdir(), 'revdev-license-suite-'));
 // and helper consumers cannot authorize against an operator's installed token.
 delete process.env.REVEALUI_LICENSE_KEY;
 delete process.env.REVEALUI_LICENSE_KEY_FILE;
-delete process.env.REVDEV_LICENSE_PUBLIC_KEY;
 process.env.REVDEV_DAEMON_DATA = fixtureRoot;
 process.env.REVEALUI_REVOKED_JTI_FILE = join(fixtureRoot, 'revoked-jtis.json');
 // Every licensed daemon suite uses the same exact-token synthetic registration

@@ -27,22 +27,20 @@
  */
 
 import { verify } from 'node:crypto';
+import { getAcceptedLicenseTrustSet, type LicenseTrustKey } from './license-authority.js';
 import { isRevokedJti, revokedJtiPath, revokeJti } from './revoked-jtis.js';
-import { DEFAULT_VENDOR_PUBLIC_KEY } from './vendor-public-key.js';
 
 export { isRevokedJti, revokedJtiPath, revokeJti };
 
 /**
- * Vendor Ed25519 public key (PEM) used to verify license JWTs.
+ * Current hosted Ed25519 public key (PEM), when a fresh trust set is loaded.
  *
- * Existing configuration accepts REVDEV_LICENSE_PUBLIC_KEY; blank values use
- * the bundled default. This configuration is not a supported signing-key
- * rotation or hosted issuer migration protocol. That trust/bootstrap work
- * remains open; callers must not infer hosted authorization from this key.
+ * Trust is supplied only by the validated fixed-origin hosted manifest held
+ * in memory for the current daemon lifecycle. No baked key or machine override
+ * can establish issuer trust.
  */
-export function getVendorPublicKey(): string {
-  const override = process.env.REVDEV_LICENSE_PUBLIC_KEY;
-  return override?.trim() ? override : DEFAULT_VENDOR_PUBLIC_KEY;
+export function getVendorPublicKeys(): readonly LicenseTrustKey[] {
+  return getAcceptedLicenseTrustSet()?.keys ?? [];
 }
 
 const VALID_TIERS = new Set(['pro', 'max', 'enterprise']);
@@ -73,6 +71,9 @@ export interface LicenseJWTResult {
   tier: 'pro' | 'max' | 'enterprise';
   expiresAt: number; // unix seconds, 0 = perpetual
   valid: true;
+  verifiedKeyId?: string;
+  customerId?: string;
+  jti?: string;
 }
 
 export interface LicenseJWTFailure {
@@ -98,9 +99,10 @@ function decodeBase64url(input: string): Buffer {
  * Returns the tier + expiration if valid, or { valid: false, reason, code }
  * if not. Never throws — all parse/verify errors are returned as failures.
  */
-export function verifyLicenseJWT(
+function verifyLicenseJWTInternal(
   token: string,
-  publicKey: string,
+  publicKey: string | readonly (string | Pick<LicenseTrustKey, 'publicKey' | 'keyId'>)[],
+  allowExpiredForRotation: boolean,
 ): LicenseJWTResult | LicenseJWTFailure {
   try {
     const parts = token.split('.');
@@ -155,15 +157,44 @@ export function verifyLicenseJWT(
     // (degrade-to-free) rather than 'expired' (which the daemon maps to
     // fail-closed startup). See evaluateLicense() in license.ts.
     const exp = payload.exp;
-    if (exp !== undefined && typeof exp !== 'number') {
+    if (exp !== undefined && (!Number.isSafeInteger(exp) || typeof exp !== 'number')) {
       return { tier: 'free', valid: false, reason: 'invalid exp claim', code: 'invalid-claim' };
     }
 
-    if (!publicKey) {
+    const iat = payload.iat;
+    if (iat !== undefined && (typeof iat !== 'number' || !Number.isSafeInteger(iat))) {
+      return { tier: 'free', valid: false, reason: 'invalid iat claim', code: 'invalid-claim' };
+    }
+    const customerId = payload.customerId;
+    if (
+      customerId !== undefined &&
+      (typeof customerId !== 'string' || !customerId.trim() || customerId !== customerId.trim())
+    ) {
       return {
         tier: 'free',
         valid: false,
-        reason: 'REVDEV_LICENSE_PUBLIC_KEY not set — cannot verify signature',
+        reason: 'invalid customerId claim',
+        code: 'invalid-claim',
+      };
+    }
+    const jti = payload.jti;
+    if (jti !== undefined && (typeof jti !== 'string' || !jti.trim() || jti !== jti.trim())) {
+      return { tier: 'free', valid: false, reason: 'invalid jti claim', code: 'invalid-claim' };
+    }
+
+    const candidates =
+      typeof publicKey === 'string'
+        ? publicKey
+          ? [{ publicKey }]
+          : []
+        : publicKey.map((candidate) =>
+            typeof candidate === 'string' ? { publicKey: candidate } : candidate,
+          );
+    if (candidates.length === 0 || candidates.some(({ publicKey: pem }) => !pem)) {
+      return {
+        tier: 'free',
+        valid: false,
+        reason: 'Hosted license trust is not loaded — cannot verify signature',
         code: 'no-public-key',
       };
     }
@@ -173,7 +204,19 @@ export function verifyLicenseJWT(
     const signatureBuffer = decodeBase64url(signatureB64);
 
     // Ed25519 doesn't use a separate digest — pass null as algorithm
-    const isValid = verify(null, Buffer.from(message, 'utf-8'), publicKey, signatureBuffer);
+    let verifiedKeyId: string | undefined;
+    let isValid = false;
+    for (const candidate of candidates) {
+      try {
+        if (verify(null, Buffer.from(message, 'utf-8'), candidate.publicKey, signatureBuffer)) {
+          isValid = true;
+          if ('keyId' in candidate) verifiedKeyId = candidate.keyId;
+          break;
+        }
+      } catch {
+        // A malformed candidate cannot establish trust; try other validated entries.
+      }
+    }
 
     if (!isValid) {
       return {
@@ -209,7 +252,7 @@ export function verifyLicenseJWT(
     // Validate nbf if present
     const nbf = payload.nbf;
     if (nbf !== undefined) {
-      if (typeof nbf !== 'number') {
+      if (typeof nbf !== 'number' || !Number.isSafeInteger(nbf)) {
         return { tier: 'free', valid: false, reason: 'invalid nbf claim', code: 'invalid-claim' };
       }
       const nowSeconds = Math.floor(Date.now() / 1000);
@@ -224,7 +267,6 @@ export function verifyLicenseJWT(
     }
 
     // Check jti revocation
-    const jti = payload.jti;
     try {
       // Validate the existing store even for legacy tokens without a JTI, so
       // corruption never silently grants paid authorization.
@@ -245,7 +287,7 @@ export function verifyLicenseJWT(
     // fail-closed-on-expired path via a backdated `exp` claim.
     if (typeof exp === 'number') {
       const nowSeconds = Math.floor(Date.now() / 1000);
-      if (nowSeconds > exp) {
+      if (nowSeconds > exp && !allowExpiredForRotation) {
         // Carry expiresAt so callers can compute time-since-expiry + drive
         // fail-closed / telemetry without re-decoding the token.
         return {
@@ -265,8 +307,26 @@ export function verifyLicenseJWT(
       tier: tier as 'pro' | 'max' | 'enterprise',
       expiresAt,
       valid: true,
+      ...(verifiedKeyId ? { verifiedKeyId } : {}),
+      ...(typeof customerId === 'string' ? { customerId } : {}),
+      ...(typeof jti === 'string' ? { jti } : {}),
     };
   } catch {
     return { tier: 'free', valid: false, reason: 'invalid format', code: 'invalid-format' };
   }
+}
+
+export function verifyLicenseJWT(
+  token: string,
+  publicKey: string | readonly (string | Pick<LicenseTrustKey, 'publicKey' | 'keyId'>)[],
+): LicenseJWTResult | LicenseJWTFailure {
+  return verifyLicenseJWTInternal(token, publicKey, false);
+}
+
+/** Rotation-only shared verification: permits expiry while retaining all other checks. */
+export function verifyLicenseJWTForPriorRotation(
+  token: string,
+  publicKey: readonly (string | Pick<LicenseTrustKey, 'publicKey' | 'keyId'>)[],
+): LicenseJWTResult | LicenseJWTFailure {
+  return verifyLicenseJWTInternal(token, publicKey, true);
 }

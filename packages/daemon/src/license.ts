@@ -32,7 +32,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 // Import statically — same ESM module, no circular risk.
-import { getVendorPublicKey, verifyLicenseJWT } from './license-crypto.js';
+import { getVendorPublicKeys, verifyLicenseJWT } from './license-crypto.js';
 
 export const LICENSE_TIERS = ['free', 'pro', 'max', 'enterprise'] as const;
 export type LicenseTier = (typeof LICENSE_TIERS)[number];
@@ -295,7 +295,7 @@ export function checkLicense(): { tier: LicenseTier; valid: boolean } {
 
   // JWT format (Ed25519-signed): header starts with base64url-encoded "{"
   if (key.startsWith('eyJ')) {
-    const result = verifyLicenseJWT(key, getVendorPublicKey());
+    const result = verifyLicenseJWT(key, getVendorPublicKeys());
     if (result.valid) {
       return { tier: result.tier, valid: true };
     }
@@ -380,7 +380,7 @@ export function evaluateLicense(nowMs: number = Date.now()): LicenseEvaluation {
     };
   }
 
-  const result = verifyLicenseJWT(key, getVendorPublicKey());
+  const result = verifyLicenseJWT(key, getVendorPublicKeys());
 
   if (result.valid) {
     const expiresAt = result.expiresAt > 0 ? result.expiresAt : null;

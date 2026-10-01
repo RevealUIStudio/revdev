@@ -9,6 +9,7 @@ import {
   refreshLicense,
 } from '../guard.js';
 import { isExemptMethod, LICENSE_TIER_HELP, METHOD_MIN_TIER, requiredTier } from '../license.js';
+import { fetchLicenseTrustSet } from '../license-authority.js';
 import {
   clearTestLicenseEnv,
   generateTestLicense,
@@ -422,6 +423,7 @@ describe('handler tier-classification coverage', () => {
 describe('initLicenseGuard', () => {
   beforeEach(() => {
     clearTestLicenseEnv();
+    installTestLicenseAuthority();
   });
 
   afterEach(() => {
@@ -436,6 +438,7 @@ describe('initLicenseGuard', () => {
 
   it('returns pro tier with valid v2 key', async () => {
     setTestLicenseEnv(generateTestLicense('pro'));
+    await fetchLicenseTrustSet();
     const result = initLicenseGuard();
     expect(result.tier).toBe('pro');
     expect(result.valid).toBe(true);

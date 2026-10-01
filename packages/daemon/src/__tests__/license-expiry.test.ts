@@ -17,6 +17,7 @@ import {
   LicenseExpiredError,
   loadLicenseKey,
 } from '../license.js';
+import { fetchLicenseTrustSet } from '../license-authority.js';
 import { verifyLicenseJWT } from '../license-crypto.js';
 import {
   clearTestLicenseEnv,
@@ -25,9 +26,10 @@ import {
 } from './test-license-helper.js';
 
 /** Mint + install a license expiring `days` from now (negative = expired). */
-function installLicense(days: number, tier: 'pro' | 'max' | 'enterprise' = 'enterprise') {
+async function installLicense(days: number, tier: 'pro' | 'max' | 'enterprise' = 'enterprise') {
   const kit = generateTestLicense(tier, false, { daysUntilExpiry: days });
   setTestLicenseEnv(kit);
+  await fetchLicenseTrustSet();
   return kit;
 }
 
@@ -43,34 +45,34 @@ afterEach(() => {
 });
 
 describe('evaluateLicense — expiry status buckets', () => {
-  it('15 days out → ok (no warning bucket)', () => {
-    installLicense(15);
+  it('15 days out → ok (no warning bucket)', async () => {
+    await installLicense(15);
     const ev = evaluateLicense();
     expect(ev.valid).toBe(true);
     expect(ev.status).toBe('ok');
     expect(ev.tier).toBe('enterprise');
   });
 
-  it('13 days out → expiring-14d (info)', () => {
-    installLicense(13);
+  it('13 days out → expiring-14d (info)', async () => {
+    await installLicense(13);
     expect(evaluateLicense().status).toBe('expiring-14d');
   });
 
-  it('6 days out → expiring-7d (warn)', () => {
-    installLicense(6);
+  it('6 days out → expiring-7d (warn)', async () => {
+    await installLicense(6);
     expect(evaluateLicense().status).toBe('expiring-7d');
   });
 
-  it('12 hours out → expiring-1d (critical)', () => {
-    installLicense(0.5);
+  it('12 hours out → expiring-1d (critical)', async () => {
+    await installLicense(0.5);
     const ev = evaluateLicense();
     expect(ev.status).toBe('expiring-1d');
     expect(ev.valid).toBe(true);
     expect(ev.secondsRemaining).toBeGreaterThan(0);
   });
 
-  it('1 hour ago → expired (fail-closed signal)', () => {
-    installLicense(-1 / 24);
+  it('1 hour ago → expired (fail-closed signal)', async () => {
+    await installLicense(-1 / 24);
     const ev = evaluateLicense();
     expect(ev.valid).toBe(false);
     expect(ev.status).toBe('expired');
@@ -78,9 +80,10 @@ describe('evaluateLicense — expiry status buckets', () => {
     expect(ev.secondsRemaining).toBeLessThan(0);
   });
 
-  it('perpetual (no exp) → perpetual', () => {
+  it('perpetual (no exp) → perpetual', async () => {
     const kit = generateTestLicense('enterprise', true);
     setTestLicenseEnv(kit);
+    await fetchLicenseTrustSet();
     const ev = evaluateLicense();
     expect(ev.valid).toBe(true);
     expect(ev.status).toBe('perpetual');
@@ -104,12 +107,14 @@ describe('loadLicenseKey — env / file priority', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('reads REVEALUI_LICENSE_KEY_FILE when KEY is unset', () => {
+  it('reads REVEALUI_LICENSE_KEY_FILE when KEY is unset', async () => {
     const kit = generateTestLicense('pro', true);
     const file = join(dir, 'license.jwt');
     writeFileSync(file, `${kit.licenseKey}\n`);
     process.env.REVEALUI_LICENSE_KEY_FILE = file;
-    process.env.REVDEV_LICENSE_PUBLIC_KEY = kit.publicKey;
+    process.env.REVEALUI_LICENSE_KEY = kit.licenseKey;
+    await fetchLicenseTrustSet();
+    delete process.env.REVEALUI_LICENSE_KEY;
 
     const loaded = loadLicenseKey();
     expect(loaded.source).toBe('file');
@@ -121,12 +126,13 @@ describe('loadLicenseKey — env / file priority', () => {
     expect(ev.tier).toBe('pro');
   });
 
-  it('inline KEY takes priority over KEY_FILE', () => {
+  it('inline KEY takes priority over KEY_FILE', async () => {
     const inline = generateTestLicense('max', true);
     const fileKit = generateTestLicense('pro', true);
     const file = join(dir, 'license.jwt');
     writeFileSync(file, fileKit.licenseKey);
     setTestLicenseEnv(inline);
+    await fetchLicenseTrustSet();
     process.env.REVEALUI_LICENSE_KEY_FILE = file;
 
     const loaded = loadLicenseKey();
@@ -148,23 +154,23 @@ describe('loadLicenseKey — env / file priority', () => {
 });
 
 describe('initLicenseGuard — fail-closed + warnings', () => {
-  it('FAILS CLOSED (throws LicenseExpiredError) on an expired license', () => {
-    installLicense(-1 / 24);
+  it('FAILS CLOSED (throws LicenseExpiredError) on an expired license', async () => {
+    await installLicense(-1 / 24);
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => initLicenseGuard()).toThrow(LicenseExpiredError);
     expect(errSpy).toHaveBeenCalled(); // CRITICAL line emitted before throw
   });
 
-  it('does NOT throw, and logs CRITICAL, at <= 1 day', () => {
-    installLicense(0.5);
+  it('does NOT throw, and logs CRITICAL, at <= 1 day', async () => {
+    await installLicense(0.5);
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const state = initLicenseGuard();
     expect(state.valid).toBe(true);
     expect(errSpy).toHaveBeenCalled();
   });
 
-  it('does NOT throw on a healthy (15d) license', () => {
-    installLicense(15);
+  it('does NOT throw on a healthy (15d) license', async () => {
+    await installLicense(15);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => initLicenseGuard()).not.toThrow();
   });
@@ -224,14 +230,15 @@ describe('verifyLicenseJWT — signature precedes expiration check (Codex P1 #93
 });
 
 describe('checkLicense — backward-compatible {tier, valid}', () => {
-  it('returns valid Pro+ for a perpetual license', () => {
+  it('returns valid Pro+ for a perpetual license', async () => {
     const kit = generateTestLicense('pro', true);
     setTestLicenseEnv(kit);
+    await fetchLicenseTrustSet();
     expect(checkLicense()).toEqual({ tier: 'pro', valid: true });
   });
 
-  it('returns free/invalid for an expired license (degraded at the RPC layer)', () => {
-    installLicense(-1 / 24);
+  it('returns free/invalid for an expired license (degraded at the RPC layer)', async () => {
+    await installLicense(-1 / 24);
     expect(checkLicense()).toEqual({ tier: 'free', valid: false });
   });
 
