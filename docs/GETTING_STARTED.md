@@ -110,7 +110,7 @@ An inline `REVEALUI_LICENSE_KEY` always wins over Studio's file.
 
 Paid activation requires a locally valid signature, a registered current token with customer identity and JTI, and reachable hosted authority. Authority outages deny new paid requests. Free operations remain available.
 
-The bundled public key belongs to the historical RevDev issuer. Supported provisioning of hosted issuer trust and migration of existing credentials remain open. A public-key environment override is not a supported rotation procedure. Do not claim automatic hosted activation until that owning bootstrap is implemented and verified.
+Before paid activation, the daemon loads the ordered current/NEXT Ed25519 trust set from the fixed hosted licensing authority and checks the license against the exact registered signer. If trust or registration is unavailable, paid operations stay denied while free operations remain available.
 
 5. Restart the daemon (only needed for the headless copy path; Studio already restarts it):
 

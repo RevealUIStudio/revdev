@@ -162,6 +162,7 @@ async function readBoundedBody(response: Response, signal: AbortSignal): Promise
       declaredBytes < 0 ||
       declaredBytes > TRUST_RESPONSE_MAX_BYTES
     ) {
+      void response.body?.cancel().catch(() => {});
       throw new Error('License trust response exceeds supported size');
     }
   }
@@ -169,6 +170,7 @@ async function readBoundedBody(response: Response, signal: AbortSignal): Promise
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
+  let fullyRead = false;
   let onAbort: (() => void) | undefined;
   const aborted = new Promise<never>((_resolve, reject) => {
     onAbort = () => reject(signal.reason ?? new Error('License trust request timed out'));
@@ -178,7 +180,10 @@ async function readBoundedBody(response: Response, signal: AbortSignal): Promise
     while (true) {
       signal.throwIfAborted();
       const { done, value } = await Promise.race([reader.read(), aborted]);
-      if (done) break;
+      if (done) {
+        fullyRead = true;
+        break;
+      }
       if (!value) continue;
       totalBytes += value.byteLength;
       if (totalBytes > TRUST_RESPONSE_MAX_BYTES)
@@ -187,7 +192,7 @@ async function readBoundedBody(response: Response, signal: AbortSignal): Promise
     }
   } finally {
     if (onAbort) signal.removeEventListener('abort', onAbort);
-    if (signal.aborted) void reader.cancel().catch(() => {});
+    if (!fullyRead) void reader.cancel().catch(() => {});
     try {
       reader.releaseLock();
     } catch {

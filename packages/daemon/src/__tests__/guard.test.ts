@@ -127,6 +127,26 @@ describe('guardRpcMethod', () => {
       expect(result.tier).toBe('pro');
     });
 
+    it('denies a paid request at the exact JWT expiration second', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        const kit = generateTestLicense('pro', false, { daysUntilExpiry: 1 / 86400 });
+        setTestLicenseEnv(kit);
+        const claims = JSON.parse(
+          Buffer.from(kit.licenseKey.split('.')[1] ?? '', 'base64url').toString(),
+        ) as { exp: number };
+        expect(claims.exp).toBe(now + 1);
+        vi.setSystemTime(claims.exp * 1000);
+
+        const result = await guardRpcMethod('agent.spawn');
+        expect(result.allowed).toBe(false);
+        expect(result.tier).toBe('free');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('allows inference.status (free run surface)', async () => {
       const result = await guardRpcMethod('inference.status');
       expect(result.allowed).toBe(true);

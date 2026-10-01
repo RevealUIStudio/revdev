@@ -152,6 +152,24 @@ it('enforces the decoded response bound and fatal UTF-8 decoding', async () => {
   }
 });
 
+it('cancels a streamed trust response when it exceeds the body bound', async () => {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(16 * 1024 + 1));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+    { headers: { 'content-type': 'application/json' } },
+  );
+
+  expect(await fetchLicenseTrustSet(vi.fn<typeof fetch>().mockResolvedValue(response))).toBeNull();
+  expect(cancelled).toBe(true);
+});
+
 it('rejects a trust response whose body stalls past the request deadline', async () => {
   const timedOutSignal = AbortSignal.timeout(1);
   const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timedOutSignal);

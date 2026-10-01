@@ -10,8 +10,8 @@
  * - iss: "https://revealui.com"
  * - aud: "revealui-license"
  *
- * Issuance uses the authenticated hosted licensing API. This verifier uses
- * the bundled public key or the existing explicit configuration below; it
+ * Issuance uses the authenticated hosted licensing API. Verification keys
+ * come only from the validated fixed-origin hosted trust manifest; this module
  * never loads a private key or generates an independent issuer keypair.
  * Local signature validation alone does not authorize paid dispatch: the
  * guard also requires exact current hosted registration before each request.
@@ -287,7 +287,7 @@ function verifyLicenseJWTInternal(
     // fail-closed-on-expired path via a backdated `exp` claim.
     if (typeof exp === 'number') {
       const nowSeconds = Math.floor(Date.now() / 1000);
-      if (nowSeconds > exp && !allowExpiredForRotation) {
+      if (nowSeconds >= exp && !allowExpiredForRotation) {
         // Carry expiresAt so callers can compute time-since-expiry + drive
         // fail-closed / telemetry without re-decoding the token.
         return {

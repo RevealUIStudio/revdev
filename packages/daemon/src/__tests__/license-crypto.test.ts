@@ -8,6 +8,7 @@ import {
   isRevokedJti,
   revokeJti,
   verifyLicenseJWT,
+  verifyLicenseJWTForPriorRotation,
 } from '../license-crypto.js';
 
 function makeToken(
@@ -109,6 +110,25 @@ describe('verifyLicenseJWT — nbf check', () => {
     const token = makeToken(rest, privateKey);
     const result = verifyLicenseJWT(token, publicKey);
     expect(result.valid).toBe(true);
+  });
+});
+
+describe('verifyLicenseJWT — expiration boundary', () => {
+  it('rejects at exp while retaining the prior-rotation expiry exception', () => {
+    const exp = NOW_S + 60;
+    const token = makeToken({ ...VALID_PAYLOAD, exp }, privateKey);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(exp * 1000);
+      const normal = verifyLicenseJWT(token, publicKey);
+      expect(normal.valid).toBe(false);
+      if (!normal.valid) expect(normal.code).toBe('expired');
+
+      const rotation = verifyLicenseJWTForPriorRotation(token, [publicKey]);
+      expect(rotation.valid).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
