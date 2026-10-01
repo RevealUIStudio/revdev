@@ -74,7 +74,11 @@ fn main() -> ExitCode {
 
     let stdout = io::stdout().lock();
     let _ = pump_and_flush(from_socket, stdout);
-    let _ = pump_in.join();
+    // The daemon can close its side while Studio intentionally keeps this
+    // child's stdin open for reconnect detection. Do not wait for the stdin
+    // pump after daemon EOF: returning closes stdout and lets the owner restart
+    // the relay promptly.
+    drop(pump_in);
 
     ExitCode::SUCCESS
 }

@@ -33,24 +33,61 @@ fi
 
 echo "==> Running cargo test to generate ts-rs bindings..."
 cd "$TAURI_DIR"
-cargo test --lib
+STAGING_DIR="$(mktemp -d "$STUDIO_DIR/.generate-types.XXXXXX")"
+EXPORT_DIR="$STAGING_DIR/exports"
+OUTPUT_DIR="$STAGING_DIR/output"
+BACKUP_DIR="$STAGING_DIR/previous"
+mkdir -p "$EXPORT_DIR" "$OUTPUT_DIR"
 
-echo "==> Copying bindings to $GENERATED_DIR..."
-mkdir -p "$GENERATED_DIR"
+restore_previous_output() {
+  local status=$?
+  local preserve_staging=0
+  if [ -d "$BACKUP_DIR" ] && [ ! -e "$GENERATED_DIR" ]; then
+    if ! mv "$BACKUP_DIR" "$GENERATED_DIR"; then
+      status=1
+      preserve_staging=1
+      echo "error: could not restore previous generated bindings; backup retained at $BACKUP_DIR" >&2
+    fi
+  fi
+  if [ "$preserve_staging" -eq 0 ]; then
+    rm -rf "$STAGING_DIR"
+  fi
+  exit "$status"
+}
+trap restore_previous_output EXIT
 
-# Collect .ts files from both bindings/ and bindings/bindings/ —
-# ts-rs v10 writes to the latter because `export_to = "bindings/"` is
-# relative to the crate root rather than the test harness dir.
+# A new export root prevents deleted Rust types from surviving in ignored
+# bindings directories. Explicit `export_to = "bindings/"` types remain under
+# the nested bindings directory and are included below.
+TS_RS_EXPORT_DIR="$EXPORT_DIR" cargo test --lib
+
+echo "==> Staging generated bindings..."
+
+# Collect default exports and explicit `export_to = "bindings/"` exports.
 shopt -s nullglob
-files=("$TAURI_DIR/bindings"/*.ts "$TAURI_DIR/bindings/bindings"/*.ts)
-if [ ${#files[@]} -gt 0 ]; then
-    cp "${files[@]}" "$GENERATED_DIR/"
-    echo "==> Copied ${#files[@]} type files."
-else
-    echo "==> Warning: No .ts files found under $TAURI_DIR/bindings/"
-    echo "    This is expected if cargo test hasn't been run yet."
-    echo "    The bindings will be generated when cargo test runs in a"
-    echo "    full Tauri build environment."
+files=("$EXPORT_DIR"/*.ts "$EXPORT_DIR/bindings"/*.ts)
+if [ ${#files[@]} -eq 0 ]; then
+  echo "error: ts-rs generated no TypeScript bindings." >&2
+  exit 1
+fi
+
+for file in "${files[@]}"; do
+  name="$(basename "$file")"
+  if [ -e "$OUTPUT_DIR/$name" ]; then
+    echo "error: duplicate generated TypeScript binding: $name" >&2
+    exit 1
+  fi
+  cp "$file" "$OUTPUT_DIR/$name"
+done
+
+echo "==> Replacing $GENERATED_DIR with ${#files[@]} fresh type files..."
+if [ -e "$GENERATED_DIR" ]; then
+  mv "$GENERATED_DIR" "$BACKUP_DIR"
+fi
+if ! mv "$OUTPUT_DIR" "$GENERATED_DIR"; then
+  if [ -d "$BACKUP_DIR" ]; then mv "$BACKUP_DIR" "$GENERATED_DIR"; fi
+  echo "error: could not publish generated TypeScript bindings." >&2
+  exit 1
 fi
 
 echo "==> Done."
