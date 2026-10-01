@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -340,6 +340,60 @@ describe('owner-signed prove-red exception boundary', () => {
     });
     expect(result).toEqual({ ok: true, url: comments[0].url });
   });
+  it('accepts a synthetic owner signature through the installed shared package and rejects another head', async () => {
+    const {
+      OWNER_OVERRIDE_IDENTITY,
+      OWNER_OVERRIDE_NAMESPACE,
+      buildOwnerOverrideComment,
+      buildOwnerOverridePayload,
+    } = await import('@revealui/harnesses/gates');
+    const root = mkdtempSync(join(tmpdir(), 'revdev-prove-red-signature-'));
+    const keyPath = join(root, 'fixture-key');
+    const payloadPath = join(root, 'payload');
+    try {
+      execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyPath]);
+      const publicKey = readFileSync(`${keyPath}.pub`, 'utf8').trim().split(/\s+/);
+      const allowedSigners =
+        `${OWNER_OVERRIDE_IDENTITY} namespaces="${OWNER_OVERRIDE_NAMESPACE}" ` +
+        `${publicKey[0]} ${publicKey[1]}`;
+      const expected = {
+        repo: 'RevealUIStudio/revdev',
+        pr: 270,
+        head: 'a'.repeat(40),
+        gate: 'prove-red',
+      };
+      const payload = buildOwnerOverridePayload(expected, '2099-12-31');
+      writeFileSync(payloadPath, payload);
+      execFileSync(
+        'ssh-keygen',
+        ['-Y', 'sign', '-f', keyPath, '-n', OWNER_OVERRIDE_NAMESPACE, payloadPath],
+        { cwd: root },
+      );
+      const signature = readFileSync(`${payloadPath}.sig`, 'utf8').trimEnd();
+      const signedComment = buildOwnerOverrideComment(payload, signature);
+      const actual = await verifyProveRedException({
+        ...base,
+        allowedSigners,
+        readComments: async () => [
+          { body: signedComment, url: 'https://github.com/comment/signed' },
+        ],
+      });
+      expect(actual).toEqual({ ok: true, url: 'https://github.com/comment/signed' });
+
+      const wrongHead = await verifyProveRedException({
+        ...base,
+        event: {
+          ...event,
+          pull_request: { ...event.pull_request, head: { sha: 'b'.repeat(40) } },
+        },
+        allowedSigners,
+        readComments: async () => [{ body: signedComment }],
+      });
+      expect(wrongHead).toEqual({ ok: false, reason: 'wrong-context' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it.each([
     'stale-head',
     'forged-signature',
@@ -409,7 +463,9 @@ describe('prove-red script ordering', () => {
         mkdirSync(join(root, 'bin'));
         writeFileSync(
           join(root, 'bin/pnpm'),
-          '#!/usr/bin/env node\nconst {spawnSync}=require("node:child_process");\n' +
+          '#!/usr/bin/env node\n' +
+            'if(process.env.GH_TOKEN||process.env.GITHUB_TOKEN||process.env.REVFLEET_OVERRIDE_SIGNERS)process.exit(91);\n' +
+            'const {spawnSync}=require("node:child_process");\n' +
             'const r=spawnSync(process.execPath,["value.test.js"],{stdio:"inherit"});process.exitCode=r.status;\n',
           { mode: 0o755 },
         );
@@ -424,10 +480,12 @@ describe('prove-red script ordering', () => {
               ...process.env,
               PATH: `${join(root, 'bin')}:${process.env.PATH}`,
               BASE_REF: baseSha,
+              GH_TOKEN: 'read-only-fixture-token',
+              GITHUB_TOKEN: 'read-only-fixture-token',
               PROVE_RED_LANGS: 'typescript',
               PR_LABELS: '["verify:no-behavior-change"]',
               GITHUB_EVENT_PATH: '',
-              REVFLEET_OVERRIDE_SIGNERS: '',
+              REVFLEET_OVERRIDE_SIGNERS: 'fixture-owner-anchor',
             },
           },
         );

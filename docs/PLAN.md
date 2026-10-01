@@ -201,13 +201,16 @@ comments rejects the exception. Ordinary failing-first evidence needs none of
 those resources. Posting a grant then applying the request label reevaluates
 the existing jobs; there is no alternative verifier or gate bypass.
 
-Integration remains blocked until the paired RevealUI `@revealui/harnesses@0.20.0` release exports
-`verifyOwnerOverrideComments` and this repository pins and installs that release
-through its maintained dependency/lockfile contract in every prove-red job,
-including Go. Validate a synthetic owner-signed grant, wrong-head rejection and
-ordinary-red success through that installed package before declaring the door
-operational. GAP-313 tracks that paired release and owner trust-anchor bootstrap;
-no live key, credential or required-check setting is changed here.
+The paired RevealUI `@revealui/harnesses@0.20.0` release exports
+`verifyOwnerOverrideComments`; this repository pins it through the root
+dependency/lockfile and installs that graph in each prove-red runner, including
+Go. Regression coverage exercises an ephemeral synthetic SSH-signed grant,
+wrong-head rejection, label-only denial, and the ordinary red-test path through
+the installed package. The coordinator strips the GitHub API token and owner
+trust anchor from every PR-controlled test subprocess, then uses them only for
+the final comment verification. GAP-313 still tracks owner trust-anchor
+provisioning and the outside-tree fleet checker; no live key, credential or
+required-check setting is changed here.
 
 The prove-red workflow checks out PR-head scripts and installs the PR's dependency
 graph. Same-PR gate/workflow tampering remains GAP-313 surface 2, explicitly
