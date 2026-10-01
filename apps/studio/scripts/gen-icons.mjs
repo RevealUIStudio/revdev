@@ -10,24 +10,17 @@
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const require = createRequire(import.meta.url);
 const studioRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const iconsDir = join(studioRoot, 'src-tauri', 'icons');
 const tiled = join(iconsDir, 'icon-mark.svg');
 const untiled = join(iconsDir, 'mark-untiled.svg');
 
-let sharp;
-try {
-  sharp = (await import('sharp')).default;
-} catch {
-  sharp = require(
-    join(process.env.HOME ?? '', 'revealfleet/revealui/apps/admin/node_modules/sharp'),
-  );
-}
+// `sharp` is a direct Studio dev dependency. Fail at the owning package's
+// resolver boundary instead of borrowing another checkout's installation.
+const sharp = (await import('sharp')).default;
 
 const png1024 = join(iconsDir, 'icon-1024.png');
 await sharp(tiled).resize(1024, 1024).png().toFile(png1024);

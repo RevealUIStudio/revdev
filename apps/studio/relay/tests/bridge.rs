@@ -123,6 +123,66 @@ fn relay_flushes_stdout_while_both_sides_stay_open() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The daemon may exit while Studio keeps the relay's stdin open. The relay
+/// must close stdout and exit so Studio can observe EOF and reconnect.
+#[test]
+fn relay_exits_after_daemon_eof_while_stdin_stays_open() {
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    let dir = std::env::temp_dir().join(format!("revdev-relay-daemon-eof-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let sock = dir.join("t.sock");
+    let _ = std::fs::remove_file(&sock);
+
+    let listener = UnixListener::bind(&sock).unwrap();
+    let server = thread::spawn(move || {
+        let (mut conn, _) = listener.accept().unwrap();
+        conn.write_all(b"daemon-closing\n").unwrap();
+        conn.flush().unwrap();
+        // Dropping the connection gives the relay's socket-to-stdout pump EOF.
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_revdev-relay"))
+        .arg(&sock)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (output_tx, output_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let mut output = String::new();
+        let result = BufReader::new(stdout).read_to_string(&mut output);
+        let _ = output_tx.send((result, output));
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break Some(status);
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+
+    let output = output_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("relay did not close stdout after daemon EOF");
+    server.join().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(status.is_some(), "relay did not exit while stdin remained open");
+    assert!(status.unwrap().success());
+    assert!(output.0.is_ok());
+    assert_eq!(output.1, "daemon-closing\n");
+}
+
 #[test]
 fn relay_exits_nonzero_when_socket_missing() {
     let missing = std::env::temp_dir().join("revdev-relay-does-not-exist.sock");

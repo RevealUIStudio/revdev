@@ -17,6 +17,7 @@ apps/studio/src-tauri/target/
 apps/studio/src-tauri/gen/
 apps/studio/src-tauri/bindings/
 apps/studio/src/generated/
+apps/studio/.generate-types.*
 
 # Go
 apps/console/console
