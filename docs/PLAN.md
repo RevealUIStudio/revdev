@@ -190,6 +190,36 @@ Source of truth: internal audit (2026-06-23) + 2026-07-09 remediation re-verify 
 | 5 | W5 Console-home decision | Console productization | P3 |
 | 6 | W7 synchronous-messaging go-ahead (after W2 P3 signature enforcement) | Real-time agent-to-agent directives | On demand |
 
+## Prove-red owner exception (GAP-313)
+
+The `verify:no-behavior-change` label is a request, never a grant. Changed tests
+run first. Only a failure to produce red evidence may consult the shared
+`@revealui/harnesses/gates` owner-signature verifier. Its grant binds repository,
+PR, exact head SHA, gate `prove-red` and expiry; CI reads the owner-controlled
+`REVFLEET_OVERRIDE_SIGNERS` repository variable. Missing trust, package or PR
+comments rejects the exception. Ordinary failing-first evidence needs none of
+those resources. Posting a grant then applying the request label reevaluates
+the existing jobs; there is no alternative verifier or gate bypass.
+
+The paired RevealUI `@revealui/harnesses@0.20.0` release exports
+`verifyOwnerOverrideComments`; this repository pins it through the root
+dependency/lockfile and installs that graph in each prove-red runner, including
+Go. Regression coverage exercises an ephemeral synthetic SSH-signed grant,
+wrong-head rejection, label-only denial, and the ordinary red-test path through
+the installed package. The coordinator strips the GitHub API token and owner
+trust anchor from every PR-controlled test subprocess, then uses them only for
+the final comment verification. GAP-313 still tracks owner trust-anchor
+provisioning and the outside-tree fleet checker; no live key, credential or
+required-check setting is changed here.
+
+The prove-red workflow checks out PR-head scripts and installs the PR's dependency
+graph. Same-PR gate/workflow tampering remains GAP-313 surface 2, explicitly
+accepted open in the ratified design until org migration. An owner public key
+alone does not make that policy immutable. The outside-tree fleet checker must
+also consume the same signed grant before this paired work is called enforced;
+required-check policy integrity belongs to the owner-controlled org/ruleset
+boundary. Never run untrusted PR tests with write tokens or signing secrets.
+
 ## References
 
 - [`SPEC.md`](./SPEC.md) — consolidated spec (architecture, JSON-RPC contract, license model, identity)

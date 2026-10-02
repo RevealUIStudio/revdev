@@ -4,15 +4,8 @@
 // Kept side-effect-free (no process.exit, no I/O) so they are importable and
 // unit-testable without spawning the script or a git repo.
 
-// Parses the PR_LABELS env var, which the workflows now transport as a JSON
-// array (`toJSON(github.event.pull_request.labels.*.name)`), not a
-// comma-joined string. The prior comma-joined transport was reviewed as
-// lossy for a label name containing a comma; empirically (2026-07-25, `gh api
-// repos/.../labels -f name="a,b"` against this repo) GitHub's REST API
-// currently rejects a comma in a label name outright (422 Validation Failed,
-// code "invalid") — the opposite of what the PR body under review claimed.
-// Either way, JSON is the durable transport: it does not depend on an
-// undocumented, unversioned GitHub validation rule to stay lossless.
+// Parses JSON-array label input for direct callers. The GitHub workflow now
+// reads labels from its trusted event JSON, rather than a lossy shell string.
 // Malformed or absent input degrades to no labels; this never throws.
 export function parseLabels(raw) {
   if (!raw) return [];
@@ -95,4 +88,47 @@ const NO_WORK_DONE_MARKERS = ['No projects matched the filters'];
 export function indicatesNoWorkDone(output) {
   if (!output) return false;
   return NO_WORK_DONE_MARKERS.some((marker) => output.includes(marker));
+}
+
+// The label requests an exception; only the shared owner-signed door grants it.
+// Called solely after prove-red finds no failing-first evidence. Ordinary red
+// proofs never load the optional gate package or require the owner trust anchor.
+export async function verifyProveRedException({
+  event,
+  allowedSigners,
+  readComments,
+  loadVerifier = async () =>
+    (await import('@revealui/harnesses/gates')).verifyOwnerOverrideComments,
+}) {
+  const pr = event?.pull_request;
+  const labels = (pr?.labels || []).map((label) => label.name);
+  if (!hasExemptLabel(labels, 'verify:no-behavior-change'))
+    return { ok: false, reason: 'no-request-label' };
+  if (!allowedSigners?.trim()) return { ok: false, reason: 'missing-owner-trust-anchor' };
+  const repo = event?.repository?.full_name;
+  if (
+    typeof repo !== 'string' ||
+    repo !== pr?.base?.repo?.full_name ||
+    !Number.isInteger(pr?.number) ||
+    pr.number < 1 ||
+    typeof pr?.head?.sha !== 'string'
+  )
+    return { ok: false, reason: 'invalid-pull-request-context' };
+  try {
+    const verify = await loadVerifier();
+    if (typeof verify !== 'function') return { ok: false, reason: 'shared-verifier-unavailable' };
+    const comments = await readComments(repo, pr.number);
+    return verify({
+      comments,
+      allowedSigners,
+      expected: {
+        repo,
+        pr: pr.number,
+        head: pr.head.sha,
+        gate: 'prove-red',
+      },
+    });
+  } catch {
+    return { ok: false, reason: 'shared-verifier-or-comments-unavailable' };
+  }
 }

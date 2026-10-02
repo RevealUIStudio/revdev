@@ -30,6 +30,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.5.2
         version: 2.5.2
+      '@revealui/harnesses':
+        specifier: 0.20.0
+        version: 0.20.0(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -276,6 +279,11 @@ packages:
 
   '@adobe/css-tools@4.4.4':
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
+
+  '@agentclientprotocol/sdk@1.3.0':
+    resolution: {integrity: sha512-i3h/efaeuMUFAO1HSfo97QZQnnvMd7wWBYtBsdL6UMZg3a78sk3Ffya5Xu7C7tYsXomXoDXJBAzQF2PcFKAhIQ==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@asamuzakjp/css-color@5.1.11':
     resolution: {integrity: sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg==}
@@ -1180,6 +1188,13 @@ packages:
       drizzle-orm: ^0.45.1
       react: ^18.0.0 || ^19.0.0
 
+  '@revealui/ai@1.2.3':
+    resolution: {integrity: sha512-TtGWizgAsm4D2NR5uPC+7QbieAYu6BLLOggC6kCqqVF+iZZdg5knaph90xSBg65j2zSoBwGUNVfNtdER6MlhGw==}
+    engines: {node: '>=24.13.0'}
+    peerDependencies:
+      drizzle-orm: ^0.45.1
+      react: ^18.0.0 || ^19.0.0
+
   '@revealui/cache@0.2.2':
     resolution: {integrity: sha512-qTFtTTzKOuC3Jo4LZ74tBbfCcynt+T34HqLq4XxRHmaAj9ID2gm8xJE4DkRN8RnOFLnTMu/c34tVFuyUhZw2BQ==}
     engines: {node: '>=24.13.0'}
@@ -1187,6 +1202,20 @@ packages:
   '@revealui/config@0.6.0':
     resolution: {integrity: sha512-GMiO3WG55doranlh8oKIvOHTK7tOlg/55sFn3PX0+xbyBKUbYfFg2VLez8rD0wa9cKcRcAv9d/mXiZoqYX6RNQ==}
     engines: {node: '>=24.13.0'}
+
+  '@revealui/config@0.7.0':
+    resolution: {integrity: sha512-pgpdHC+WkByv0Z/P77DGljB2hRhS0LXbE8I8Gz9eo8DDFMxhsgI9p/ho8JDNpSDJM3z6su9v87W4ACUj/FJqDw==}
+    engines: {node: '>=24.13.0'}
+
+  '@revealui/contracts@0.13.2':
+    resolution: {integrity: sha512-npngt53K0pdTuQ9R9zgCfD43Un22ma5E7632nKNgjwlmZJ5xflSKrqUJAVB3NKi0LmfvykDFRiKNWoItX7vlTQ==}
+    engines: {node: '>=24.13.0'}
+    peerDependencies:
+      drizzle-zod: ^0.8.3
+      typescript: 7.0.2
+    peerDependenciesMeta:
+      drizzle-zod:
+        optional: true
 
   '@revealui/contracts@0.6.1':
     resolution: {integrity: sha512-ytKRBgkwpMivvm/TUgBBUtLUWyjX6UnZLfHdsB+Njtcox7mi+eJSmaMBBvUGyoDQmJ8A8GGtlSiHPnbvjIhTBw==}
@@ -1249,9 +1278,25 @@ packages:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
+  '@revealui/core@0.15.4':
+    resolution: {integrity: sha512-bnb7Ow9FLj5sDHnp5pugYGeSjkHVfJmWU0Mm4rkiI64UikljAMqqnGHP5vyViuG7O+iyzB4ISQbqVYxPlz2K5Q==}
+    engines: {node: '>=24.13.0'}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+
   '@revealui/db@0.10.0':
     resolution: {integrity: sha512-34lQ3bue9xEh5oCcEbA/HGYSrB850zbpa1yJGLeboZv/ixVauQ/Qty+DlB48JntMOSChAUqSvaNlxlrbjE3WJA==}
     engines: {node: '>=24.13.0'}
+
+  '@revealui/db@0.12.1':
+    resolution: {integrity: sha512-GDRPeygubyp9RCZHXW9dSBIXWliC+PER2Uu6MRyXdB0zeTJw2nbWg49s2Jc7c9GQDLuV32mmCIGPapJMUIX35Q==}
+    engines: {node: '>=24.13.0'}
+
+  '@revealui/harnesses@0.20.0':
+    resolution: {integrity: sha512-fZPAb6zBuHqW4ranB7cARIjOc19fVuktbeB+exsp4dRQ8pMQyl/VrC49ysmrmgRPj52s0bKznIbOYytNfbwL8Q==}
+    engines: {node: '>=24.13.0'}
+    hasBin: true
 
   '@revealui/knowledge-graph@0.1.12':
     resolution: {integrity: sha512-UumBKzO4kt1RH4JxqBOJlZtbxLSuDGTQPFCklR8WCgi26BI3yEiqorWYlzj0C//neGLSZvwyqH+gmhng4MJyfA==}
@@ -1260,6 +1305,11 @@ packages:
 
   '@revealui/knowledge-graph@0.1.8':
     resolution: {integrity: sha512-xdkP+KWmeYqyCxfblo16STI8YCFEpBmE0oozVaH1az/W+0JEf3mB03I2mDv88LdbzjkEmadiPyHOsnY+D9zaUQ==}
+    engines: {node: '>=24.13.0'}
+    hasBin: true
+
+  '@revealui/knowledge-graph@0.2.6':
+    resolution: {integrity: sha512-MO8SLX8BH3OlxG5/xpbLgUgk0gkQyvalFPM/5uwPIb9cbGaPDlSgTNd6J7ShpXQpJgq9IFW3Q/D3qCo9BilEpw==}
     engines: {node: '>=24.13.0'}
     hasBin: true
 
@@ -1277,8 +1327,19 @@ packages:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
+  '@revealui/presentation@0.15.2':
+    resolution: {integrity: sha512-9PnTv9jFhNUmR3J17QXsKjCjObgndKcr3u5QeobBND9sFyplXO9AmMkUKM7PKoj4+3sxP5MPkMpeVBYaaGEc3Q==}
+    engines: {node: '>=24.13.0'}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+
   '@revealui/resilience@0.2.4':
     resolution: {integrity: sha512-WKQsZlqpPypuO3JOcXeZ4B1YMX7hSQve222jeXrpseQfASw75vLFuRRJFeoM/zAAnUNROrJ5kMOgTy/U8EqUPQ==}
+    engines: {node: '>=24.13.0'}
+
+  '@revealui/security@0.10.1':
+    resolution: {integrity: sha512-zIUad5AWiw3qblWUKWIlwae6JLRFTDCy5R6wWUMujFRimxKTs5NU9loBmbLzD9Qnoak80uVQGGRtH9CsoB9kbA==}
     engines: {node: '>=24.13.0'}
 
   '@revealui/security@0.4.1':
@@ -3309,6 +3370,10 @@ snapshots:
 
   '@adobe/css-tools@4.4.4': {}
 
+  '@agentclientprotocol/sdk@1.3.0(zod@4.4.3)':
+    dependencies:
+      zod: 4.4.3
+
   '@asamuzakjp/css-color@5.1.11':
     dependencies:
       '@asamuzakjp/generational-cache': 1.0.1
@@ -3805,7 +3870,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/code-core@0.45.0':
     dependencies:
@@ -3823,7 +3887,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/code-prism@0.45.0':
     dependencies:
@@ -3840,7 +3903,6 @@ snapshots:
       prismjs: 1.30.0
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/code@0.45.0':
     dependencies:
@@ -3857,7 +3919,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/devtools-core@0.45.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
@@ -3882,7 +3943,6 @@ snapshots:
       react-dom: 19.2.7(react@19.2.7)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/dragon@0.45.0':
     dependencies:
@@ -3895,7 +3955,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/extension@0.45.0':
     dependencies:
@@ -3912,7 +3971,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/hashtag@0.45.0':
     dependencies:
@@ -3927,7 +3985,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/history@0.45.0':
     dependencies:
@@ -3942,7 +3999,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/html@0.45.0':
     dependencies:
@@ -3961,14 +4017,12 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/internal@0.45.0': {}
 
   '@lexical/internal@0.46.0(typescript@7.0.2)':
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/link@0.45.0':
     dependencies:
@@ -3987,7 +4041,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/list@0.45.0':
     dependencies:
@@ -4006,7 +4059,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/mark@0.45.0':
     dependencies:
@@ -4019,7 +4071,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/markdown@0.45.0':
     dependencies:
@@ -4046,7 +4097,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/overflow@0.45.0':
     dependencies:
@@ -4057,7 +4107,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/plain-text@0.45.0':
     dependencies:
@@ -4078,7 +4127,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/react@0.45.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.31)':
     dependencies:
@@ -4133,7 +4181,6 @@ snapshots:
     optionalDependencies:
       typescript: 7.0.2
       yjs: 13.6.31
-    optional: true
 
   '@lexical/rich-text@0.45.0':
     dependencies:
@@ -4156,7 +4203,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/selection@0.45.0':
     dependencies:
@@ -4169,7 +4215,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/table@0.45.0':
     dependencies:
@@ -4190,7 +4235,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/text@0.45.0':
     dependencies:
@@ -4203,7 +4247,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/utils@0.45.0':
     dependencies:
@@ -4218,7 +4261,6 @@ snapshots:
       lexical: 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lexical/yjs@0.45.0(yjs@13.6.31)':
     dependencies:
@@ -4235,7 +4277,6 @@ snapshots:
       yjs: 13.6.31
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   '@lezer/common@1.5.2': {}
 
@@ -4406,6 +4447,50 @@ snapshots:
       - typescript
     optional: true
 
+  '@revealui/ai@1.2.3(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)':
+    dependencies:
+      '@revealui/contracts': 0.13.2(typescript@7.0.2)
+      '@revealui/core': 0.15.4(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+      '@revealui/db': 0.12.1(@electric-sql/pglite@0.5.4)
+      '@revealui/resilience': 0.2.4
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0)
+      lru-cache: 11.5.1
+      react: 19.2.7
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - drizzle-zod
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg-native
+      - postgres
+      - prisma
+      - react-dom
+      - sql.js
+      - sqlite3
+      - typescript
+    optional: true
+
   '@revealui/cache@0.2.2(typescript@7.0.2)':
     dependencies:
       '@revealui/security': 0.4.1(typescript@7.0.2)
@@ -4416,6 +4501,16 @@ snapshots:
   '@revealui/config@0.6.0':
     dependencies:
       dotenv: 17.4.2
+      zod: 4.4.3
+
+  '@revealui/config@0.7.0':
+    dependencies:
+      dotenv: 17.4.2
+      zod: 4.4.3
+
+  '@revealui/contracts@0.13.2(typescript@7.0.2)':
+    dependencies:
+      typescript: 7.0.2
       zod: 4.4.3
 
   '@revealui/contracts@0.6.1(typescript@7.0.2)':
@@ -4540,6 +4635,39 @@ snapshots:
       - typescript
     optional: true
 
+  '@revealui/core@0.15.4(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)':
+    dependencies:
+      '@electric-sql/pglite': 0.5.4
+      '@lexical/clipboard': 0.46.0(typescript@7.0.2)
+      '@lexical/code': 0.46.0(typescript@7.0.2)
+      '@lexical/html': 0.46.0(typescript@7.0.2)
+      '@lexical/link': 0.46.0(typescript@7.0.2)
+      '@lexical/list': 0.46.0(typescript@7.0.2)
+      '@lexical/react': 0.46.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)(yjs@13.6.31)
+      '@lexical/rich-text': 0.46.0(typescript@7.0.2)
+      '@lexical/selection': 0.46.0(typescript@7.0.2)
+      '@lexical/table': 0.46.0(typescript@7.0.2)
+      '@lexical/utils': 0.46.0(typescript@7.0.2)
+      '@lexical/yjs': 0.46.0(typescript@7.0.2)(yjs@13.6.31)
+      '@revealui/contracts': 0.13.2(typescript@7.0.2)
+      '@revealui/presentation': 0.15.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+      '@revealui/resilience': 0.2.4
+      '@revealui/security': 0.10.1(typescript@7.0.2)
+      '@revealui/utils': 0.3.6
+      bcryptjs: 3.0.3
+      dataloader: 2.2.3
+      jose: 5.10.0
+      lexical: 0.46.0(typescript@7.0.2)
+      pg: 8.22.0
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+      yjs: 13.6.31
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - drizzle-zod
+      - pg-native
+      - typescript
+
   '@revealui/db@0.10.0(@electric-sql/pglite@0.5.4)':
     dependencies:
       '@neondatabase/serverless': 1.1.0
@@ -4577,6 +4705,89 @@ snapshots:
       - prisma
       - sql.js
       - sqlite3
+
+  '@revealui/db@0.12.1(@electric-sql/pglite@0.5.4)':
+    dependencies:
+      '@neondatabase/serverless': 1.1.0
+      '@revealui/config': 0.7.0
+      '@revealui/ts-strada': typescript@6.0.3
+      '@revealui/utils': 0.3.6
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0)
+      pg: 8.22.0
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg-native
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
+  '@revealui/harnesses@0.20.0(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)':
+    dependencies:
+      '@agentclientprotocol/sdk': 1.3.0(zod@4.4.3)
+      '@revealui/core': 0.15.4(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+      '@revealui/knowledge-graph': 0.2.6(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@revealui/security': 0.10.1(typescript@7.0.2)
+      zod: 4.4.3
+    optionalDependencies:
+      '@revealui/ai': 1.2.3(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - drizzle-orm
+      - drizzle-zod
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg-native
+      - postgres
+      - prisma
+      - react
+      - react-dom
+      - sql.js
+      - sqlite3
+      - typescript
 
   '@revealui/knowledge-graph@0.1.12(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
@@ -4663,6 +4874,49 @@ snapshots:
       - sql.js
       - sqlite3
 
+  '@revealui/knowledge-graph@0.2.6(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@revealui/db': 0.12.1(@electric-sql/pglite@0.5.4)
+      typescript: 7.0.2
+      yaml: 2.9.0
+      zod: 4.4.3
+    optionalDependencies:
+      '@revealui/ai': 1.2.3(@electric-sql/pglite@0.5.4)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@neondatabase/serverless@1.1.0)(pg@8.22.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+      '@revealui/ts-strada': typescript@6.0.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - drizzle-orm
+      - drizzle-zod
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg-native
+      - postgres
+      - prisma
+      - react
+      - react-dom
+      - sql.js
+      - sqlite3
+
   '@revealui/presentation@0.13.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)':
     dependencies:
       '@revealui/contracts': 0.8.2(typescript@7.0.2)
@@ -4686,7 +4940,28 @@ snapshots:
       - typescript
     optional: true
 
+  '@revealui/presentation@0.15.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)':
+    dependencies:
+      '@revealui/contracts': 0.13.2(typescript@7.0.2)
+      '@revealui/tokens': 0.3.4
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+      tailwind-merge: 3.6.0
+    transitivePeerDependencies:
+      - drizzle-zod
+      - typescript
+
   '@revealui/resilience@0.2.4': {}
+
+  '@revealui/security@0.10.1(typescript@7.0.2)':
+    dependencies:
+      '@revealui/contracts': 0.13.2(typescript@7.0.2)
+      '@revealui/utils': 0.3.6
+      parse5: 8.0.1
+      undici: 7.30.0
+    transitivePeerDependencies:
+      - drizzle-zod
+      - typescript
 
   '@revealui/security@0.4.1(typescript@7.0.2)':
     dependencies:
@@ -4722,8 +4997,7 @@ snapshots:
 
   '@revealui/tokens@0.3.2': {}
 
-  '@revealui/tokens@0.3.4':
-    optional: true
+  '@revealui/tokens@0.3.4': {}
 
   '@revealui/utils@0.3.5':
     dependencies:
@@ -5626,7 +5900,6 @@ snapshots:
       '@lexical/internal': 0.46.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
-    optional: true
 
   lib0@0.2.117:
     dependencies:

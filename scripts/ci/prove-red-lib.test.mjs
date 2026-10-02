@@ -1,3 +1,7 @@
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   hasExemptLabel,
@@ -6,6 +10,7 @@ import {
   isWorkspaceRootPackage,
   parseLabels,
   typescriptRunArgs,
+  verifyProveRedException,
 } from './prove-red-lib.mjs';
 
 // Regression lock for the GAP-393 review remediation
@@ -271,4 +276,250 @@ describe('indicatesNoWorkDone', () => {
     expect(indicatesNoWorkDone('')).toBe(false);
     expect(indicatesNoWorkDone(undefined)).toBe(false);
   });
+});
+
+describe('owner-signed prove-red exception boundary', () => {
+  const event = {
+    repository: { full_name: 'RevealUIStudio/revdev' },
+    pull_request: {
+      number: 270,
+      head: { sha: 'a'.repeat(40) },
+      base: { repo: { full_name: 'RevealUIStudio/revdev' } },
+      labels: [{ name: 'verify:no-behavior-change' }],
+    },
+  };
+  const comments = [{ body: 'signed fixture', url: 'https://github.com/comment/1' }];
+  const base = {
+    event,
+    allowedSigners: 'owner@revealui.com ssh-ed25519 public',
+    readComments: async () => comments,
+  };
+  it('a label alone cannot grant an exception without a trust anchor', async () => {
+    let called = false;
+    const result = await verifyProveRedException({
+      ...base,
+      allowedSigners: '',
+      loadVerifier: async () => {
+        called = true;
+      },
+    });
+    expect(result).toEqual({ ok: false, reason: 'missing-owner-trust-anchor' });
+    expect(called).toBe(false);
+  });
+  it('absence of the request does not load the package or fetch comments', async () => {
+    const result = await verifyProveRedException({
+      ...base,
+      event: { ...event, pull_request: { ...event.pull_request, labels: [] } },
+      loadVerifier: async () => {
+        throw new Error('must not load');
+      },
+    });
+    expect(result).toEqual({ ok: false, reason: 'no-request-label' });
+  });
+  it('reconstructs exact gate context from the event and preserves grant receipt', async () => {
+    const result = await verifyProveRedException({
+      ...base,
+      readComments: async (repo, pr) => {
+        expect(repo).toBe('RevealUIStudio/revdev');
+        expect(pr).toBe(270);
+        return comments;
+      },
+      loadVerifier: async () => (input) => {
+        expect(input).toEqual({
+          comments,
+          allowedSigners: base.allowedSigners,
+          expected: {
+            repo: 'RevealUIStudio/revdev',
+            pr: 270,
+            head: 'a'.repeat(40),
+            gate: 'prove-red',
+          },
+        });
+        return { ok: true, url: comments[0].url };
+      },
+    });
+    expect(result).toEqual({ ok: true, url: comments[0].url });
+  });
+  it('accepts a synthetic owner signature through the installed shared package and rejects another head', async () => {
+    const {
+      OWNER_OVERRIDE_IDENTITY,
+      OWNER_OVERRIDE_NAMESPACE,
+      buildOwnerOverrideComment,
+      buildOwnerOverridePayload,
+    } = await import('@revealui/harnesses/gates');
+    const root = mkdtempSync(join(tmpdir(), 'revdev-prove-red-signature-'));
+    const ownerKey = join(root, 'owner-key');
+    const forgerKey = join(root, 'forger-key');
+    try {
+      for (const keyPath of [ownerKey, forgerKey])
+        execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyPath]);
+      const publicKey = readFileSync(`${ownerKey}.pub`, 'utf8').trim().split(/\s+/);
+      const allowedSigners =
+        `${OWNER_OVERRIDE_IDENTITY} namespaces="${OWNER_OVERRIDE_NAMESPACE}" ` +
+        `${publicKey[0]} ${publicKey[1]}`;
+      const expected = {
+        repo: 'RevealUIStudio/revdev',
+        pr: 270,
+        head: 'a'.repeat(40),
+        gate: 'prove-red',
+      };
+      let serial = 0;
+      const signedComment = (context, expires, keyPath = ownerKey) => {
+        const payload = buildOwnerOverridePayload(context, expires);
+        const payloadPath = join(root, `payload-${serial++}`);
+        writeFileSync(payloadPath, payload);
+        execFileSync('ssh-keygen', [
+          '-Y',
+          'sign',
+          '-f',
+          keyPath,
+          '-n',
+          OWNER_OVERRIDE_NAMESPACE,
+          payloadPath,
+        ]);
+        return buildOwnerOverrideComment(
+          payload,
+          readFileSync(`${payloadPath}.sig`, 'utf8').trimEnd(),
+        );
+      };
+      const verify = (comment) =>
+        verifyProveRedException({
+          ...base,
+          allowedSigners,
+          readComments: async () => [{ body: comment, url: 'https://github.com/comment/signed' }],
+        });
+      expect(await verify(signedComment(expected, '2099-12-31'))).toEqual({
+        ok: true,
+        url: 'https://github.com/comment/signed',
+      });
+      expect(
+        await verify(signedComment({ ...expected, head: 'b'.repeat(40) }, '2099-12-31')),
+      ).toMatchObject({
+        ok: false,
+        reason: 'wrong-context',
+      });
+      expect(
+        await verify(signedComment({ ...expected, gate: 'sec-review' }, '2099-12-31')),
+      ).toMatchObject({
+        ok: false,
+        reason: 'wrong-context',
+      });
+      expect(await verify(signedComment(expected, '2099-12-31', forgerKey))).toMatchObject({
+        ok: false,
+        reason: 'bad-owner-signature',
+      });
+      expect(await verify(signedComment(expected, '2000-01-01'))).toMatchObject({
+        ok: false,
+        reason: 'expired',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it.each([
+    'stale-head',
+    'forged-signature',
+    'wrong-gate',
+    'expired',
+  ])('propagates shared rejection: %s', async (reason) => {
+    expect(
+      await verifyProveRedException({
+        ...base,
+        loadVerifier: async () => () => ({ ok: false, reason }),
+      }),
+    ).toEqual({ ok: false, reason });
+  });
+  it('missing published shared verifier fails closed', async () => {
+    expect(await verifyProveRedException({ ...base, loadVerifier: async () => undefined })).toEqual(
+      { ok: false, reason: 'shared-verifier-unavailable' },
+    );
+  });
+  it('API or package failure fails closed', async () => {
+    expect(
+      await verifyProveRedException({
+        ...base,
+        loadVerifier: async () => {
+          throw new Error('unpublished package');
+        },
+      }),
+    ).toEqual({ ok: false, reason: 'shared-verifier-or-comments-unavailable' });
+  });
+  it('rejects inconsistent base-repository event context', async () => {
+    expect(
+      await verifyProveRedException({
+        ...base,
+        event: { ...event, repository: { full_name: 'attacker/fork' } },
+      }),
+    ).toEqual({ ok: false, reason: 'invalid-pull-request-context' });
+  });
+});
+
+// A synthetic pnpm transport runs the fixture's real Node assertion. This
+// checks the gate's subprocess order without compiling Studio or downloading
+// a toolchain; it never enters the product or operational dependency path.
+describe('prove-red script ordering', () => {
+  it.each([
+    ['red', 2, 0],
+    ['inert', 1, 1],
+  ])(
+    '%s tests run despite the request label',
+    (kind, expected, exit) => {
+      const root = mkdtempSync(join(tmpdir(), 'revdev-prove-red-order-'));
+      try {
+        const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+        git('init', '-q');
+        git('config', 'user.email', 'fixture@example.invalid');
+        git('config', 'user.name', 'Fixture');
+        writeFileSync(join(root, 'package.json'), '{"name":"fixture"}');
+        writeFileSync(join(root, 'value.js'), 'module.exports = 1;');
+        git('add', '.');
+        git('commit', '-qm', 'base');
+        const baseSha = git('rev-parse', 'HEAD').trim();
+        writeFileSync(join(root, 'value.js'), 'module.exports = 2;');
+        writeFileSync(
+          join(root, 'value.test.js'),
+          `require('node:assert/strict').equal(require('./value.js'), ${expected});`,
+        );
+        git('add', '.');
+        git('commit', '-qm', kind);
+        mkdirSync(join(root, 'bin'));
+        writeFileSync(
+          join(root, 'bin/pnpm'),
+          '#!/usr/bin/env node\n' +
+            'if(process.env.GH_TOKEN||process.env.GITHUB_TOKEN||process.env.REVFLEET_OVERRIDE_SIGNERS)process.exit(91);\n' +
+            'const {spawnSync}=require("node:child_process");\n' +
+            'const r=spawnSync(process.execPath,["value.test.js"],{stdio:"inherit"});process.exitCode=r.status;\n',
+          { mode: 0o755 },
+        );
+        const result = spawnSync(
+          process.execPath,
+          [new URL('./prove-red.mjs', import.meta.url).pathname],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            timeout: 20000,
+            env: {
+              ...process.env,
+              PATH: `${join(root, 'bin')}:${process.env.PATH}`,
+              BASE_REF: baseSha,
+              GH_TOKEN: 'read-only-fixture-token',
+              GITHUB_TOKEN: 'read-only-fixture-token',
+              PROVE_RED_LANGS: 'typescript',
+              GITHUB_EVENT_PATH: '',
+              REVFLEET_OVERRIDE_SIGNERS: 'fixture-owner-anchor',
+            },
+          },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.status, result.stdout + result.stderr).toBe(exit);
+        expect(result.stdout).toContain('running fixture (root, not a workspace member)');
+        if (exit === 0)
+          expect(result.stdout).toContain('all active languages carry failing-first evidence');
+        else expect(result.stderr).toContain('no trusted pull-request event');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+    30000,
+  );
 });

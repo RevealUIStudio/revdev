@@ -22,6 +22,7 @@ on:
       - "pnpm-workspace.yaml"
   pull_request:
     branches: [main, test]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "apps/studio/src-tauri/**"
       - "apps/studio/relay/**"
@@ -134,6 +135,9 @@ jobs:
   prove-red-rust:
     name: Prove-Red (Rust changed tests must fail against base)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     # PR-only: a merge-base is meaningless on a direct push to test/main. Also
     # skip test -> main promotion PRs (GAP-393): a promotion diff carries a
     # feature's fix and test together, so the test passes against main's base —
@@ -207,10 +211,9 @@ jobs:
       - name: Prove changed Rust tests are red against base
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: rust
-          # JSON array, not a comma-joined string (GAP-393 review remediation):
-          # lossless regardless of what characters a label name allows.
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           # Script-side mirror of this job's same-repo `if:` guard, so the
           # script's own early-exit is exactly as strong as the layer it backs.
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}

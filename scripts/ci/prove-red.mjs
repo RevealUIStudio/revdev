@@ -57,31 +57,21 @@
 //     this script anyway: it re-checks the same same-repo signal via
 //     PR_HEAD_REPO/PR_BASE_REPO before skipping, and fails CLOSED (does not
 //     skip) if that signal isn't present.
-//   - Label exemption: a genuine behavior-preserving change (e.g. a
-//     config/test-infra refactor) has no failing-first test by construction.
-//     The `verify:no-behavior-change` label, applied by a non-author
-//     reviewer (convention-enforced until identity separation exists — the
-//     fleet currently runs a solo GitHub account), records that judgment and
-//     clears the gate. Labels arrive as a JSON array (not a comma-joined
-//     string), which stays lossless regardless of what characters a label
-//     name allows.
-//
-// Both exemption skips are evaluated before the BASE_REF guard below (they
-// must apply to any invocation reaching this script, including one where
-// BASE_REF was never wired), and both emit a `::notice::` (plus a
-// $GITHUB_STEP_SUMMARY line when available) so the exemption is visible
-// outside raw job logs.
+//   - Owner exception: a behavior-preserving refactor may have no red test.
+//     The request label alone cannot skip anything. After genuine proof fails,
+//     the shared @revealui/harnesses/gates door verifies an owner SSH signature
+//     bound to the repository, PR, exact head, prove-red gate and expiry.
+//     Missing anchor, dependency or comments deny only this exception.
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import {
-  hasExemptLabel,
   indicatesNoWorkDone,
   isForkSafePromotionSkip,
   isWorkspaceRootPackage,
-  parseLabels,
   typescriptRunArgs,
+  verifyProveRedException,
 } from './prove-red-lib.mjs';
 
 const REPO_ROOT = process.cwd();
@@ -244,10 +234,18 @@ function skip(msg, { notice = false } = {}) {
 function runCmd(file, args, opts) {
   let output = '';
   try {
+    // Test code comes from the PR head. Keep the read-only GitHub API token and
+    // owner trust anchor in this coordinator process so the tests it launches
+    // cannot read or exfiltrate gate-verification inputs.
+    const testEnv = { ...process.env };
+    delete testEnv.GH_TOKEN;
+    delete testEnv.GITHUB_TOKEN;
+    delete testEnv.REVFLEET_OVERRIDE_SIGNERS;
     output = execFileSync(file, args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 64 * 1024 * 1024,
+      env: testEnv,
       ...opts,
     });
   } catch (e) {
@@ -408,17 +406,6 @@ if (
   });
 }
 
-// --- label exemption (GAP-393) ----------------------------------------------
-// Also evaluated before the BASE_REF guard, for the same reason as above.
-const prLabels = parseLabels(process.env.PR_LABELS);
-if (hasExemptLabel(prLabels, 'verify:no-behavior-change')) {
-  skip(
-    "PR carries the 'verify:no-behavior-change' label — recorded non-author exemption " +
-      'for a behavior-preserving change',
-    { notice: true },
-  );
-}
-
 const baseRef = process.env.BASE_REF || process.env.BASE_SHA;
 if (!baseRef) fail('BASE_REF is not set (pass the PR base sha).');
 
@@ -512,8 +499,8 @@ for (const a of active) {
         `changes ${a.id} product source but carries no failing-first test that depends on the\n` +
         'change. Add a test that is red without the fix, or, for a genuine\n' +
         'behavior-preserving refactor, ask a non-author reviewer to apply the\n' +
-        "'verify:no-behavior-change' label and re-run this check (convention-enforced\n" +
-        'until identity separation exists). test -> main promotion PRs are\n' +
+        "'verify:no-behavior-change' request label and provide an owner-signed grant\n" +
+        'bound to this PR head. test -> main promotion PRs are\n' +
         'auto-skipped; the red-first proof already happened on the constituent\n' +
         'feature PR.',
     );
@@ -524,6 +511,39 @@ for (const a of active) {
   }
 }
 
-if (anyFail) process.exit(1);
+if (anyFail) {
+  let event;
+  try {
+    event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+  } catch {
+    fail('No failing-first evidence and no trusted pull-request event.');
+  }
+  const grant = await verifyProveRedException({
+    event,
+    allowedSigners: process.env.REVFLEET_OVERRIDE_SIGNERS,
+    readComments(repo, pr) {
+      const pages = JSON.parse(
+        execFileSync(
+          'gh',
+          ['api', `repos/${repo}/issues/${pr}/comments`, '--paginate', '--slurp'],
+          { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024 },
+        ),
+      );
+      return pages.flat().map((comment) => ({ body: comment.body, url: comment.html_url }));
+    },
+  });
+  if (!grant.ok)
+    fail(
+      `No failing-first evidence; owner exception rejected (${grant.reason}). ` +
+        'Apply verify:no-behavior-change as a request, then ask the owner to sign the exact PR head.',
+    );
+  skip(
+    `Owner-signed prove-red exception verified for ${event.repository.full_name} ` +
+      `PR ${event.pull_request.number} head ${event.pull_request.head.sha}; comment ${grant.url}`,
+    {
+      notice: true,
+    },
+  );
+}
 console.log('\n✓ prove-red: all active languages carry failing-first evidence.');
 process.exit(0);
