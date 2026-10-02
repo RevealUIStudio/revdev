@@ -98,9 +98,7 @@ fn load_config_at(path: &std::path::Path) -> Result<StudioConfig, String> {
             loop {
                 match fs::symlink_metadata(&ancestor) {
                     Ok(_) if ancestor == path => {
-                        return Err(
-                            "Studio configuration changed while establishing absence".into()
-                        );
+                        return Err("Cannot read existing Studio configuration entry".into());
                     }
                     Ok(metadata) if metadata.file_type().is_symlink() => {
                         fs::metadata(&ancestor).map_err(|error| {

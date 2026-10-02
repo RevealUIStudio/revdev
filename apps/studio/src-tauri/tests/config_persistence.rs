@@ -86,7 +86,10 @@ mod config {
             let fixture = LoadFixture::new();
             let path = fixture.path();
             symlink(fixture.0.join("absent.json"), &path).unwrap();
-            assert!(ConfigState::load_at(&path).is_err());
+            let error = ConfigState::load_at(&path)
+                .err()
+                .expect("Dangling leaf must refuse state");
+            assert!(error.contains("Cannot read existing Studio configuration entry"));
             assert!(fs::symlink_metadata(&path)
                 .unwrap()
                 .file_type()
