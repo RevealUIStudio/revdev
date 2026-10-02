@@ -283,7 +283,7 @@ test('pinned tool preparation installs only into the maintained workspace tool d
       expect(call.env[name]).toContain(join(dir, '.notice-tools'));
 });
 
-test('Rust canonical fallback text cannot satisfy verified source attribution', () => {
+test('Rust canonical fallback text cannot satisfy verified source attribution and names the missing source', () => {
   const metadata = {
     packages: [{ name: 'crate', version: '1', source: 'registry' }],
     resolve: { nodes: [] },
@@ -299,7 +299,20 @@ test('Rust canonical fallback text cannot satisfy verified source attribution', 
         },
       ],
     }),
-  ).toThrow('Incomplete Rust');
+  ).toThrow('Incomplete Rust attribution: MIT for crate@1; missing source_path');
+});
+test('Rust attribution refuses malformed used-by records with an actionable license diagnostic', () => {
+  const metadata = {
+    packages: [{ name: 'crate', version: '1', source: 'registry' }],
+    resolve: { nodes: [] },
+  };
+  expect(() =>
+    rustRecords(metadata, {
+      licenses: [
+        { id: 'MIT', text: 'verified text', source_path: '/synthetic/LICENSE', used_by: [{}] },
+      ],
+    }),
+  ).toThrow('Incomplete Rust attribution: MIT for unknown crates; missing used_by.crate');
 });
 test('Go multi-license rows preserve every license obligation', () => {
   const records = goRecords(
