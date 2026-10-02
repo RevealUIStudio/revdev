@@ -392,15 +392,51 @@ function releaseVersionOnlyDifference(upstream, published, version) {
     published
   );
 }
-function rustPackageIdentity(manifest) {
-  const block = manifest.match(/^\[package\]\r?\n([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1];
-  if (!block) throw new Error('Missing original Rust package section');
+function rustTomlSection(manifest, section) {
+  const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const block = manifest.match(
+    new RegExp(`^\\[${escaped}\\]\\r?\\n([\\s\\S]*?)(?=^\\[|$(?![\\s\\S]))`, 'm'),
+  )?.[1];
+  if (!block) throw new Error(`Missing original Rust ${section} section`);
+  return block;
+}
+function rustLiteralField(block, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const values = [...block.matchAll(new RegExp(`^${escaped} = "([^"]+)"$`, 'gm'))];
+  if (values.length !== 1) throw new Error(`Missing unique original Rust ${name}`);
+  return values[0][1];
+}
+function rustPackageIdentity(manifest, workspaceManifest) {
+  const block = rustTomlSection(manifest, 'package');
   const field = (name) => {
-    const values = [...block.matchAll(new RegExp(`^${name} = "([^"]+)"$`, 'gm'))];
-    if (values.length !== 1) throw new Error(`Missing unique original Rust ${name}`);
-    return values[0][1];
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const direct = [...block.matchAll(new RegExp(`^${escaped} = "([^"]+)"$`, 'gm'))];
+    const inherited = [...block.matchAll(new RegExp(`^${escaped}\\.workspace = true$`, 'gm'))];
+    if (direct.length + inherited.length !== 1)
+      throw new Error(`Missing unique original Rust ${name}`);
+    if (direct.length) return direct[0][1];
+    if (!workspaceManifest) throw new Error(`Unauthenticated Rust workspace ${name}`);
+    return rustLiteralField(rustTomlSection(workspaceManifest, 'workspace.package'), name);
   };
-  return { name: field('name'), version: field('version'), license: field('license') };
+  return {
+    name: rustLiteralField(block, 'name'),
+    version: rustLiteralField(block, 'version'),
+    license: field('license'),
+    repository: field('repository'),
+  };
+}
+function verifiedRustWorkspace(manifest, cratePath, workspacePath) {
+  const workspaceDir = posix.dirname(workspacePath);
+  const member = posix.relative(workspaceDir, cratePath);
+  if (!member || member.startsWith('../') || member === '..' || member.startsWith('/'))
+    throw new Error('Rust crate outside declared workspace');
+  const block = rustTomlSection(manifest, 'workspace');
+  const members = [...block.matchAll(/^members\s*=\s*\[([\s\S]*?)\]/gm)];
+  if (members.length !== 1) throw new Error('Missing unique Rust workspace members');
+  const values = [...members[0][1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  const residue = members[0][1].replace(/"[^"]+"/g, '').replace(/[\s,]/g, '');
+  if (residue || new Set(values).size !== values.length || !values.includes(member))
+    throw new Error(`Unverified Rust workspace member: ${cratePath}`);
 }
 function declaredRustPackagePath(manifest, name) {
   const block = manifest.match(/^\[package\]\r?\n([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1];
@@ -433,13 +469,19 @@ export function verifiedRustLicenseFiles(
   const policies = json(readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'));
   const policy = policies.rust?.[key];
   if (!policy) throw new Error(`No authenticated Rust source policy: ${key}`);
+  const selectedLicense = policy.selectedLicense ?? policy.license;
   if (
     !/^[a-f0-9]{40}$/.test(policy.commit ?? '') ||
-    !policy.cratePath ||
-    safeSourcePath(policy.cratePath) !== policy.cratePath ||
+    typeof policy.cratePath !== 'string' ||
+    (policy.cratePath !== '' && safeSourcePath(policy.cratePath) !== policy.cratePath) ||
+    (policy.workspaceManifest !== undefined &&
+      safeSourcePath(policy.workspaceManifest) !== policy.workspaceManifest) ||
     githubRepository(policy.publishedRepository) !== githubRepository(pkg.repository) ||
-    license(policy.license) !== kind ||
-    license(pkg.license) !== kind ||
+    license(selectedLicense) !== kind ||
+    !license(policy.license)
+      .split(/\s+OR\s+/)
+      .includes(selectedLicense) ||
+    license(pkg.license) !== policy.license ||
     !Array.isArray(policy.grants) ||
     !policy.grants.length
   )
@@ -464,16 +506,25 @@ export function verifiedRustLicenseFiles(
         throw new Error(`Missing regular Rust source file: ${key}: ${safePath}`);
       return git(['show', `${policy.commit}:${safePath}`], repositoryDir);
     };
-    const upstreamManifest = sourceText(`${policy.cratePath}/Cargo.toml`);
+    const upstreamManifest = sourceText(posix.join(policy.cratePath, 'Cargo.toml'));
+    const workspaceManifest = policy.workspaceManifest
+      ? sourceText(policy.workspaceManifest)
+      : null;
+    if (workspaceManifest)
+      verifiedRustWorkspace(workspaceManifest, policy.cratePath, policy.workspaceManifest);
     const dirty = vcs.git.dirty === true;
-    const packagedIdentity = rustPackageIdentity(packagedManifest);
-    const upstreamIdentity = rustPackageIdentity(upstreamManifest);
+    const packagedIdentity = rustPackageIdentity(packagedManifest, workspaceManifest);
+    const upstreamIdentity = rustPackageIdentity(upstreamManifest, workspaceManifest);
     if (
       packagedIdentity.name !== pkg.name ||
       packagedIdentity.version !== pkg.version ||
-      packagedIdentity.license !== kind ||
+      packagedIdentity.license !== policy.license ||
+      githubRepository(packagedIdentity.repository) !==
+        githubRepository(policy.publishedRepository) ||
       upstreamIdentity.name !== pkg.name ||
-      upstreamIdentity.license !== kind ||
+      upstreamIdentity.license !== policy.license ||
+      githubRepository(upstreamIdentity.repository) !==
+        githubRepository(policy.publishedRepository) ||
       (!dirty && upstreamIdentity.version !== pkg.version)
     )
       throw new Error(`Rust original manifest identity mismatch: ${key}`);
@@ -517,6 +568,12 @@ export function verifiedRustLicenseFiles(
       archiveSha256: checksum,
       repository: policy.repository,
       commit: policy.commit,
+      workspaceManifest: workspaceManifest
+        ? {
+            path: policy.workspaceManifest,
+            sha256: createHash('sha256').update(workspaceManifest).digest('hex'),
+          }
+        : null,
       dirty,
       comparedFiles: compared.length,
       files: files.map(({ name, text }) => ({
