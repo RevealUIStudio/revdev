@@ -8,3 +8,9 @@ replacements.
 ```bash
 cd apps/studio && node scripts/gen-icons.mjs
 ```
+
+The generator builds the Windows ICO from square PNG payloads at 16, 24, 32,
+64 and 256 pixels. The 256-pixel payload is resized explicitly; the ICO
+builder rejects any directory/payload dimension mismatch before publishing
+the ICO. The maintained generator tests also check every entry in the
+checked-in artifact.

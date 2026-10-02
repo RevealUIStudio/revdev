@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { buildIco } from '../apps/studio/scripts/gen-icons.mjs';
 
 const temporaryRoots = [];
 
@@ -126,3 +127,69 @@ fi
   });
   return { result, generatedDir, studio };
 }
+
+describe('ICO payload dimensions', () => {
+  const png = readFileSync(new URL('../apps/studio/src-tauri/icons/32x32.png', import.meta.url));
+  it('preserves original PNG bytes and encodes matching directory dimensions', () => {
+    const ico = buildIco([{ width: 32, png }]);
+    expect(ico.readUInt16LE(2)).toBe(1);
+    expect(ico.readUInt16LE(4)).toBe(1);
+    expect(ico[6]).toBe(32);
+    expect(ico[7]).toBe(32);
+    expect(ico.readUInt32LE(14)).toBe(png.length);
+    const offset = ico.readUInt32LE(18);
+    expect(offset).toBe(22);
+    expect(ico.subarray(offset)).toEqual(png);
+  });
+  it('encodes the valid 256px PNG using the ICO zero-byte dimension convention', () => {
+    const large = readFileSync(
+      new URL('../apps/studio/src-tauri/icons/128x128@2x.png', import.meta.url),
+    );
+    expect(large.readUInt32BE(16)).toBe(256);
+    const ico = buildIco([{ width: 256, png: large }]);
+    expect(ico[6]).toBe(0);
+    expect(ico[7]).toBe(0);
+    expect(ico.subarray(ico.readUInt32LE(18))).toEqual(large);
+  });
+  it('keeps every checked-in ICO directory entry consistent with its embedded PNG', () => {
+    const ico = readFileSync(new URL('../apps/studio/src-tauri/icons/icon.ico', import.meta.url));
+    expect(ico.readUInt16LE(2)).toBe(1);
+    const count = ico.readUInt16LE(4);
+    expect(count).toBe(5);
+    for (let index = 0; index < count; index++) {
+      const entry = 6 + index * 16;
+      const width = ico[entry] || 256;
+      const height = ico[entry + 1] || 256;
+      const length = ico.readUInt32LE(entry + 8);
+      const offset = ico.readUInt32LE(entry + 12);
+      expect(offset).toBeGreaterThanOrEqual(6 + count * 16);
+      expect(offset + length).toBeLessThanOrEqual(ico.length);
+      const payload = ico.subarray(offset, offset + length);
+      expect(payload.toString('ascii', 12, 16)).toBe('IHDR');
+      expect(payload.readUInt32BE(16)).toBe(width);
+      expect(payload.readUInt32BE(20)).toBe(height);
+    }
+  });
+  it('rejects the audited 256px directory and 512px payload mismatch', () => {
+    const large = readFileSync(new URL('../apps/studio/src-tauri/icons/icon.png', import.meta.url));
+    expect(large.readUInt32BE(16)).toBe(512);
+    expect(() => buildIco([{ width: 256, png: large }])).toThrow('differs from PNG payload');
+  });
+  it.each([0, 257, 1.5, NaN])('rejects an invalid directory dimension %s', (width) => {
+    expect(() => buildIco([{ width, png }])).toThrow('dimensions');
+  });
+  it('rejects truncated, invalid, rectangular and duplicate payload entries', () => {
+    expect(() => buildIco([])).toThrow('nonempty');
+    expect(() => buildIco([{ width: 32, png: png.subarray(0, 24) }])).toThrow('IHDR');
+    expect(() => buildIco([{ width: 32, png: Buffer.alloc(33) }])).toThrow('IHDR');
+    const rectangle = Buffer.from(png);
+    rectangle.writeUInt32BE(16, 20);
+    expect(() => buildIco([{ width: 32, png: rectangle }])).toThrow('differs from PNG payload');
+    expect(() =>
+      buildIco([
+        { width: 32, png },
+        { width: 32, png },
+      ]),
+    ).toThrow('dimensions');
+  });
+});
