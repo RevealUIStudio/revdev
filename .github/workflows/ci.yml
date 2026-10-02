@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
 
 # Cancel superseded runs on non-main refs. Never cancel the promote SHA on main.
 concurrency:
