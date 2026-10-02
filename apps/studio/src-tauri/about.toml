@@ -21,6 +21,11 @@ accepted = [
 
 # Unknown or missing attribution fails through the maintained generator and cargo-about --fail.
 
+# These local commercial workspace crates are not third-party dependencies.
+# Cargo-about ignores only unpublished workspace members; registry/git crates
+# still require their accepted license and original source attribution.
+private = { ignore = true }
+
 # Workarounds for crates with non-standard license fields
 # Add exceptions here as needed:
 # [[clarify.ring]]
