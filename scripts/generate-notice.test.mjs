@@ -1,4 +1,5 @@
-import { X509Certificate } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { createHash, X509Certificate } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +19,7 @@ import {
   rustRecords,
   sourceLicenseFiles,
   verifiedNodeLicenseFiles,
+  verifiedRustLicenseFiles,
 } from './generate-notice.mjs';
 
 const dirs = [];
@@ -67,8 +69,8 @@ test.each([
 ])('rejects placeholder license %s', (value) => expect(() => license(value)).toThrow());
 test('Rust metadata inventory cannot silently disappear from cargo-about output', () => {
   const metadata = {
-    packages: [{ name: 'crate', version: '1', source: 'registry' }],
-    resolve: { nodes: [] },
+    packages: [{ id: 'crate@1', name: 'crate', version: '1', source: 'registry' }],
+    resolve: { nodes: [{ id: 'crate@1' }] },
   };
   expect(() => rustRecords(metadata, { licenses: [] })).toThrow('crate@1');
   expect(
@@ -83,6 +85,30 @@ test('Rust metadata inventory cannot silently disappear from cargo-about output'
       ],
     }).get('crate@1'),
   ).toBe('MIT');
+});
+test('Rust attribution covers resolved packages, not inactive optional metadata packages', () => {
+  const metadata = {
+    packages: [
+      { id: 'active@1', name: 'active', version: '1', source: 'registry' },
+      { id: 'inactive@1', name: 'inactive', version: '1', source: 'registry' },
+    ],
+    resolve: { nodes: [{ id: 'active@1' }] },
+  };
+  const attribution = {
+    licenses: [
+      {
+        id: 'MIT',
+        text: 'Original text',
+        source_path: '/synthetic/LICENSE',
+        used_by: [{ crate: { name: 'active', version: '1' } }],
+      },
+    ],
+  };
+  expect([...rustRecords(metadata, attribution)]).toEqual([['active@1', 'MIT']]);
+  attribution.licenses[0].used_by.push({ crate: { name: 'inactive', version: '1' } });
+  expect(() => rustRecords(metadata, attribution)).toThrow(
+    'uninventoried attribution for inactive@1',
+  );
 });
 test('Go requires every external imported package to have a license root', () => {
   const packages = [{ ImportPath: 'example.org/lib/sub', Module: { Path: 'example.org/lib' } }];
@@ -169,13 +195,14 @@ function completeFixture(lateFailure = false, junk = false) {
       return JSON.stringify({
         packages: [
           {
+            id: 'rustDep@2',
             name: 'rustDep',
             version: '2',
             source: 'registry',
             manifest_path: join(rustPath, 'Cargo.toml'),
           },
         ],
-        resolve: { nodes: [] },
+        resolve: { nodes: [{ id: 'rustDep@2' }] },
       });
     if (tool === 'cargo-about' && args[0] === 'generate') {
       expect(args).toContain('--fail');
@@ -212,6 +239,120 @@ function completeFixture(lateFailure = false, junk = false) {
     return '';
   };
   return { dir, run };
+}
+function rustSourceFixture({ dirty = false, upstreamVersion = '2', relocatedReadme = false } = {}) {
+  const dir = fixture();
+  const name = 'rustDep';
+  const version = '2';
+  const key = `${name}@${version}`;
+  const commit = 'a'.repeat(40);
+  const repository = 'https://github.com/example/rust-workspace';
+  const cratePath = 'crates/rustDep';
+  const grant = 'Original Apache-2.0 grant\n';
+  const manifest = `[package]\nname = "${name}"\nversion = "${version}"\nlicense = "Apache-2.0"\n${relocatedReadme ? 'readme = "../README.md"\n' : ''}`;
+  const upstreamManifest = manifest.replace(
+    `version = "${version}"`,
+    `version = "${upstreamVersion}"`,
+  );
+  const code = 'pub fn original() {}\n';
+  const index = 'index.crates.io-test';
+  const sourceDir = join(
+    dir,
+    '.notice-tools',
+    'cargo-home',
+    'registry',
+    'src',
+    index,
+    key.replace('@', '-'),
+  );
+  const cacheDir = join(dir, '.notice-tools', 'cargo-home', 'registry', 'cache', index);
+  mkdirSync(join(sourceDir, 'src'), { recursive: true });
+  mkdirSync(cacheDir, { recursive: true });
+  writeFileSync(
+    join(sourceDir, '.cargo_vcs_info.json'),
+    JSON.stringify({ git: { sha1: commit, dirty }, path_in_vcs: cratePath }),
+  );
+  writeFileSync(join(sourceDir, 'Cargo.toml'), manifest);
+  writeFileSync(join(sourceDir, 'Cargo.toml.orig'), manifest);
+  writeFileSync(join(sourceDir, 'src/lib.rs'), code);
+  if (relocatedReadme) writeFileSync(join(sourceDir, 'README.md'), 'Workspace readme\n');
+  const archive = join(cacheDir, `${name}-${version}.crate`);
+  expect(
+    spawnSync('tar', [
+      '-czf',
+      archive,
+      '-C',
+      join(cacheDir, '..', '..', 'src', index),
+      `${name}-${version}/.cargo_vcs_info.json`,
+      `${name}-${version}/Cargo.toml`,
+      `${name}-${version}/Cargo.toml.orig`,
+      `${name}-${version}/src/lib.rs`,
+      ...(relocatedReadme ? [`${name}-${version}/README.md`] : []),
+    ]).status,
+  ).toBe(0);
+  const checksum = createHash('sha256').update(readFileSync(archive)).digest('hex');
+  const cargoManifest = join(dir, 'Cargo.toml');
+  writeFileSync(cargoManifest, '[package]\nname = "fixture"\nversion = "1"\n');
+  writeFileSync(
+    join(dir, 'Cargo.lock'),
+    `version = 4\n\n[[package]]\nname = "${name}"\nversion = "${version}"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\nchecksum = "${checksum}"\n`,
+  );
+  mkdirSync(join(dir, 'scripts'));
+  const policy = {
+    repository,
+    publishedRepository: repository,
+    commit,
+    cratePath,
+    license: 'Apache-2.0',
+    grants: [{ path: 'LICENSE.txt', sha256: createHash('sha256').update(grant).digest('hex') }],
+  };
+  const writePolicy = () =>
+    writeFileSync(
+      join(dir, 'scripts', 'notice-source-policy.json'),
+      JSON.stringify({ rust: { [key]: policy } }),
+    );
+  writePolicy();
+  const pkg = {
+    name,
+    version,
+    source: 'registry+https://github.com/rust-lang/crates.io-index',
+    manifest_path: join(sourceDir, 'Cargo.toml'),
+    repository,
+    license: 'Apache-2.0',
+  };
+  const source = new Map([
+    [`${cratePath}/Cargo.toml`, upstreamManifest],
+    [`${cratePath}/src/lib.rs`, code],
+    ['LICENSE.txt', grant],
+    ...(relocatedReadme ? [['crates/README.md', 'Workspace readme\n']] : []),
+  ]);
+  const run = (tool, args) => {
+    expect(tool).toBe('git');
+    if (args[0] === 'rev-parse') return commit;
+    if (args[0] === 'ls-tree') {
+      const path = args.at(-1);
+      const text = source.get(path);
+      if (text === undefined) return '';
+      const bytes = Buffer.from(text);
+      const oid = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+      return `100644 blob ${oid}\t${path}\n`;
+    }
+    if (args[0] === 'show') return source.get(args[1].slice(commit.length + 1));
+    return '';
+  };
+  return {
+    dir,
+    key,
+    pkg,
+    cargoManifest,
+    policy,
+    writePolicy,
+    source,
+    run,
+    checksum,
+    sourceDir,
+    archive,
+  };
 }
 test('complete all-language synthetic generation publishes deterministic attribution and passes check', () => {
   const { dir, run } = completeFixture();
@@ -283,12 +424,12 @@ test('pinned tool preparation installs only into the maintained workspace tool d
       expect(call.env[name]).toContain(join(dir, '.notice-tools'));
 });
 
-test('Rust canonical fallback text cannot satisfy verified source attribution and names the missing source', () => {
+test('Rust canonical fallback text classifies a crate but cannot supply its original grant', () => {
   const metadata = {
-    packages: [{ name: 'crate', version: '1', source: 'registry' }],
-    resolve: { nodes: [] },
+    packages: [{ id: 'crate@1', name: 'crate', version: '1', source: 'registry' }],
+    resolve: { nodes: [{ id: 'crate@1' }] },
   };
-  expect(() =>
+  expect(
     rustRecords(metadata, {
       licenses: [
         {
@@ -298,13 +439,80 @@ test('Rust canonical fallback text cannot satisfy verified source attribution an
           used_by: [{ crate: { name: 'crate', version: '1' } }],
         },
       ],
-    }),
-  ).toThrow('Incomplete Rust attribution: MIT for crate@1; missing source_path');
+    }).get('crate@1'),
+  ).toBe('MIT');
+  const { dir, run } = completeFixture();
+  rmSync(join(dir, 'rust-dep', 'LICENSE'));
+  mkdirSync(join(dir, 'scripts'));
+  writeFileSync(join(dir, 'scripts', 'notice-source-policy.json'), '{}');
+  const canonicalOnly = (tool, args, ...rest) => {
+    const result = run(tool, args, ...rest);
+    if (tool === 'cargo-about' && args[0] === 'generate') {
+      const data = JSON.parse(result);
+      data.licenses[0].source_path = null;
+      return JSON.stringify(data);
+    }
+    return result;
+  };
+  expect(() => generate(dir, canonicalOnly)).toThrow(
+    'No authenticated Rust source policy: rustDep@2',
+  );
+  expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe('existing notice');
+});
+test('Rust grouped canonical text does not borrow one crate grant for another', () => {
+  const { dir, run } = completeFixture();
+  const second = join(dir, 'other-rust-dep');
+  mkdirSync(second);
+  writeFileSync(join(second, 'Cargo.toml'), '[package]\nname="otherRustDep"\nversion="3"\n');
+  mkdirSync(join(dir, 'scripts'));
+  writeFileSync(join(dir, 'scripts', 'notice-source-policy.json'), '{}');
+  const grouped = (tool, args, ...rest) => {
+    const result = run(tool, args, ...rest);
+    if (tool === 'cargo' && args[0] === 'metadata') {
+      const data = JSON.parse(result);
+      data.packages.push({
+        id: 'otherRustDep@3',
+        name: 'otherRustDep',
+        version: '3',
+        source: 'registry',
+        manifest_path: join(second, 'Cargo.toml'),
+      });
+      data.resolve.nodes.push({ id: 'otherRustDep@3' });
+      return JSON.stringify(data);
+    }
+    if (tool === 'cargo-about' && args[0] === 'generate') {
+      const data = JSON.parse(result);
+      data.licenses[0].source_path = null;
+      data.licenses[0].used_by.push({ crate: { name: 'otherRustDep', version: '3' } });
+      return JSON.stringify(data);
+    }
+    return result;
+  };
+  expect(() => generate(dir, grouped)).toThrow(
+    'No authenticated Rust source policy: otherRustDep@3',
+  );
+  expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe('existing notice');
+});
+test('Rust local original license remains valid when cargo-about has no group source path', () => {
+  const { dir, run } = completeFixture();
+  const local = (tool, args, ...rest) => {
+    const result = run(tool, args, ...rest);
+    if (tool === 'cargo-about' && args[0] === 'generate') {
+      const data = JSON.parse(result);
+      data.licenses[0].source_path = null;
+      return JSON.stringify(data);
+    }
+    return result;
+  };
+  generate(dir, local);
+  const notice = readFileSync(join(dir, 'NOTICE.md'), 'utf8');
+  expect(notice).toContain('Synthetic Rust license file');
+  expect(notice).not.toContain('fixture license');
 });
 test('Rust attribution refuses malformed used-by records with an actionable license diagnostic', () => {
   const metadata = {
-    packages: [{ name: 'crate', version: '1', source: 'registry' }],
-    resolve: { nodes: [] },
+    packages: [{ id: 'crate@1', name: 'crate', version: '1', source: 'registry' }],
+    resolve: { nodes: [{ id: 'crate@1' }] },
   };
   expect(() =>
     rustRecords(metadata, {
@@ -313,6 +521,85 @@ test('Rust attribution refuses malformed used-by records with an actionable lice
       ],
     }),
   ).toThrow('Incomplete Rust attribution: MIT for unknown crates; missing used_by.crate');
+});
+test('Rust original grant requires a checksum-bound matching source tree', () => {
+  const f = rustSourceFixture();
+  const receipts = [];
+  const files = verifiedRustLicenseFiles(
+    f.dir,
+    f.cargoManifest,
+    f.pkg,
+    'Apache-2.0',
+    f.run,
+    (receipt) => receipts.push(receipt),
+  );
+  expect(files).toEqual([
+    {
+      name: `${f.policy.repository}/blob/${f.policy.commit}/LICENSE.txt`,
+      text: 'Original Apache-2.0 grant\n',
+    },
+  ]);
+  expect(receipts).toMatchObject([
+    {
+      ecosystem: 'Rust',
+      dependency: f.key,
+      archiveSha256: f.checksum,
+      dirty: false,
+      comparedFiles: 1,
+    },
+  ]);
+  f.source.set(`${f.policy.cratePath}/src/lib.rs`, 'different code');
+  expect(() =>
+    verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
+  ).toThrow('packaged source differs');
+});
+test('Rust packaged workspace README must match its declared source path', () => {
+  const f = rustSourceFixture({ relocatedReadme: true });
+  const receipts = [];
+  verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run, (receipt) =>
+    receipts.push(receipt),
+  );
+  expect(receipts[0].comparedFiles).toBe(2);
+  f.source.set('crates/README.md', 'Changed workspace readme\n');
+  expect(() =>
+    verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
+  ).toThrow('packaged source differs');
+});
+test('Rust dirty source accepts only a package-version release delta with identical code', () => {
+  const f = rustSourceFixture({ dirty: true, upstreamVersion: '1' });
+  const receipts = [];
+  verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run, (receipt) =>
+    receipts.push(receipt),
+  );
+  expect(receipts[0].dirty).toBe(true);
+  f.source.set(
+    `${f.policy.cratePath}/Cargo.toml`,
+    '[package]\nname = "rustDep"\nversion = "1"\nlicense = "MIT"\n',
+  );
+  expect(() =>
+    verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
+  ).toThrow('original manifest identity mismatch');
+});
+test('Rust original grant refuses a mismatched archive checksum or grant hash', () => {
+  const f = rustSourceFixture();
+  writeFileSync(f.archive, 'not the locked archive');
+  expect(() =>
+    verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
+  ).toThrow('archive checksum mismatch');
+  const g = rustSourceFixture();
+  g.policy.grants[0].sha256 = 'b'.repeat(64);
+  g.writePolicy();
+  expect(() =>
+    verifiedRustLicenseFiles(g.dir, g.cargoManifest, g.pkg, 'Apache-2.0', g.run),
+  ).toThrow('grant hash mismatch');
+});
+test('Rust original grant refuses mismatched published repository provenance', () => {
+  const f = rustSourceFixture();
+  f.policy.publishedRepository = 'https://github.com/another/project';
+  f.writePolicy();
+  expect(() =>
+    verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
+  ).toThrow('policy identity mismatch');
 });
 test('Go multi-license rows preserve every license obligation', () => {
   const records = goRecords(
@@ -634,7 +921,7 @@ test('normal generation uses verifier only, emits deterministic source text and 
   mkdirSync(join(dir, 'scripts'));
   writeFileSync(
     join(dir, 'scripts/notice-source-policy.json'),
-    JSON.stringify({ nodeDep: policy }),
+    JSON.stringify({ node: { nodeDep: policy } }),
   );
   writeFileSync(
     join(dir, 'pnpm-lock.yaml'),
