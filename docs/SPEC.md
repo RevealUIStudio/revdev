@@ -45,6 +45,17 @@ revdev/
 └── config/                         # shared config (Biome, TS, etc.)
 ```
 
+### Studio configuration persistence
+
+Set and reset hold the configuration lock while persisting a complete replacement.
+The store publishes the new in-memory value only after persistence succeeds, so
+rejected changes remain rejected until restart as well. Configuration and Unix
+managed-license files share the same atomic file writer: exclusive temporary
+creation, complete write and file sync, then replacement in the destination
+folder. Failed writes or publication retain the prior destination and clean up
+the temporary file. Unix directories and new files are restricted before private
+bytes are written. This does not assert power-loss durability of directory metadata.
+
 ### Package boundaries
 
 | Package | Public name | Responsibility |

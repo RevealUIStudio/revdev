@@ -11,6 +11,7 @@ mod license_ctl;
 mod local_shell;
 mod platform;
 mod presentment;
+mod private_file;
 pub mod signing;
 mod spawner;
 pub mod ssh;

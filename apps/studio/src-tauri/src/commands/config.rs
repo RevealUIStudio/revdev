@@ -1,7 +1,7 @@
 use tauri::State;
 
 use super::error::StudioError;
-use crate::config::{save_config, ConfigState, StudioConfig};
+use crate::config::{commit_config, ConfigState, StudioConfig};
 
 #[tauri::command]
 pub fn get_config(state: State<ConfigState>) -> Result<StudioConfig, StudioError> {
@@ -18,8 +18,7 @@ pub fn set_config(state: State<ConfigState>, config: StudioConfig) -> Result<(),
         .config
         .lock()
         .map_err(|e| StudioError::LockPoisoned(e.to_string()))?;
-    *current = config.clone();
-    save_config(&config).map_err(|e| StudioError::Config(e))?;
+    commit_config(&mut current, config).map_err(StudioError::Config)?;
     Ok(())
 }
 
@@ -30,7 +29,6 @@ pub fn reset_config(state: State<ConfigState>) -> Result<(), StudioError> {
         .config
         .lock()
         .map_err(|e| StudioError::LockPoisoned(e.to_string()))?;
-    *current = default_config.clone();
-    save_config(&default_config).map_err(|e| StudioError::Config(e))?;
+    commit_config(&mut current, default_config).map_err(StudioError::Config)?;
     Ok(())
 }

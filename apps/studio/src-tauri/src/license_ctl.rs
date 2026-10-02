@@ -99,47 +99,6 @@ pub async fn license_wipe_managed() -> Result<LicenseWipeManagedResult, String> 
 // ── Unix host ────────────────────────────────────────────────────────────────
 
 #[cfg(unix)]
-fn atomic_write_0600(path: &std::path::Path, contents: &[u8]) -> Result<(), String> {
-    use std::io::Write;
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("license path has no parent: {}", path.display()))?;
-    std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
-    std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
-        .map_err(|e| format!("chmod 0700 {}: {e}", parent.display()))?;
-
-    let tmp = parent.join(format!(
-        ".{}.tmp-{}",
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("license.jwt"),
-        std::process::id()
-    ));
-
-    {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)
-            .map_err(|e| format!("open temp {}: {e}", tmp.display()))?;
-        file.write_all(contents)
-            .map_err(|e| format!("write temp {}: {e}", tmp.display()))?;
-        file.sync_all()
-            .map_err(|e| format!("sync temp {}: {e}", tmp.display()))?;
-    }
-
-    std::fs::rename(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        format!("rename {} → {}: {e}", tmp.display(), path.display())
-    })?;
-    Ok(())
-}
-
-#[cfg(unix)]
 fn write_managed_unix(jwt: &str) -> Result<LicenseWriteManagedResult, String> {
     let jwt_path = crate::daemon_ctl::canonical_license_file();
     let marker_path = jwt_path.with_file_name("license.jwt.managed");
@@ -147,8 +106,8 @@ fn write_managed_unix(jwt: &str) -> Result<LicenseWriteManagedResult, String> {
     let previous = std::fs::read_to_string(&jwt_path).ok();
     let changed = previous.as_deref().map(str::trim) != Some(jwt);
 
-    atomic_write_0600(&jwt_path, jwt.as_bytes())?;
-    atomic_write_0600(&marker_path, b"")?;
+    crate::private_file::atomic_write_0600(&jwt_path, jwt.as_bytes())?;
+    crate::private_file::atomic_write_0600(&marker_path, b"")?;
     Ok(LicenseWriteManagedResult { changed })
 }
 
