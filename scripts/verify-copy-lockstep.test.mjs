@@ -52,7 +52,9 @@ describe('first-party RevealUI admission', () => {
     writeNativeManifest({});
     const result = checkNative();
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('invalid copy manifest schema');
+    expect(result.stderr).toContain(
+      '.revealui/.revcon-manifest.json is not one valid copy manifest',
+    );
   });
 
   it('accepts native content without a Claude projection and rejects edited bytes', () => {
@@ -68,9 +70,7 @@ describe('first-party RevealUI admission', () => {
       },
     });
     writeFileSync(file, content);
-    expect(spawnSync(systemGit, ['-C', root, 'add', '-f', `.revealui/${rel}`]).status).toBe(
-      0,
-    );
+    expect(spawnSync(systemGit, ['-C', root, 'add', '-f', `.revealui/${rel}`]).status).toBe(0);
     expect(checkNative().status).toBe(0);
 
     writeFileSync(file, 'edited vendor-independent rule');
@@ -89,7 +89,9 @@ describe('first-party RevealUI admission', () => {
     });
     const result = checkNative();
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('invalid copy manifest schema');
+    expect(result.stderr).toContain(
+      '.revealui/.revcon-manifest.json is not one valid copy manifest',
+    );
   });
 
   it('rejects tracked vendor content while retaining native ownership', () => {
@@ -145,7 +147,10 @@ describe('copy lockstep tracked-file inventory', () => {
 
 describe('copy lockstep manifest parsing', () => {
   it.each([
-    ['array file entry', '{"mode":"copy","editor":"claude","profiles":[],"files":{"rules/example.md":[]}}'],
+    [
+      'array file entry',
+      '{"mode":"copy","editor":"claude","profiles":[],"files":{"rules/example.md":[]}}',
+    ],
     [
       'missing digest',
       '{"mode":"copy","editor":"claude","profiles":[],"files":{"rules/example.md":{"source":"profile"}}}',
