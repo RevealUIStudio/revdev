@@ -3,6 +3,7 @@ name = "revealui-studio"
 version = "0.3.0"
 edition = "2021"
 license = "LicenseRef-RevealUI-Commercial"
+publish = false
 authors = ["RevealUI Studio <noreply@revealui.com>"]
 description = "RevDev — native AI experience: agent coordination hub, local inference management"
 

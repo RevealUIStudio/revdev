@@ -480,14 +480,36 @@ export function rustRecords(metadata, attribution) {
   const records = new Map();
   if (!Array.isArray(attribution.licenses)) throw new Error('Malformed cargo-about output');
   for (const item of attribution.licenses) {
-    const kind = license(item.id);
-    if (
-      !Array.isArray(item.used_by) ||
-      !item.text?.trim() ||
-      typeof item.source_path !== 'string' ||
-      !item.source_path
+    const kind = license(item?.id);
+    const missing = [];
+    if (!Array.isArray(item.used_by) || !item.used_by.length) missing.push('used_by');
+    else if (
+      item.used_by.some(
+        (use) =>
+          typeof use?.crate?.name !== 'string' ||
+          !use.crate.name ||
+          typeof use.crate.version !== 'string' ||
+          !use.crate.version,
+      )
     )
-      throw new Error('Incomplete Rust attribution');
+      missing.push('used_by.crate');
+    if (typeof item.text !== 'string' || !item.text.trim()) missing.push('text');
+    if (typeof item.source_path !== 'string' || !item.source_path.trim())
+      missing.push('source_path');
+    if (missing.length) {
+      const crates = Array.isArray(item.used_by)
+        ? item.used_by
+            .map((use) =>
+              use?.crate?.name && use?.crate?.version
+                ? `${use.crate.name}@${use.crate.version}`
+                : null,
+            )
+            .filter(Boolean)
+        : [];
+      throw new Error(
+        `Incomplete Rust attribution: ${kind} for ${crates.join(', ') || 'unknown crates'}; missing ${missing.join(', ')}`,
+      );
+    }
     for (const { crate } of item.used_by) {
       const key = `${crate.name}@${crate.version}`;
       const prior = records.get(key);
