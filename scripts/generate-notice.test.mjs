@@ -72,27 +72,31 @@ test('Rust metadata inventory cannot silently disappear from cargo-about output'
     packages: [{ id: 'crate@1', name: 'crate', version: '1', source: 'registry' }],
     resolve: { nodes: [{ id: 'crate@1' }] },
   };
-  expect(() => rustRecords(metadata, { licenses: [] })).toThrow('crate@1');
+  expect(() => rustRecords(metadata, { licenses: [] }, 'NOTICE-ID crate v1\n')).toThrow('crate@1');
   expect(
-    rustRecords(metadata, {
-      licenses: [
-        {
-          id: 'MIT',
-          source_path: '/synthetic/LICENSE',
-          text: 'license text',
-          used_by: [{ crate: { name: 'crate', version: '1' } }],
-        },
-      ],
-    }).get('crate@1'),
+    rustRecords(
+      metadata,
+      {
+        licenses: [
+          {
+            id: 'MIT',
+            source_path: '/synthetic/LICENSE',
+            text: 'license text',
+            used_by: [{ crate: { name: 'crate', version: '1' } }],
+          },
+        ],
+      },
+      'NOTICE-ID crate v1\n',
+    ).get('crate@1'),
   ).toBe('MIT');
 });
-test('Rust attribution covers resolved packages, not inactive optional metadata packages', () => {
+test('Rust attribution covers Cargo feature graph, not inactive optional metadata packages', () => {
   const metadata = {
     packages: [
       { id: 'active@1', name: 'active', version: '1', source: 'registry' },
       { id: 'inactive@1', name: 'inactive', version: '1', source: 'registry' },
     ],
-    resolve: { nodes: [{ id: 'active@1' }] },
+    resolve: { nodes: [{ id: 'active@1' }, { id: 'inactive@1' }] },
   };
   const attribution = {
     licenses: [
@@ -104,9 +108,11 @@ test('Rust attribution covers resolved packages, not inactive optional metadata 
       },
     ],
   };
-  expect([...rustRecords(metadata, attribution)]).toEqual([['active@1', 'MIT']]);
+  expect([...rustRecords(metadata, attribution, 'NOTICE-ID active v1\n')]).toEqual([
+    ['active@1', 'MIT'],
+  ]);
   attribution.licenses[0].used_by.push({ crate: { name: 'inactive', version: '1' } });
-  expect(() => rustRecords(metadata, attribution)).toThrow(
+  expect(() => rustRecords(metadata, attribution, 'NOTICE-ID active v1\n')).toThrow(
     'uninventoried attribution for inactive@1',
   );
 });
@@ -204,6 +210,11 @@ function completeFixture(lateFailure = false, junk = false) {
         ],
         resolve: { nodes: [{ id: 'rustDep@2' }] },
       });
+    if (tool === 'cargo' && args[0] === 'tree') {
+      expect(args).toContain('all');
+      expect(args).toContain('NOTICE-ID {p}');
+      return 'NOTICE-ID rustDep v2\n';
+    }
     if (tool === 'cargo-about' && args[0] === 'generate') {
       expect(args).toContain('--fail');
       expect(args).toContain('--locked');
@@ -430,16 +441,20 @@ test('Rust canonical fallback text classifies a crate but cannot supply its orig
     resolve: { nodes: [{ id: 'crate@1' }] },
   };
   expect(
-    rustRecords(metadata, {
-      licenses: [
-        {
-          id: 'MIT',
-          text: 'canonical text',
-          source_path: null,
-          used_by: [{ crate: { name: 'crate', version: '1' } }],
-        },
-      ],
-    }).get('crate@1'),
+    rustRecords(
+      metadata,
+      {
+        licenses: [
+          {
+            id: 'MIT',
+            text: 'canonical text',
+            source_path: null,
+            used_by: [{ crate: { name: 'crate', version: '1' } }],
+          },
+        ],
+      },
+      'NOTICE-ID crate v1\n',
+    ).get('crate@1'),
   ).toBe('MIT');
   const { dir, run } = completeFixture();
   rmSync(join(dir, 'rust-dep', 'LICENSE'));
@@ -480,6 +495,7 @@ test('Rust grouped canonical text does not borrow one crate grant for another', 
       data.resolve.nodes.push({ id: 'otherRustDep@3' });
       return JSON.stringify(data);
     }
+    if (tool === 'cargo' && args[0] === 'tree') return `${result}NOTICE-ID otherRustDep v3\n`;
     if (tool === 'cargo-about' && args[0] === 'generate') {
       const data = JSON.parse(result);
       data.licenses[0].source_path = null;
@@ -515,11 +531,15 @@ test('Rust attribution refuses malformed used-by records with an actionable lice
     resolve: { nodes: [{ id: 'crate@1' }] },
   };
   expect(() =>
-    rustRecords(metadata, {
-      licenses: [
-        { id: 'MIT', text: 'verified text', source_path: '/synthetic/LICENSE', used_by: [{}] },
-      ],
-    }),
+    rustRecords(
+      metadata,
+      {
+        licenses: [
+          { id: 'MIT', text: 'verified text', source_path: '/synthetic/LICENSE', used_by: [{}] },
+        ],
+      },
+      'NOTICE-ID crate v1\n',
+    ),
   ).toThrow('Incomplete Rust attribution: MIT for unknown crates; missing used_by.crate');
 });
 test('Rust original grant requires a checksum-bound matching source tree', () => {

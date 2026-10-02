@@ -712,7 +712,7 @@ export function nodeRecords(graph, grouped, workspaceNames, loadMetadata) {
     if (!expected.has(key)) throw new Error(`Node: uninventoried attribution for ${key}`);
   return records;
 }
-function resolvedRustPackages(metadata) {
+function resolvedRustPackages(metadata, tree) {
   if (!Array.isArray(metadata.packages) || !Array.isArray(metadata.resolve?.nodes))
     throw new Error('Incomplete Cargo metadata');
   const byId = new Map(metadata.packages.map((pkg) => [pkg.id, pkg]));
@@ -721,10 +721,29 @@ function resolvedRustPackages(metadata) {
   const ids = metadata.resolve.nodes.map((node) => node.id);
   if (new Set(ids).size !== ids.length || ids.some((id) => !byId.has(id)))
     throw new Error('Unresolved Cargo package identities');
-  return ids.map((id) => byId.get(id)).filter((pkg) => pkg.source !== null);
+  const byKey = new Map();
+  for (const id of ids) {
+    const pkg = byId.get(id);
+    const key = `${pkg.name}@${pkg.version}`;
+    if (byKey.has(key)) throw new Error(`Ambiguous Cargo package version: ${key}`);
+    byKey.set(key, pkg);
+  }
+  if (typeof tree !== 'string' || !tree.trim()) throw new Error('Empty Cargo feature graph');
+  const selected = new Set();
+  for (const line of tree.split(/\r?\n/)) {
+    if (!line.startsWith('NOTICE-ID ')) continue;
+    const match = line.match(/^NOTICE-ID ([A-Za-z0-9_-]+) v([^\s]+)(?:\s|$)/);
+    if (!match) throw new Error(`Malformed Cargo feature graph row: ${line}`);
+    const key = `${match[1]}@${match[2]}`;
+    if (!byKey.has(key))
+      throw new Error(`Cargo feature graph package missing from metadata: ${key}`);
+    selected.add(key);
+  }
+  if (!selected.size) throw new Error('Empty Cargo feature graph inventory');
+  return [...selected].map((key) => byKey.get(key)).filter((pkg) => pkg.source !== null);
 }
-export function rustRecords(metadata, attribution) {
-  const external = resolvedRustPackages(metadata);
+export function rustRecords(metadata, attribution, tree) {
+  const external = resolvedRustPackages(metadata, tree);
   const expected = new Set(external.map((pkg) => `${pkg.name}@${pkg.version}`));
   const records = new Map();
   if (!Array.isArray(attribution.licenses)) throw new Error('Malformed cargo-about output');
@@ -935,8 +954,24 @@ export function generate(rootDir = root, run = command, check = false, onVerifie
         rootDir,
       ),
     );
-    for (const [key, value] of rustRecords(metadata, attribution)) rust.set(key, value);
-    for (const pkg of resolvedRustPackages(metadata)) {
+    const tree = run(
+      'cargo',
+      [
+        'tree',
+        '--locked',
+        '--target',
+        'all',
+        '--prefix',
+        'none',
+        '--format',
+        'NOTICE-ID {p}',
+        '--manifest-path',
+        manifest,
+      ],
+      rootDir,
+    );
+    for (const [key, value] of rustRecords(metadata, attribution, tree)) rust.set(key, value);
+    for (const pkg of resolvedRustPackages(metadata, tree)) {
       if (!pkg.manifest_path) throw new Error(`Missing installed Cargo manifest: ${pkg.name}`);
       const matched = attribution.licenses.filter((item) =>
         item.used_by.some(({ crate }) => crate.name === pkg.name && crate.version === pkg.version),
