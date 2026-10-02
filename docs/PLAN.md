@@ -212,6 +212,9 @@ complete. GAP-313 remains open for live consumer evidence, credential custody
 and owner settings dispositions; no live key, credential or required-check
 setting is changed here.
 
+The coordinator strips the GitHub API token and owner trust anchor from every
+PR-controlled test subprocess, using them only for final comment verification.
+
 The prove-red workflow checks out PR-head scripts and installs the PR's dependency
 graph. Same-PR gate/workflow tampering remains GAP-313 surface 2, explicitly
 accepted open in the ratified design until org migration. An owner public key

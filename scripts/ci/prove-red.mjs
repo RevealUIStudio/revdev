@@ -234,10 +234,18 @@ function skip(msg, { notice = false } = {}) {
 function runCmd(file, args, opts) {
   let output = '';
   try {
+    // Test code comes from the PR head. Keep the read-only GitHub API token and
+    // owner trust anchor in this coordinator process so the tests it launches
+    // cannot read or exfiltrate gate-verification inputs.
+    const testEnv = { ...process.env };
+    delete testEnv.GH_TOKEN;
+    delete testEnv.GITHUB_TOKEN;
+    delete testEnv.REVFLEET_OVERRIDE_SIGNERS;
     output = execFileSync(file, args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 64 * 1024 * 1024,
+      env: testEnv,
       ...opts,
     });
   } catch (e) {

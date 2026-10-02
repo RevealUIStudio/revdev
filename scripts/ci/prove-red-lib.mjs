@@ -4,15 +4,8 @@
 // Kept side-effect-free (no process.exit, no I/O) so they are importable and
 // unit-testable without spawning the script or a git repo.
 
-// Parses the PR_LABELS env var, which the workflows now transport as a JSON
-// array (`toJSON(github.event.pull_request.labels.*.name)`), not a
-// comma-joined string. The prior comma-joined transport was reviewed as
-// lossy for a label name containing a comma; empirically (2026-07-25, `gh api
-// repos/.../labels -f name="a,b"` against this repo) GitHub's REST API
-// currently rejects a comma in a label name outright (422 Validation Failed,
-// code "invalid") — the opposite of what the PR body under review claimed.
-// Either way, JSON is the durable transport: it does not depend on an
-// undocumented, unversioned GitHub validation rule to stay lossless.
+// Parses JSON-array label input for direct callers. The GitHub workflow now
+// reads labels from its trusted event JSON, rather than a lossy shell string.
 // Malformed or absent input degrades to no labels; this never throws.
 export function parseLabels(raw) {
   if (!raw) return [];
