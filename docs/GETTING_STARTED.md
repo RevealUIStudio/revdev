@@ -217,4 +217,4 @@ To check manually: use the "Check for Updates" command in Studio settings.
 
 - [Troubleshooting](./TROUBLESHOOTING.md) — Common issues and fixes
 - [API Reference](./API_REFERENCE.md) — All 36 daemon RPC methods
-- [Architecture](../CLAUDE.md) — How Studio, Daemon, and Bridge connect
+- [Architecture](../.revealui/README.md) — How Studio, Daemon, and Bridge connect

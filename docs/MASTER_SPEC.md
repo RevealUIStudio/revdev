@@ -26,4 +26,4 @@ Native developer tools for RevealUI. **One product, two interfaces, one daemon.*
 - [`docs/MASTER_PLAN.md`](./MASTER_PLAN.md) → [`docs/PLAN.md`](./PLAN.md) — the plan
 - [`docs/API_REFERENCE.md`](./API_REFERENCE.md) — JSON-RPC API reference
 - [`docs/INDEX.md`](./INDEX.md) — documentation index
-- [`CLAUDE.md`](../CLAUDE.md) — agent context · [`README.md`](../README.md) — overview
+- [`.revealui/README.md`](../.revealui/README.md) — agent context · [`README.md`](../README.md) — overview

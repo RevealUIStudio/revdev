@@ -93,7 +93,7 @@ Key Rust crates: `russh` 0.60 (SSH client), `portable-pty` (PTY sessions), `git2
 ## Related
 
 - [Architecture Guide](../../docs/ARCHITECTURE.md)
-- [Distribution Guide](../../.claude/rules/distribution.md)
+- [Studio release workflow](../../.github/workflows/studio-release.yml)
 
 ## License
 

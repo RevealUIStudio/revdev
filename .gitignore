@@ -46,12 +46,12 @@ coverage/
 
 # opensrc context (fetched on demand)
 opensrc/
-# Local Claude/agent state ignored; materialized rules/agents/skills tracked (GAP-372 copy-mode).
-.claude/*
-!.claude/rules/
-!.claude/agents/
-!.claude/skills/
-!.claude/.revcon-manifest.json
+# First-party RevealUI policy content is tracked; local state and vendor adapters are not.
+.revealui/*
+!.revealui/content/
+!.revealui/.revcon-manifest.json
+!.revealui/README.md
+.claude/
 .agents/
 
 # Pinned attribution tool installs and caches (maintained NOTICE generator)
