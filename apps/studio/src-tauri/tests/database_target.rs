@@ -113,6 +113,16 @@ mod deploy {
                     for key in ["POSTGRES_URL", "DATABASE_URL"] {
                         assert_eq!(env.get(OsStr::new(key)), Some(&Some(OsStr::new(URL))));
                     }
+                    for key in [
+                        "PGHOST",
+                        "PGHOSTADDR",
+                        "PGPORT",
+                        "PGDATABASE",
+                        "PGSERVICE",
+                        "PGSERVICEFILE",
+                    ] {
+                        assert_eq!(env.get(OsStr::new(key)), Some(&None));
+                    }
                     assert_eq!(
                         command.get_current_dir(),
                         Some(root.canonicalize().unwrap().as_path())
