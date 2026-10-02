@@ -36,4 +36,4 @@ Current verified state, workstreams (launch readiness, identity rollout, cross-m
 - [`docs/PLAN.md`](./PLAN.md) — **the plan** (single source)
 - [`docs/MASTER_SPEC.md`](./MASTER_SPEC.md) → [`docs/SPEC.md`](./SPEC.md) — the spec
 - [`docs/INDEX.md`](./INDEX.md) — documentation index
-- [`README.md`](../README.md) — overview + architecture · [`CLAUDE.md`](../CLAUDE.md) — agent context
+- [`README.md`](../README.md) — overview + architecture · [`.revealui/README.md`](../.revealui/README.md) — agent context

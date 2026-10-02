@@ -26,7 +26,7 @@ Native developer tools for RevealUI. **One product, two interfaces, one daemon.*
 ```
 revdev/
 ├── README.md
-├── CLAUDE.md                       # agent context
+├── .revealui/README.md             # agent context
 ├── NOTICE.md                       # third-party attributions
 ├── package.json                    # pnpm workspace root
 ├── pnpm-workspace.yaml
@@ -290,4 +290,4 @@ Pre-1.0 per the fleet versioning convention. Per-package SemVer (`@revdev/daemon
 - [`MASTER_PLAN.md`](./MASTER_PLAN.md) / [`MASTER_SPEC.md`](./MASTER_SPEC.md) — stable entry points
 - [`API_REFERENCE.md`](./API_REFERENCE.md) — JSON-RPC API reference
 - [`GETTING_STARTED.md`](./GETTING_STARTED.md) · [`KEY_GENERATION.md`](./KEY_GENERATION.md) · [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)
-- [`CLAUDE.md`](../CLAUDE.md) — agent context · [`README.md`](../README.md) — overview
+- [`.revealui/README.md`](../.revealui/README.md) — agent context · [`README.md`](../README.md) — overview

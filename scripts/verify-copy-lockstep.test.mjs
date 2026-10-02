@@ -15,14 +15,101 @@ beforeEach(() => {
   mkdirSync(join(root, '.claude'), { recursive: true });
   writeFileSync(
     join(root, '.claude', '.revcon-manifest.json'),
-    JSON.stringify({ mode: 'copy', profiles: [], files: {} }),
+    JSON.stringify({ mode: 'copy', editor: 'claude', profiles: [], files: {} }),
   );
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 function check(env = process.env) {
-  return spawnSync('bash', [script, '--target', root], { encoding: 'utf8', env });
+  return spawnSync('bash', [script, '--target', root, '--dot', '.claude'], {
+    encoding: 'utf8',
+    env,
+  });
 }
+
+function checkNative() {
+  return spawnSync('bash', [script, '--target', root], { encoding: 'utf8' });
+}
+
+function writeNativeManifest(files) {
+  mkdirSync(join(root, '.revealui', 'content', 'rules'), { recursive: true });
+  writeFileSync(
+    join(root, '.revealui', '.revcon-manifest.json'),
+    JSON.stringify({ mode: 'copy', editor: 'revealui', profiles: ['revealfleet'], files }),
+  );
+}
+
+describe('first-party RevealUI admission', () => {
+  it('requires a native manifest even when Claude adapter content exists', () => {
+    expect(spawnSync(systemGit, ['init', '-q', root]).status).toBe(0);
+    const result = checkNative();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('missing .revealui/.revcon-manifest.json');
+  });
+
+  it('rejects an empty native policy inventory', () => {
+    expect(spawnSync(systemGit, ['init', '-q', root]).status).toBe(0);
+    writeNativeManifest({});
+    const result = checkNative();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('invalid copy manifest schema');
+  });
+
+  it('accepts native content without a Claude projection and rejects edited bytes', () => {
+    expect(spawnSync(systemGit, ['init', '-q', root]).status).toBe(0);
+    rmSync(join(root, '.claude'), { recursive: true, force: true });
+    const rel = 'content/rules/durable-solutions.md';
+    const content = 'canonical rule';
+    const file = join(root, '.revealui', rel);
+    writeNativeManifest({
+      [rel]: {
+        source: 'profiles/revealfleet/revealui/rules/durable-solutions.md',
+        sha256: createHash('sha256').update(content).digest('hex'),
+      },
+    });
+    writeFileSync(file, content);
+    expect(spawnSync(systemGit, ['-C', root, 'add', '-f', `.revealui/${rel}`]).status).toBe(
+      0,
+    );
+    expect(checkNative().status).toBe(0);
+
+    writeFileSync(file, 'edited vendor-independent rule');
+    const result = checkNative();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('content differs from the manifest');
+  });
+
+  it('rejects Claude source provenance in the native manifest', () => {
+    expect(spawnSync(systemGit, ['init', '-q', root]).status).toBe(0);
+    writeNativeManifest({
+      'content/rules/legacy.md': {
+        source: 'profiles/revealfleet/claude/rules/legacy.md',
+        sha256: 'a'.repeat(64),
+      },
+    });
+    const result = checkNative();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('invalid copy manifest schema');
+  });
+
+  it('rejects tracked vendor content while retaining native ownership', () => {
+    expect(spawnSync(systemGit, ['init', '-q', root]).status).toBe(0);
+    const content = 'native policy';
+    const nativeRel = 'content/rules/native.md';
+    writeNativeManifest({
+      [nativeRel]: {
+        source: 'profiles/revealfleet/revealui/rules/native.md',
+        sha256: createHash('sha256').update(content).digest('hex'),
+      },
+    });
+    writeFileSync(join(root, '.revealui', nativeRel), content);
+    writeFileSync(join(root, '.claude', 'rules.md'), 'old vendor copy');
+    expect(spawnSync(systemGit, ['-C', root, 'add', '.claude/rules.md']).status).toBe(0);
+    const result = checkNative();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('tracked vendor content');
+  });
+});
 
 describe('copy lockstep tracked-file inventory', () => {
   it('fails when the target has no Git inventory', () => {
@@ -58,16 +145,17 @@ describe('copy lockstep tracked-file inventory', () => {
 
 describe('copy lockstep manifest parsing', () => {
   it.each([
-    ['array file entry', '{"mode":"copy","profiles":[],"files":{"rules/example.md":[]}}'],
+    ['array file entry', '{"mode":"copy","editor":"claude","profiles":[],"files":{"rules/example.md":[]}}'],
     [
       'missing digest',
-      '{"mode":"copy","profiles":[],"files":{"rules/example.md":{"source":"profile"}}}',
+      '{"mode":"copy","editor":"claude","profiles":[],"files":{"rules/example.md":{"source":"profile"}}}',
     ],
-    ['missing profiles', '{"mode":"copy","files":{}}'],
+    ['missing profiles', '{"mode":"copy","editor":"claude","files":{}}'],
     [
       'control character in key',
       JSON.stringify({
         mode: 'copy',
+        editor: 'claude',
         profiles: [],
         files: { 'rules/bad\nname.md': { source: 'profile', sha256: 'a'.repeat(64) } },
       }),
@@ -76,6 +164,7 @@ describe('copy lockstep manifest parsing', () => {
       'traversal key',
       JSON.stringify({
         mode: 'copy',
+        editor: 'claude',
         profiles: [],
         files: { 'rules/../escape.md': { source: 'profile', sha256: 'a'.repeat(64) } },
       }),
@@ -83,7 +172,7 @@ describe('copy lockstep manifest parsing', () => {
     ['empty document', ''],
     [
       'multiple documents',
-      '{"mode":"copy","profiles":[],"files":{}}\n{"mode":"copy","profiles":[],"files":{}}',
+      '{"mode":"copy","editor":"claude","profiles":[],"files":{}}\n{"mode":"copy","editor":"claude","profiles":[],"files":{}}',
     ],
   ])('rejects %s before inventory', (_label, manifest) => {
     writeFileSync(join(root, '.claude', '.revcon-manifest.json'), manifest);
@@ -105,6 +194,7 @@ describe('copy lockstep manifest parsing', () => {
       join(root, '.claude', '.revcon-manifest.json'),
       JSON.stringify({
         mode: 'copy',
+        editor: 'claude',
         profiles: ['synthetic'],
         files: { [rel]: { source, sha256: createHash('sha256').update(content).digest('hex') } },
       }),
