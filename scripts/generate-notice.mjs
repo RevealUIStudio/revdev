@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash, X509Certificate } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +12,7 @@ import {
 } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const TOOL_VERSIONS = { cargoAbout: '0.9.2', goLicenses: 'v2.0.1' };
@@ -36,10 +38,16 @@ export function command(tool, args, cwd, env = process.env) {
     cwd,
     env: toolEnv,
     encoding: 'utf8',
+    // Public provenance/source operations must terminate on an unavailable service.
+    timeout: tool === process.execPath || tool === 'git' ? 180_000 : undefined,
     maxBuffer: 256 * 1024 * 1024,
   });
-  if (result.error || result.status !== 0)
-    throw new Error(`${tool} failed: ${result.error?.message ?? result.stderr}`);
+  if (result.error || result.status !== 0) {
+    const details = [result.error?.message, result.stderr?.trim()].filter(Boolean).join('\n');
+    throw new Error(
+      `${tool} failed: ${details || `exit ${result.status}, signal ${result.signal}`}`,
+    );
+  }
   return result.stdout;
 }
 export function prepareTools(rootDir = root, run = command) {
@@ -77,7 +85,7 @@ export function prepareTools(rootDir = root, run = command) {
     env,
   );
 }
-export function licenseFiles(packageDir, sourcePaths = []) {
+export function licenseFiles(packageDir, sourcePaths = [], requireGrant = true) {
   const files = [];
   let embeddedGrant = false;
   const visit = (dir, depth) => {
@@ -129,6 +137,7 @@ export function licenseFiles(packageDir, sourcePaths = []) {
     if (!files.some((file) => file.name === name)) files.push({ name, text });
   }
   if (
+    requireGrant &&
     sourcePaths.length === 0 &&
     !embeddedGrant &&
     !files.some((file) => /^(licen[cs]e|copying)([._-]|$)/i.test(file.name.split('/').at(-1)))
@@ -162,6 +171,252 @@ function manifests(dir, name) {
   }
   return result.sort();
 }
+// npm is a pinned signature verifier only. This projection never installs or
+// resolves dependencies; every entry comes from the existing pnpm lock.
+export function lockedNodeArtifact(lock, installed) {
+  if (
+    !/^(?:@[A-Za-z0-9_.-]+\/)?[A-Za-z0-9_.-]+$/.test(installed.name ?? '') ||
+    installed.name.split('/').some((part) => part === '.' || part === '..') ||
+    !/^[0-9]+(?:\.[0-9]+){0,2}(?:-[A-Za-z0-9.-]+)?$/.test(installed.version ?? '')
+  )
+    throw new Error('Unsupported npm artifact identity');
+  const key = `${installed.name}@${installed.version}`;
+  const integrity = lock.packages?.[key]?.resolution?.integrity;
+  if (!/^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity ?? ''))
+    throw new Error(`Missing exact pnpm integrity: ${key}`);
+  return integrity;
+}
+function githubRepository(value) {
+  const url = typeof value === 'object' ? value?.url : value;
+  const normalized = url?.replace(/^git\+/, '').replace(/\.git$/, '');
+  if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalized ?? ''))
+    throw new Error('Unsupported source repository');
+  return normalized;
+}
+export function provenanceSource(report, installed, integrity, policy) {
+  const key = `${installed.name}@${installed.version}`;
+  if (
+    !Array.isArray(report.invalid) ||
+    report.invalid.length ||
+    !Array.isArray(report.missing) ||
+    report.missing.length ||
+    !Array.isArray(report.verified) ||
+    report.verified.length !== 1
+  )
+    throw new Error(`Unverified npm provenance: ${key}`);
+  const verified = report.verified[0];
+  if (
+    verified.name !== installed.name ||
+    verified.version !== installed.version ||
+    verified.registry !== 'https://registry.npmjs.org/'
+  )
+    throw new Error(`Provenance identity mismatch: ${key}`);
+  const bundles = verified.attestationBundles?.filter(
+    (entry) => entry.predicateType === 'https://slsa.dev/provenance/v1',
+  );
+  if (bundles?.length !== 1) throw new Error(`Missing unique SLSA provenance: ${key}`);
+  const envelope = bundles[0].bundle?.dsseEnvelope;
+  if (envelope?.payloadType !== 'application/vnd.in-toto+json')
+    throw new Error('Unsupported provenance envelope');
+  const statement = JSON.parse(Buffer.from(envelope.payload, 'base64').toString('utf8'));
+  if (
+    statement.predicateType !== 'https://slsa.dev/provenance/v1' ||
+    statement.subject?.length !== 1 ||
+    statement.subject[0].name !==
+      `pkg:npm/${installed.name.split('/').map(encodeURIComponent).join('/')}@${installed.version}` ||
+    statement.subject[0].digest?.sha512 !==
+      Buffer.from(integrity.slice(7), 'base64').toString('hex')
+  )
+    throw new Error(`Provenance subject mismatch: ${key}`);
+  const definition = statement.predicate?.buildDefinition;
+  const repository = githubRepository(definition?.externalParameters?.workflow?.repository);
+  if (
+    repository !== githubRepository(installed.repository) ||
+    repository !== githubRepository(policy.repository)
+  )
+    throw new Error(`Provenance repository mismatch: ${key}`);
+  // npm has already cryptographically verified the bundle. Bind its certified
+  // GitHub workflow identity as well as its signed statement to this repository.
+  const certificate = bundles[0].bundle?.verificationMaterial?.certificate?.rawBytes;
+  if (typeof certificate !== 'string' || !certificate)
+    throw new Error(`Missing certified provenance signer: ${key}`);
+  const identity = new X509Certificate(Buffer.from(certificate, 'base64')).subjectAltName;
+  const workflowPrefix = `URI:${repository}/.github/workflows/`;
+  if (
+    !identity?.startsWith(workflowPrefix) ||
+    !/^[A-Za-z0-9_./-]+@refs\/[A-Za-z0-9_./-]+$/.test(identity.slice(workflowPrefix.length))
+  )
+    throw new Error(`Provenance signer repository mismatch: ${key}`);
+  const dependencies = definition?.resolvedDependencies;
+  if (
+    dependencies?.length !== 1 ||
+    !dependencies[0].uri?.startsWith(`git+${repository}@`) ||
+    !/^[a-f0-9]{40}$/.test(dependencies[0].digest?.gitCommit ?? '')
+  )
+    throw new Error(`Missing immutable source commit: ${key}`);
+  return { repository, commit: dependencies[0].digest.gitCommit };
+}
+export function sourceLicenseFiles(installed, policy, source, readSource) {
+  const safePath = (path) => {
+    if (
+      typeof path !== 'string' ||
+      !path ||
+      path.startsWith('/') ||
+      path.split('/').some((part) => !part || part === '.' || part === '..') ||
+      !/^[A-Za-z0-9_./-]+$/.test(path)
+    )
+      throw new Error('Unsafe source path');
+    return path;
+  };
+  const manifest = JSON.parse(readSource(safePath(policy.manifest)));
+  if (
+    manifest.name !== installed.name ||
+    manifest.version !== installed.version ||
+    license(manifest.license) !== license(installed.license) ||
+    githubRepository(manifest.repository) !== source.repository
+  )
+    throw new Error('Source package identity/license mismatch');
+  if (
+    !Array.isArray(policy.licenses) ||
+    !policy.licenses.length ||
+    new Set(policy.licenses).size !== policy.licenses.length
+  )
+    throw new Error('Missing unique source license paths');
+  return policy.licenses
+    .map((path) => {
+      const text = readSource(safePath(path));
+      if (
+        typeof text !== 'string' ||
+        !text.trim() ||
+        text.includes('\uFFFD') ||
+        text.includes('\0')
+      )
+        throw new Error(`Unreadable source license: ${path}`);
+      return { name: `${source.repository}/blob/${source.commit}/${path}`, text };
+    })
+    .sort((a, b) => compareText(a.name, b.name));
+}
+export function verifiedNodeLicenseFiles(rootDir, installed, run = command, onVerified = () => {}) {
+  // Explicit maintained paths, never inferred ancestor grants or canonical text.
+  const policies = json(readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'));
+  const policy = policies[installed.name];
+  if (!policy)
+    throw new Error(`No authenticated source policy: ${installed.name}@${installed.version}`);
+  const integrity = lockedNodeArtifact(
+    parseYaml(readFileSync(join(rootDir, 'pnpm-lock.yaml'), 'utf8')),
+    installed,
+  );
+  const npmDir = join(rootDir, 'node_modules/npm');
+  if (json(readFileSync(join(npmDir, 'package.json'), 'utf8')).version !== '11.21.0')
+    throw new Error('Expected npm signature verifier 11.21.0');
+  const temp = mkdtempSync(join(rootDir, '.notice-source-'));
+  try {
+    const { name, version } = installed;
+    const manifest = {
+      name: 'notice-signature-verification',
+      version: '0.0.0',
+      dependencies: { [name]: version },
+    };
+    writeFileSync(join(temp, 'package.json'), JSON.stringify(manifest));
+    // audit signatures loads an actual tree. Project only installed metadata;
+    // do not run npm install or let npm select any dependency versions.
+    const projectedPackage = join(temp, 'node_modules', name);
+    mkdirSync(projectedPackage, { recursive: true });
+    writeFileSync(join(projectedPackage, 'package.json'), JSON.stringify({ name, version }));
+
+    writeFileSync(
+      join(temp, 'package-lock.json'),
+      JSON.stringify({
+        name: manifest.name,
+        version: manifest.version,
+        lockfileVersion: 3,
+        packages: {
+          '': manifest,
+          [`node_modules/${name}`]: {
+            version,
+            integrity,
+            resolved: `https://registry.npmjs.org/${name}/-/${name.split('/').at(-1)}-${version}.tgz`,
+          },
+        },
+      }),
+    );
+    // Do not expose operator credentials or machine npm configuration to the
+    // public verifier. Separate empty config files avoid npm double-loading.
+    writeFileSync(join(temp, 'user.npmrc'), '');
+    writeFileSync(join(temp, 'global.npmrc'), '');
+    const publicEnv = Object.fromEntries(
+      ['PATH', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP']
+        .filter((key) => process.env[key])
+        .map((key) => [key, process.env[key]]),
+    );
+    const report = json(
+      run(
+        process.execPath,
+        [
+          join(npmDir, 'bin/npm-cli.js'),
+          'audit',
+          'signatures',
+          '--json',
+          '--include-attestations',
+          '--loglevel=verbose',
+          '--ignore-scripts',
+          '--fetch-retries=0',
+          '--fetch-timeout=30000',
+          '--registry=https://registry.npmjs.org/',
+          `--userconfig=${join(temp, 'user.npmrc')}`,
+          `--globalconfig=${join(temp, 'global.npmrc')}`,
+          `--cache=${join(temp, 'npm-cache')}`,
+        ],
+        temp,
+        publicEnv,
+      ),
+    );
+    const source = provenanceSource(report, installed, integrity, policy);
+    const gitEnv = {
+      ...publicEnv,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_TERMINAL_PROMPT: '0',
+    };
+    const git = (args, cwd) => run('git', args, cwd, gitEnv);
+    git(['init', '--bare', 'source.git'], temp);
+    const repositoryDir = join(temp, 'source.git');
+    git(
+      [
+        '-c',
+        'core.hooksPath=/dev/null',
+        'fetch',
+        '--depth=1',
+        '--no-tags',
+        `${source.repository}.git`,
+        source.commit,
+      ],
+      repositoryDir,
+    );
+    if (git(['rev-parse', 'FETCH_HEAD'], repositoryDir).trim() !== source.commit)
+      throw new Error('Fetched source commit mismatch');
+    const files = sourceLicenseFiles(installed, policy, source, (path) => {
+      // Refuse symlinks/submodules: read a regular blob from the exact tree.
+      const entry = git(['ls-tree', source.commit, '--', path], repositoryDir).trim();
+      if (!/^100644 blob [a-f0-9]{40}\t/.test(entry) || entry.split('\t')[1] !== path)
+        throw new Error(`Missing regular source file: ${path}`);
+      return git(['show', `${source.commit}:${path}`], repositoryDir);
+    });
+    onVerified({
+      dependency: `${installed.name}@${installed.version}`,
+      integrity,
+      ...source,
+      files: files.map(({ name, text }) => ({
+        name,
+        bytes: Buffer.byteLength(text),
+        sha256: createHash('sha256').update(text).digest('hex'),
+      })),
+    });
+    return files;
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
 export function nodeRecords(graph, grouped, workspaceNames, loadMetadata) {
   if (!Array.isArray(graph) || !graph.length) throw new Error('Empty Node workspace inventory');
   const expected = new Set();
@@ -194,17 +449,24 @@ export function nodeRecords(graph, grouped, workspaceNames, loadMetadata) {
         for (const version of pkg.versions) records.set(`${pkg.name}@${version}`, license(kind));
     }
   }
-  if (loadMetadata)
+  if (loadMetadata) {
+    const errors = [];
     for (const [key, dep] of sources) {
-      if (!dep.path) throw new Error(`Missing installed metadata path: ${key}`);
-      const installed = loadMetadata(dep.path, key);
-      if (`${installed.name}@${installed.version}` !== key)
-        throw new Error(`Installed identity mismatch: ${key}`);
-      const kind = license(installed.license);
-      if (records.has(key) && records.get(key) !== kind)
-        throw new Error(`Conflicting license: ${key}`);
-      records.set(key, kind);
+      try {
+        if (!dep.path) throw new Error(`Missing installed metadata path: ${key}`);
+        const installed = loadMetadata(dep.path, key);
+        if (`${installed.name}@${installed.version}` !== key)
+          throw new Error(`Installed identity mismatch: ${key}`);
+        const kind = license(installed.license);
+        if (records.has(key) && records.get(key) !== kind)
+          throw new Error(`Conflicting license: ${key}`);
+        records.set(key, kind);
+      } catch (error) {
+        errors.push(`${key}: ${error.message}`);
+      }
     }
+    if (errors.length) throw new Error(`Node attribution failed:\n${errors.join('\n')}`);
+  }
   requireCoverage(expected, records, 'Node');
   for (const key of records.keys())
     if (!expected.has(key)) throw new Error(`Node: uninventoried attribution for ${key}`);
@@ -306,7 +568,7 @@ export function publish(rootDir, content, check = false) {
     rmSync(temp, { recursive: true, force: true });
   }
 }
-export function generate(rootDir = root, run = command, check = false) {
+export function generate(rootDir = root, run = command, check = false, onVerified = () => {}) {
   // Preflight before inventory or any write; no implicit package installation.
   for (const tool of ['pnpm', 'cargo']) run(tool, ['--version'], rootDir);
   const aboutVersion = run('cargo-about', ['--version'], rootDir).trim();
@@ -353,7 +615,18 @@ export function generate(rootDir = root, run = command, check = false) {
   const texts = [];
   const nodes = nodeRecords(graph, grouped, workspaceNames, (path, key) => {
     const installed = json(readFileSync(join(path, 'package.json'), 'utf8'));
-    const files = licenseFiles(path);
+    if (`${installed.name}@${installed.version}` !== key)
+      throw new Error(`Installed identity mismatch: ${key}`);
+    let files;
+    try {
+      files = licenseFiles(path);
+    } catch (error) {
+      if (!error.message.startsWith('Missing installed license files:')) throw error;
+      files = [
+        ...licenseFiles(path, [], false),
+        ...verifiedNodeLicenseFiles(rootDir, installed, run, onVerified),
+      ];
+    }
     texts.push({ ecosystem: 'Node.js', dependency: key, files });
     return installed;
   });
@@ -539,7 +812,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (process.argv.includes('--prepare-tools') && process.argv.includes('--check'))
       throw new Error('Tool preparation and checking are separate operations');
     if (process.argv.includes('--prepare-tools')) prepareTools();
-    else generate(root, command, process.argv.includes('--check'));
+    else
+      generate(root, command, process.argv.includes('--check'), (receipt) =>
+        console.log(`Verified npm source: ${JSON.stringify(receipt)}`),
+      );
   } catch (error) {
     console.error(`NOTICE generation refused: ${error.message}`);
     process.exitCode = 1;

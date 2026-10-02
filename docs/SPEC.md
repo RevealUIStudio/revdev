@@ -45,6 +45,27 @@ revdev/
 └── config/                         # shared config (Biome, TS, etc.)
 ```
 
+### Third-party attribution
+
+`pnpm notice:generate` and `pnpm notice:check` use the maintained generator.
+Installed grants and notices are the primary source. If a Node artifact omits
+its grant, `scripts/notice-source-policy.json` declares the upstream repository,
+package manifest, and original license paths. These paths are accepted only
+when the pinned npm signature verifier returns valid SLSA provenance whose
+package subject digest matches the exact pnpm lock integrity. The certified signer must be a GitHub workflow in that same repository. The attested Git
+commit, source package name/version/license/repository, and regular source files
+must all agree. Installed copyright notices are retained alongside source grants.
+
+pnpm remains the only dependency resolver. npm performs signature verification
+against a disposable projection of the existing lock; it never installs or
+resolves a second graph. Public verification subprocesses exclude operator
+credentials. Every installed Node source is checked; attribution failures are
+reported together and prevent replacing `NOTICE.md`. Successfully retrieved
+grants emit a receipt containing the locked artifact integrity, source commit,
+and original file URLs, byte lengths, and SHA-256 hashes. These receipts establish
+individual source retrieval, not complete NOTICE coverage.
+`is-node-process@1.2.0` has no authenticated source grant and remains a blocker.
+
 ### Package boundaries
 
 | Package | Public name | Responsibility |

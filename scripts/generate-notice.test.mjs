@@ -1,3 +1,4 @@
+import { X509Certificate } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,10 +10,14 @@ import {
   goRecords,
   license,
   licenseFiles,
+  lockedNodeArtifact,
   nodeRecords,
   prepareTools,
+  provenanceSource,
   publish,
   rustRecords,
+  sourceLicenseFiles,
+  verifiedNodeLicenseFiles,
 } from './generate-notice.mjs';
 
 const dirs = [];
@@ -454,4 +459,304 @@ Preserved surrounding package documentation.
   const wrappedSource = wrapped.replace('##\nLicense', '## License');
   writeFileSync(join(dir, 'README.md'), wrappedSource);
   expect(licenseFiles(dir)).toContainEqual({ name: 'README.md', text: wrappedSource });
+});
+
+function provenanceFixture() {
+  const installed = {
+    name: 'example',
+    version: '1.2.3',
+    license: 'MIT',
+    repository: 'git+https://github.com/drizzle-team/drizzle-orm.git',
+  };
+  const integrity = `sha512-${Buffer.alloc(64, 1).toString('base64')}`;
+  const policy = {
+    repository: 'https://github.com/drizzle-team/drizzle-orm',
+    manifest: 'package/package.json',
+    licenses: ['LICENSE'],
+  };
+  const commit = 'a'.repeat(40);
+  const statement = {
+    predicateType: 'https://slsa.dev/provenance/v1',
+    subject: [
+      { name: 'pkg:npm/example@1.2.3', digest: { sha512: Buffer.alloc(64, 1).toString('hex') } },
+    ],
+    predicate: {
+      buildDefinition: {
+        externalParameters: { workflow: { repository: policy.repository } },
+        resolvedDependencies: [
+          { uri: `git+${policy.repository}@refs/heads/main`, digest: { gitCommit: commit } },
+        ],
+      },
+    },
+  };
+  const report = () => ({
+    invalid: [],
+    missing: [],
+    verified: [
+      {
+        name: installed.name,
+        version: installed.version,
+        registry: 'https://registry.npmjs.org/',
+        attestationBundles: [
+          {
+            predicateType: statement.predicateType,
+            bundle: {
+              verificationMaterial: {
+                certificate: {
+                  rawBytes: new X509Certificate(
+                    readFileSync(
+                      new URL('./fixtures/notice-provenance-certificate.pem', import.meta.url),
+                      'utf8',
+                    ),
+                  ).raw.toString('base64'),
+                },
+              },
+              dsseEnvelope: {
+                payloadType: 'application/vnd.in-toto+json',
+                payload: Buffer.from(JSON.stringify(statement)).toString('base64'),
+              },
+            },
+          },
+        ],
+      },
+    ],
+  });
+  return { installed, integrity, policy, commit, statement, report };
+}
+test('exact pnpm lock artifact binds a verified source and preserves original grant bytes', () => {
+  const { installed, integrity, policy, report } = provenanceFixture();
+  expect(
+    lockedNodeArtifact({ packages: { 'example@1.2.3': { resolution: { integrity } } } }, installed),
+  ).toBe(integrity);
+  const source = provenanceSource(report(), installed, integrity, policy);
+  const files = sourceLicenseFiles(installed, policy, source, (path) =>
+    path === policy.manifest ? JSON.stringify(installed) : 'original copyright and grant\n',
+  );
+  expect(files).toEqual([
+    {
+      name: `${source.repository}/blob/${source.commit}/LICENSE`,
+      text: 'original copyright and grant\n',
+    },
+  ]);
+  expect(() => lockedNodeArtifact({ packages: {} }, installed)).toThrow('pnpm integrity');
+});
+test.each([
+  'subject-name',
+  'subject-digest',
+  'repository',
+  'commit',
+  'ambiguous-commit',
+  'predicate',
+])('rejects provenance mismatch: %s', (failure) => {
+  const { installed, integrity, policy, statement, report } = provenanceFixture();
+  if (failure === 'subject-name') statement.subject[0].name = 'pkg:npm/other@1.2.3';
+  if (failure === 'subject-digest') statement.subject[0].digest.sha512 = 'b'.repeat(128);
+  if (failure === 'repository')
+    statement.predicate.buildDefinition.externalParameters.workflow.repository =
+      'https://github.com/attacker/example';
+  if (failure === 'commit')
+    statement.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit = 'main';
+  if (failure === 'ambiguous-commit')
+    statement.predicate.buildDefinition.resolvedDependencies.push(
+      statement.predicate.buildDefinition.resolvedDependencies[0],
+    );
+  if (failure === 'predicate') statement.predicateType = 'untrusted';
+  expect(() => provenanceSource(report(), installed, integrity, policy)).toThrow();
+});
+test.each([
+  'invalid',
+  'missing',
+  'name',
+  'version',
+  'registry',
+  'empty',
+  'duplicate',
+])('rejects verifier failure or ambiguity: %s', (failure) => {
+  const { installed, integrity, policy, report } = provenanceFixture();
+  const result = report();
+  if (failure === 'invalid' || failure === 'missing') result[failure].push({});
+  if (failure === 'name' || failure === 'version' || failure === 'registry')
+    result.verified[0][failure] = 'wrong';
+  if (failure === 'empty') result.verified = [];
+  if (failure === 'duplicate') result.verified.push(result.verified[0]);
+  expect(() => provenanceSource(result, installed, integrity, policy)).toThrow();
+});
+test.each([
+  'name',
+  'version',
+  'license',
+  'repository',
+  'blank',
+  'unreadable',
+  'missing',
+  'traversal',
+])('rejects invalid source: %s', (failure) => {
+  const { installed, integrity, policy, report } = provenanceFixture();
+  const source = provenanceSource(report(), installed, integrity, policy);
+  const manifest = { ...installed };
+  if (['name', 'version', 'license', 'repository'].includes(failure)) manifest[failure] = 'wrong';
+  if (failure === 'traversal') policy.licenses = ['../LICENSE'];
+  expect(() =>
+    sourceLicenseFiles(installed, policy, source, (path) => {
+      if (path === policy.manifest) return JSON.stringify(manifest);
+      if (failure === 'missing') throw new Error('missing file');
+      return failure === 'blank' ? ' ' : failure === 'unreadable' ? '\uFFFD' : 'original grant';
+    }),
+  ).toThrow();
+});
+test('normal generation uses verifier only, emits deterministic source text and preserves NOTICE on failure', () => {
+  const { dir, run } = completeFixture();
+  const { installed, integrity, policy, report, commit } = provenanceFixture();
+  installed.name = 'nodeDep';
+  installed.version = '1';
+  const result = report();
+  result.verified[0].name = installed.name;
+  result.verified[0].version = installed.version;
+  const envelope = result.verified[0].attestationBundles[0].bundle.dsseEnvelope;
+  const statement = JSON.parse(Buffer.from(envelope.payload, 'base64'));
+  statement.subject[0].name = 'pkg:npm/nodeDep@1';
+  envelope.payload = Buffer.from(JSON.stringify(statement)).toString('base64');
+  rmSync(join(dir, 'node_modules/nodeDep/LICENSE'));
+  writeFileSync(join(dir, 'node_modules/nodeDep/package.json'), JSON.stringify(installed));
+  mkdirSync(join(dir, 'scripts'));
+  writeFileSync(
+    join(dir, 'scripts/notice-source-policy.json'),
+    JSON.stringify({ nodeDep: policy }),
+  );
+  writeFileSync(
+    join(dir, 'pnpm-lock.yaml'),
+    `packages:\n  nodeDep@1:\n    resolution:\n      integrity: ${integrity}\n`,
+  );
+  mkdirSync(join(dir, 'node_modules/npm'), { recursive: true });
+  writeFileSync(join(dir, 'node_modules/npm/package.json'), '{"version":"11.21.0"}');
+  let fail = false;
+  const calls = [];
+  const sourceRun = (tool, args, ...rest) => {
+    if (tool === process.execPath) {
+      calls.push(args);
+      expect(rest[1]).not.toHaveProperty('GITHUB_TOKEN');
+      expect(rest[1]).not.toHaveProperty('NPM_TOKEN');
+      expect(args.slice(1, 3)).toEqual(['audit', 'signatures']);
+      const projectedLock = JSON.parse(readFileSync(join(rest[0], 'package-lock.json'), 'utf8'));
+      expect(projectedLock.packages['node_modules/nodeDep'].integrity).toBe(integrity);
+      expect(Object.keys(projectedLock.packages)).toEqual(['', 'node_modules/nodeDep']);
+      expect(
+        JSON.parse(readFileSync(join(rest[0], 'node_modules/nodeDep/package.json'), 'utf8')),
+      ).toEqual({ name: 'nodeDep', version: '1' });
+      if (fail === 'verifier') throw new Error('verifier rejected');
+      return JSON.stringify(result);
+    }
+    if (tool === 'git') {
+      if (args[0] === 'rev-parse') return fail === 'commit' ? 'b'.repeat(40) : commit;
+      if (args[0] === 'ls-tree')
+        return fail === 'missing'
+          ? ''
+          : `${fail === 'symlink' ? '120000' : '100644'} blob ${'b'.repeat(40)}\t${args.at(-1)}\n`;
+      if (args[0] === 'show')
+        return args[1].endsWith(policy.manifest)
+          ? JSON.stringify(installed)
+          : 'authenticated source grant\n';
+      return '';
+    }
+    return run(tool, args, ...rest);
+  };
+  const receipts = [];
+  generate(dir, sourceRun, false, (receipt) => receipts.push(receipt));
+  expect(receipts).toHaveLength(1);
+  expect(receipts[0]).toMatchObject({
+    dependency: 'nodeDep@1',
+    integrity,
+    commit,
+    repository: policy.repository,
+  });
+  expect(receipts[0].files[0]).toMatchObject({
+    bytes: Buffer.byteLength('authenticated source grant\n'),
+    sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
+  expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toContain('authenticated source grant');
+  expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toContain('Synthetic copyright notice');
+  generate(dir, sourceRun, true);
+  const notice = readFileSync(join(dir, 'NOTICE.md'), 'utf8');
+  for (const failure of ['verifier', 'commit', 'missing', 'symlink']) {
+    fail = failure;
+    expect(() => generate(dir, sourceRun, false, (receipt) => receipts.push(receipt))).toThrow();
+    expect(receipts).toHaveLength(1);
+    expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe(notice);
+  }
+  expect(calls).toHaveLength(6);
+});
+test('is-node-process stays denied without an authenticated source policy', () => {
+  const dir = fixture();
+  mkdirSync(join(dir, 'scripts'));
+  writeFileSync(join(dir, 'scripts/notice-source-policy.json'), '{}');
+  expect(() =>
+    verifiedNodeLicenseFiles(dir, { name: 'is-node-process', version: '1.2.0' }),
+  ).toThrow('No authenticated source policy');
+  expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe('existing notice');
+});
+
+test.each([
+  '..',
+  '.',
+  '@scope/..',
+  '../package',
+])('rejects unsafe projected package name %s', (name) => {
+  const installed = { name, version: '1.2.3' };
+  expect(() => lockedNodeArtifact({ packages: {} }, installed)).toThrow(
+    'Unsupported npm artifact identity',
+  );
+});
+
+test('rejects a certified workflow from another repository even when every statement field agrees', () => {
+  const { installed, integrity, policy, statement, report } = provenanceFixture();
+  const repository = 'https://github.com/attacker/example';
+  installed.repository = repository;
+  policy.repository = repository;
+  statement.predicate.buildDefinition.externalParameters.workflow.repository = repository;
+  statement.predicate.buildDefinition.resolvedDependencies[0].uri = `git+${repository}@refs/heads/main`;
+  expect(() => provenanceSource(report(), installed, integrity, policy)).toThrow(
+    'signer repository mismatch',
+  );
+});
+test.each(['absent', 'unreadable'])('rejects %s certified signer identity', (failure) => {
+  const { installed, integrity, policy, report } = provenanceFixture();
+  const result = report();
+  const bundle = result.verified[0].attestationBundles[0].bundle;
+  bundle.verificationMaterial =
+    failure === 'absent' ? {} : { certificate: { rawBytes: 'not a certificate' } };
+  expect(() => provenanceSource(result, installed, integrity, policy)).toThrow();
+});
+
+test('binds scoped npm subjects with complete package URL encoding', () => {
+  const { installed, integrity, policy, statement, report } = provenanceFixture();
+  installed.name = '@scope/example';
+  statement.subject[0].name = 'pkg:npm/%40scope/example@1.2.3';
+  expect(provenanceSource(report(), installed, integrity, policy).repository).toBe(
+    policy.repository,
+  );
+  statement.subject[0].name = 'pkg:npm/@scope/example@1.2.3';
+  expect(() => provenanceSource(report(), installed, integrity, policy)).toThrow(
+    'subject mismatch',
+  );
+});
+
+test('checks every installed source and fails closed with all grant errors', () => {
+  const graph = [
+    {
+      dependencies: {
+        first: { name: 'first', version: '1', path: '/first' },
+        supported: { name: 'supported', version: '1', path: '/supported' },
+        last: { name: 'last', version: '1', path: '/last' },
+      },
+    },
+  ];
+  const visited = [];
+  expect(() =>
+    nodeRecords(graph, {}, new Set(), (path) => {
+      visited.push(path);
+      if (path !== '/supported') throw new Error(`missing grant ${path}`);
+      return { name: 'supported', version: '1', license: 'MIT' };
+    }),
+  ).toThrow('first@1: missing grant /first\nlast@1: missing grant /last');
+  expect(visited).toEqual(['/first', '/supported', '/last']);
 });
