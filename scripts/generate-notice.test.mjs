@@ -476,6 +476,7 @@ test('Rust canonical fallback text classifies a crate but cannot supply its orig
 });
 test('Rust grouped canonical text does not borrow one crate grant for another', () => {
   const { dir, run } = completeFixture();
+  rmSync(join(dir, 'rust-dep', 'LICENSE'));
   const second = join(dir, 'other-rust-dep');
   mkdirSync(second);
   writeFileSync(join(second, 'Cargo.toml'), '[package]\nname="otherRustDep"\nversion="3"\n');
@@ -505,7 +506,7 @@ test('Rust grouped canonical text does not borrow one crate grant for another', 
     return result;
   };
   expect(() => generate(dir, grouped)).toThrow(
-    'No authenticated Rust source policy: otherRustDep@3',
+    'No authenticated Rust source policy: otherRustDep@3, rustDep@2',
   );
   expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe('existing notice');
 });

@@ -971,6 +971,11 @@ export function generate(rootDir = root, run = command, check = false, onVerifie
       rootDir,
     );
     for (const [key, value] of rustRecords(metadata, attribution, tree)) rust.set(key, value);
+    const prepared = [];
+    const missingPolicies = [];
+    const sourcePolicies = json(
+      readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'),
+    );
     for (const pkg of resolvedRustPackages(metadata, tree)) {
       if (!pkg.manifest_path) throw new Error(`Missing installed Cargo manifest: ${pkg.name}`);
       const matched = attribution.licenses.filter((item) =>
@@ -986,22 +991,33 @@ export function generate(rootDir = root, run = command, check = false, onVerifie
         if (!error.message.startsWith('Missing installed license files:')) throw error;
         if (matched.length !== 1)
           throw new Error(`Ambiguous Rust source attribution: ${pkg.name}@${pkg.version}`);
-        files = [
-          ...licenseFiles(dirname(pkg.manifest_path), [], false),
-          ...verifiedRustLicenseFiles(
-            rootDir,
-            manifest,
-            pkg,
-            license(matched[0].id),
-            run,
-            onVerified,
-          ),
-        ];
+        if (!sourcePolicies.rust?.[`${pkg.name}@${pkg.version}`])
+          missingPolicies.push(`${pkg.name}@${pkg.version}`);
+        files = licenseFiles(dirname(pkg.manifest_path), [], false);
+        prepared.push({ pkg, matched, files, verifySource: true });
+        continue;
       }
+      prepared.push({ pkg, matched, files, verifySource: false });
+    }
+    if (missingPolicies.length)
+      throw new Error(`No authenticated Rust source policy: ${missingPolicies.sort().join(', ')}`);
+    for (const { pkg, matched, files, verifySource } of prepared) {
       texts.push({
         ecosystem: 'Rust',
         dependency: `${pkg.name}@${pkg.version}`,
-        files,
+        files: verifySource
+          ? [
+              ...files,
+              ...verifiedRustLicenseFiles(
+                rootDir,
+                manifest,
+                pkg,
+                license(matched[0].id),
+                run,
+                onVerified,
+              ),
+            ]
+          : files,
       });
     }
     for (const item of attribution.licenses) {
