@@ -245,6 +245,17 @@ UI primitives: Studio consumes `@revealui/presentation` tokens (dogfood Phase 1)
 
 ---
 
+### Configuration persistence
+
+Set and reset hold the configuration lock while persisting a complete replacement.
+The store publishes the new in-memory value only after persistence succeeds, so
+a rejected change is neither exposed by `get_config` nor restored after restart. Configuration and Unix
+managed-license files share the same atomic file writer: exclusive temporary
+creation, complete write and file sync, then replacement in the destination
+folder. Failed writes or publication retain the prior destination and clean up
+the temporary file. Unix directories and new files are restricted before private
+bytes are written. This does not assert power-loss durability of directory metadata.
+
 ## Security posture
 
 - **Unix socket** mode `srw-------` (owner-only), bound under `umask 077`; stale sockets unlinked before bind

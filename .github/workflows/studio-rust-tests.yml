@@ -105,6 +105,7 @@ jobs:
             --test harness_integration \
             --test daemon_ctl_integration \
             --test ssh_output_pump \
+            --test config_persistence \
             -- --test-threads=1
 
   relay:
