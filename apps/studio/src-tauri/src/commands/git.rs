@@ -92,20 +92,55 @@ fn map_status_char(code: u8) -> &'static str {
     }
 }
 
-/// Read a git blob (HEAD or index) via the daemon. `None` when the path is not
-/// present in that tree (or is too large) — the diff viewer treats that as an
-/// empty side, matching the previous git2 behavior.
-async fn read_blob(repo_path: &str, file_path: &str, method: &str) -> Option<String> {
-    let v = harness::repo_rpc(method, repo_path, json!({ "filePath": file_path }))
-        .await
-        .ok()?;
-    if v.get("success").and_then(Value::as_bool) == Some(false) {
-        return None;
+/// Only the daemon's explicit missing-entry result becomes an empty side.
+fn diff_side(v: &Value) -> Result<Option<String>, StudioError> {
+    if v.get("success").and_then(Value::as_bool) != Some(true) {
+        return Err(StudioError::Other(
+            v.get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("Invalid or failed diff read")
+                .to_string(),
+        ));
+    }
+    for flag in ["missing", "tooLarge"] {
+        if v.get(flag).is_some_and(|value| !value.is_boolean()) {
+            return Err(StudioError::Other("Malformed diff read flag".into()));
+        }
     }
     if v.get("tooLarge").and_then(Value::as_bool) == Some(true) {
-        return None;
+        return Err(StudioError::Other(
+            "Diff file exceeds the inline read limit".into(),
+        ));
     }
-    v.get("content").and_then(Value::as_str).map(str::to_string)
+    if v.get("missing").and_then(Value::as_bool) == Some(true) {
+        if v.get("content").is_some() {
+            return Err(StudioError::Other(
+                "Contradictory missing diff content".into(),
+            ));
+        }
+        return Ok(None);
+    }
+    let content = v
+        .get("content")
+        .and_then(Value::as_str)
+        .ok_or_else(|| StudioError::Other("Missing content in diff read".into()))?;
+    if v.get("bytes").and_then(Value::as_u64) != Some(content.len() as u64) {
+        return Err(StudioError::Other(
+            "Invalid byte length in diff read".into(),
+        ));
+    }
+    Ok(Some(content.to_string()))
+}
+
+async fn read_blob(
+    repo_path: &str,
+    file_path: &str,
+    method: &str,
+) -> Result<Option<String>, StudioError> {
+    let v = harness::repo_rpc(method, repo_path, json!({ "filePath": file_path }))
+        .await
+        .map_err(StudioError::Other)?;
+    diff_side(&v)
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
@@ -447,20 +482,20 @@ pub async fn git_diff_content(
 ) -> Result<GitDiffContent, StudioError> {
     if staged {
         let original = read_blob(&repo_path, &file_path, "git.readBlobAtHead")
-            .await
+            .await?
             .unwrap_or_default();
         let modified = read_blob(&repo_path, &file_path, "git.readBlobAtIndex")
-            .await
+            .await?
             .unwrap_or_default();
         return Ok(GitDiffContent { original, modified });
     }
 
     // Unstaged: original is the staged blob, falling back to HEAD; modified is
     // the working-tree content.
-    let original = match read_blob(&repo_path, &file_path, "git.readBlobAtIndex").await {
+    let original = match read_blob(&repo_path, &file_path, "git.readBlobAtIndex").await? {
         Some(c) => c,
         None => read_blob(&repo_path, &file_path, "git.readBlobAtHead")
-            .await
+            .await?
             .unwrap_or_default(),
     };
     let modified = harness::repo_rpc(
@@ -469,10 +504,8 @@ pub async fn git_diff_content(
         json!({ "filePath": file_path }),
     )
     .await
-    .ok()
-    .filter(|v| v.get("tooLarge").and_then(Value::as_bool) != Some(true))
-    .and_then(|v| v.get("content").and_then(Value::as_str).map(str::to_string))
-    .unwrap_or_default();
+    .map_err(StudioError::Other)?;
+    let modified = diff_side(&modified)?.unwrap_or_default();
     Ok(GitDiffContent { original, modified })
 }
 

@@ -143,6 +143,9 @@ export function runChild(
       });
       return;
     }
+    // Decode across chunk boundaries rather than replacing split UTF-8 bytes.
+    childStdout.setEncoding('utf8');
+    childStderr.setEncoding('utf8');
     childStdout.on('data', (d) => {
       stdout += d.toString();
     });

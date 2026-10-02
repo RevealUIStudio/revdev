@@ -187,3 +187,10 @@ export const RPC_METHODS = {
   'graph.communities': 'graph.communities',
   'graph.reconcile': 'graph.reconcile',
 } as const;
+
+/** Diff sides distinguish verified absence from read failures and size refusal. */
+export type GitDiffReadResult =
+  | { success: true; missing: true }
+  | { success: true; content: string; bytes: number }
+  | { success: true; tooLarge: true; bytes: number }
+  | { success: false; error: string; code?: number };

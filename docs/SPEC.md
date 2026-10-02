@@ -245,6 +245,17 @@ UI primitives: Studio consumes `@revealui/presentation` tokens (dogfood Phase 1)
 
 ---
 
+### Git diff reads
+
+HEAD, index and working-tree diff reads return an explicit missing-entry result
+for an absent Git version or tracked deletion. Studio maps verified missing
+versions to empty and preserves present content, including zero-byte files.
+Transport, authority, Git, malformed-response and
+size failures propagate to the existing diff error boundary. Immutable blob
+reads preserve UTF-8 content and trailing whitespace; literal pathspecs prevent
+file names from selecting other entries. Unborn HEAD is distinguished from a
+corrupt HEAD, and unmerged index entries remain errors.
+
 ### Configuration persistence
 
 Set and reset hold the configuration lock while persisting a complete replacement.
