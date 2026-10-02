@@ -348,11 +348,12 @@ describe('owner-signed prove-red exception boundary', () => {
       buildOwnerOverridePayload,
     } = await import('@revealui/harnesses/gates');
     const root = mkdtempSync(join(tmpdir(), 'revdev-prove-red-signature-'));
-    const keyPath = join(root, 'fixture-key');
-    const payloadPath = join(root, 'payload');
+    const ownerKey = join(root, 'owner-key');
+    const forgerKey = join(root, 'forger-key');
     try {
-      execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyPath]);
-      const publicKey = readFileSync(`${keyPath}.pub`, 'utf8').trim().split(/\s+/);
+      for (const keyPath of [ownerKey, forgerKey])
+        execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyPath]);
+      const publicKey = readFileSync(`${ownerKey}.pub`, 'utf8').trim().split(/\s+/);
       const allowedSigners =
         `${OWNER_OVERRIDE_IDENTITY} namespaces="${OWNER_OVERRIDE_NAMESPACE}" ` +
         `${publicKey[0]} ${publicKey[1]}`;
@@ -362,34 +363,55 @@ describe('owner-signed prove-red exception boundary', () => {
         head: 'a'.repeat(40),
         gate: 'prove-red',
       };
-      const payload = buildOwnerOverridePayload(expected, '2099-12-31');
-      writeFileSync(payloadPath, payload);
-      execFileSync(
-        'ssh-keygen',
-        ['-Y', 'sign', '-f', keyPath, '-n', OWNER_OVERRIDE_NAMESPACE, payloadPath],
-        { cwd: root },
-      );
-      const signature = readFileSync(`${payloadPath}.sig`, 'utf8').trimEnd();
-      const signedComment = buildOwnerOverrideComment(payload, signature);
-      const actual = await verifyProveRedException({
-        ...base,
-        allowedSigners,
-        readComments: async () => [
-          { body: signedComment, url: 'https://github.com/comment/signed' },
-        ],
+      let serial = 0;
+      const signedComment = (context, expires, keyPath = ownerKey) => {
+        const payload = buildOwnerOverridePayload(context, expires);
+        const payloadPath = join(root, `payload-${serial++}`);
+        writeFileSync(payloadPath, payload);
+        execFileSync('ssh-keygen', [
+          '-Y',
+          'sign',
+          '-f',
+          keyPath,
+          '-n',
+          OWNER_OVERRIDE_NAMESPACE,
+          payloadPath,
+        ]);
+        return buildOwnerOverrideComment(
+          payload,
+          readFileSync(`${payloadPath}.sig`, 'utf8').trimEnd(),
+        );
+      };
+      const verify = (comment) =>
+        verifyProveRedException({
+          ...base,
+          allowedSigners,
+          readComments: async () => [{ body: comment, url: 'https://github.com/comment/signed' }],
+        });
+      expect(await verify(signedComment(expected, '2099-12-31'))).toEqual({
+        ok: true,
+        url: 'https://github.com/comment/signed',
       });
-      expect(actual).toEqual({ ok: true, url: 'https://github.com/comment/signed' });
-
-      const wrongHead = await verifyProveRedException({
-        ...base,
-        event: {
-          ...event,
-          pull_request: { ...event.pull_request, head: { sha: 'b'.repeat(40) } },
-        },
-        allowedSigners,
-        readComments: async () => [{ body: signedComment }],
+      expect(
+        await verify(signedComment({ ...expected, head: 'b'.repeat(40) }, '2099-12-31')),
+      ).toMatchObject({
+        ok: false,
+        reason: 'wrong-context',
       });
-      expect(wrongHead).toEqual({ ok: false, reason: 'wrong-context' });
+      expect(
+        await verify(signedComment({ ...expected, gate: 'sec-review' }, '2099-12-31')),
+      ).toMatchObject({
+        ok: false,
+        reason: 'wrong-context',
+      });
+      expect(await verify(signedComment(expected, '2099-12-31', forgerKey))).toMatchObject({
+        ok: false,
+        reason: 'bad-owner-signature',
+      });
+      expect(await verify(signedComment(expected, '2000-01-01'))).toMatchObject({
+        ok: false,
+        reason: 'expired',
+      });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
