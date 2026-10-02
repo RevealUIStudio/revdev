@@ -660,14 +660,27 @@ test('normal generation uses verifier only, emits deterministic source text and 
     }
     return run(tool, args, ...rest);
   };
-  generate(dir, sourceRun);
+  const receipts = [];
+  generate(dir, sourceRun, false, (receipt) => receipts.push(receipt));
+  expect(receipts).toHaveLength(1);
+  expect(receipts[0]).toMatchObject({
+    dependency: 'nodeDep@1',
+    integrity,
+    commit,
+    repository: policy.repository,
+  });
+  expect(receipts[0].files[0]).toMatchObject({
+    bytes: Buffer.byteLength('authenticated source grant\n'),
+    sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
   expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toContain('authenticated source grant');
   expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toContain('Synthetic copyright notice');
   generate(dir, sourceRun, true);
   const notice = readFileSync(join(dir, 'NOTICE.md'), 'utf8');
   for (const failure of ['verifier', 'commit', 'missing', 'symlink']) {
     fail = failure;
-    expect(() => generate(dir, sourceRun)).toThrow();
+    expect(() => generate(dir, sourceRun, false, (receipt) => receipts.push(receipt))).toThrow();
+    expect(receipts).toHaveLength(1);
     expect(readFileSync(join(dir, 'NOTICE.md'), 'utf8')).toBe(notice);
   }
   expect(calls).toHaveLength(6);
@@ -712,4 +725,38 @@ test.each(['absent', 'unreadable'])('rejects %s certified signer identity', (fai
   bundle.verificationMaterial =
     failure === 'absent' ? {} : { certificate: { rawBytes: 'not a certificate' } };
   expect(() => provenanceSource(result, installed, integrity, policy)).toThrow();
+});
+
+test('binds scoped npm subjects with complete package URL encoding', () => {
+  const { installed, integrity, policy, statement, report } = provenanceFixture();
+  installed.name = '@scope/example';
+  statement.subject[0].name = 'pkg:npm/%40scope/example@1.2.3';
+  expect(provenanceSource(report(), installed, integrity, policy).repository).toBe(
+    policy.repository,
+  );
+  statement.subject[0].name = 'pkg:npm/@scope/example@1.2.3';
+  expect(() => provenanceSource(report(), installed, integrity, policy)).toThrow(
+    'subject mismatch',
+  );
+});
+
+test('checks every installed source and fails closed with all grant errors', () => {
+  const graph = [
+    {
+      dependencies: {
+        first: { name: 'first', version: '1', path: '/first' },
+        supported: { name: 'supported', version: '1', path: '/supported' },
+        last: { name: 'last', version: '1', path: '/last' },
+      },
+    },
+  ];
+  const visited = [];
+  expect(() =>
+    nodeRecords(graph, {}, new Set(), (path) => {
+      visited.push(path);
+      if (path !== '/supported') throw new Error(`missing grant ${path}`);
+      return { name: 'supported', version: '1', license: 'MIT' };
+    }),
+  ).toThrow('first@1: missing grant /first\nlast@1: missing grant /last');
+  expect(visited).toEqual(['/first', '/supported', '/last']);
 });

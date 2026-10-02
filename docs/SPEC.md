@@ -59,7 +59,11 @@ must all agree. Installed copyright notices are retained alongside source grants
 pnpm remains the only dependency resolver. npm performs signature verification
 against a disposable projection of the existing lock; it never installs or
 resolves a second graph. Public verification subprocesses exclude operator
-credentials. Missing or mismatched evidence fails before replacing `NOTICE.md`.
+credentials. Every installed Node source is checked; attribution failures are
+reported together and prevent replacing `NOTICE.md`. Successfully retrieved
+grants emit a receipt containing the locked artifact integrity, source commit,
+and original file URLs, byte lengths, and SHA-256 hashes. These receipts establish
+individual source retrieval, not complete NOTICE coverage.
 `is-node-process@1.2.0` has no authenticated source grant and remains a blocker.
 
 ### Package boundaries

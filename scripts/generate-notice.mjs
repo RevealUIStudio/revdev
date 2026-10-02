@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { X509Certificate } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -223,7 +223,7 @@ export function provenanceSource(report, installed, integrity, policy) {
     statement.predicateType !== 'https://slsa.dev/provenance/v1' ||
     statement.subject?.length !== 1 ||
     statement.subject[0].name !==
-      `pkg:npm/${installed.name.replace('@', '%40')}@${installed.version}` ||
+      `pkg:npm/${installed.name.split('/').map(encodeURIComponent).join('/')}@${installed.version}` ||
     statement.subject[0].digest?.sha512 !==
       Buffer.from(integrity.slice(7), 'base64').toString('hex')
   )
@@ -296,7 +296,7 @@ export function sourceLicenseFiles(installed, policy, source, readSource) {
     })
     .sort((a, b) => compareText(a.name, b.name));
 }
-export function verifiedNodeLicenseFiles(rootDir, installed, run = command) {
+export function verifiedNodeLicenseFiles(rootDir, installed, run = command, onVerified = () => {}) {
   // Explicit maintained paths, never inferred ancestor grants or canonical text.
   const policies = json(readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'));
   const policy = policies[installed.name];
@@ -395,13 +395,24 @@ export function verifiedNodeLicenseFiles(rootDir, installed, run = command) {
     );
     if (git(['rev-parse', 'FETCH_HEAD'], repositoryDir).trim() !== source.commit)
       throw new Error('Fetched source commit mismatch');
-    return sourceLicenseFiles(installed, policy, source, (path) => {
+    const files = sourceLicenseFiles(installed, policy, source, (path) => {
       // Refuse symlinks/submodules: read a regular blob from the exact tree.
       const entry = git(['ls-tree', source.commit, '--', path], repositoryDir).trim();
       if (!/^100644 blob [a-f0-9]{40}\t/.test(entry) || entry.split('\t')[1] !== path)
         throw new Error(`Missing regular source file: ${path}`);
       return git(['show', `${source.commit}:${path}`], repositoryDir);
     });
+    onVerified({
+      dependency: `${installed.name}@${installed.version}`,
+      integrity,
+      ...source,
+      files: files.map(({ name, text }) => ({
+        name,
+        bytes: Buffer.byteLength(text),
+        sha256: createHash('sha256').update(text).digest('hex'),
+      })),
+    });
+    return files;
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
@@ -438,17 +449,24 @@ export function nodeRecords(graph, grouped, workspaceNames, loadMetadata) {
         for (const version of pkg.versions) records.set(`${pkg.name}@${version}`, license(kind));
     }
   }
-  if (loadMetadata)
+  if (loadMetadata) {
+    const errors = [];
     for (const [key, dep] of sources) {
-      if (!dep.path) throw new Error(`Missing installed metadata path: ${key}`);
-      const installed = loadMetadata(dep.path, key);
-      if (`${installed.name}@${installed.version}` !== key)
-        throw new Error(`Installed identity mismatch: ${key}`);
-      const kind = license(installed.license);
-      if (records.has(key) && records.get(key) !== kind)
-        throw new Error(`Conflicting license: ${key}`);
-      records.set(key, kind);
+      try {
+        if (!dep.path) throw new Error(`Missing installed metadata path: ${key}`);
+        const installed = loadMetadata(dep.path, key);
+        if (`${installed.name}@${installed.version}` !== key)
+          throw new Error(`Installed identity mismatch: ${key}`);
+        const kind = license(installed.license);
+        if (records.has(key) && records.get(key) !== kind)
+          throw new Error(`Conflicting license: ${key}`);
+        records.set(key, kind);
+      } catch (error) {
+        errors.push(`${key}: ${error.message}`);
+      }
     }
+    if (errors.length) throw new Error(`Node attribution failed:\n${errors.join('\n')}`);
+  }
   requireCoverage(expected, records, 'Node');
   for (const key of records.keys())
     if (!expected.has(key)) throw new Error(`Node: uninventoried attribution for ${key}`);
@@ -550,7 +568,7 @@ export function publish(rootDir, content, check = false) {
     rmSync(temp, { recursive: true, force: true });
   }
 }
-export function generate(rootDir = root, run = command, check = false) {
+export function generate(rootDir = root, run = command, check = false, onVerified = () => {}) {
   // Preflight before inventory or any write; no implicit package installation.
   for (const tool of ['pnpm', 'cargo']) run(tool, ['--version'], rootDir);
   const aboutVersion = run('cargo-about', ['--version'], rootDir).trim();
@@ -597,6 +615,8 @@ export function generate(rootDir = root, run = command, check = false) {
   const texts = [];
   const nodes = nodeRecords(graph, grouped, workspaceNames, (path, key) => {
     const installed = json(readFileSync(join(path, 'package.json'), 'utf8'));
+    if (`${installed.name}@${installed.version}` !== key)
+      throw new Error(`Installed identity mismatch: ${key}`);
     let files;
     try {
       files = licenseFiles(path);
@@ -604,7 +624,7 @@ export function generate(rootDir = root, run = command, check = false) {
       if (!error.message.startsWith('Missing installed license files:')) throw error;
       files = [
         ...licenseFiles(path, [], false),
-        ...verifiedNodeLicenseFiles(rootDir, installed, run),
+        ...verifiedNodeLicenseFiles(rootDir, installed, run, onVerified),
       ];
     }
     texts.push({ ecosystem: 'Node.js', dependency: key, files });
@@ -792,7 +812,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (process.argv.includes('--prepare-tools') && process.argv.includes('--check'))
       throw new Error('Tool preparation and checking are separate operations');
     if (process.argv.includes('--prepare-tools')) prepareTools();
-    else generate(root, command, process.argv.includes('--check'));
+    else
+      generate(root, command, process.argv.includes('--check'), (receipt) =>
+        console.log(`Verified npm source: ${JSON.stringify(receipt)}`),
+      );
   } catch (error) {
     console.error(`NOTICE generation refused: ${error.message}`);
     process.exitCode = 1;
