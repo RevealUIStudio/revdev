@@ -1,0 +1,7 @@
+{
+  "drizzle-orm": {
+    "repository": "https://github.com/drizzle-team/drizzle-orm",
+    "manifest": "drizzle-orm/package.json",
+    "licenses": ["LICENSE"]
+  }
+}
