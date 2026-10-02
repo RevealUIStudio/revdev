@@ -55,7 +55,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@revdev/protocol": "workspace:*",
     "@revealui/contracts": "^1.4.0",
-    "@revealui/core": "^0.10.2",
+    "@revealui/core": "^0.15.4",
     "@revealui/db": "^0.10.0",
     "@revealui/knowledge-graph": "^0.1.8",
     "@revealui/utils": "^0.3.5",
