@@ -96,12 +96,12 @@ describe('StepDatabase', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Connect & Migrate' }));
     await screen.findByRole('dialog', { name: 'Run schema migration?' });
-    expect(screen.getByLabelText('RevealUI project directory')).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: /RevealUI project directory/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(runDbMigrate).not.toHaveBeenCalled();
     expect(runDbSeed).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('RevealUI project directory')).toBeEnabled();
-    expect(screen.getByLabelText('PostgreSQL Connection String')).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: /RevealUI project directory/ })).toBeEnabled();
+    expect(screen.getByLabelText(/PostgreSQL Connection String/)).toBeEnabled();
   });
 
   it('does not mutate or publish database data after the connection test fails', async () => {

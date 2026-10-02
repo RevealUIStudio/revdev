@@ -265,6 +265,12 @@ mutation. Native commands validate the workspace and supply the chosen URL to
 both database environment keys used by its maintained scripts. An unmatched
 pnpm database package filter is an error.
 
+This contract covers Studio's confirmed target and child command configuration.
+The downstream RevealUI seed loader currently demotes explicitly supplied
+passwordless URLs before loading dotenv files; repairing that loader is required
+before claiming end-to-end target fidelity for those URLs. Studio must not
+introduce a separate loader or override to conceal that dependency.
+
 Connection testing passes a password-redacted URI as psql's explicit database
 argument. URI passwords remain in the child environment; routing defaults from
 ambient libpq settings cannot replace the target. Routing aliases in query
