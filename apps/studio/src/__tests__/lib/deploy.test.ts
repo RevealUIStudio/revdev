@@ -66,11 +66,15 @@ describe('deploy bridge (browser mocks)', () => {
   });
 
   it('runDbMigrate returns mock completion message', async () => {
-    expect(await runDbMigrate('/repo')).toBe('Migrations complete (mock)');
+    expect(await runDbMigrate('/repo', 'postgresql://selected.invalid/db')).toBe(
+      'Migrations complete (mock)',
+    );
   });
 
   it('runDbSeed returns mock completion message', async () => {
-    expect(await runDbSeed('/repo')).toBe('Seed complete (mock)');
+    expect(await runDbSeed('/repo', 'postgresql://selected.invalid/db')).toBe(
+      'Seed complete (mock)',
+    );
   });
 
   // ── Stripe ────────────────────────────────────────────────────────────────
