@@ -106,6 +106,7 @@ jobs:
             --test daemon_ctl_integration \
             --test ssh_output_pump \
             --test config_persistence \
+            --test git_diff_contract \
             -- --test-threads=1
 
   relay:

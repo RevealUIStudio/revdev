@@ -37,6 +37,7 @@ export {
   statusDaemonLoop,
   tickDaemonLoop,
 } from './loop-contract.js';
+export type { GitDiffReadResult } from './methods.js';
 export { RPC_METHODS } from './methods.js';
 export type { JsonRpcRequest, JsonRpcResponse, RpcErrorCode } from './rpc.js';
 export type {

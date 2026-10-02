@@ -25,10 +25,11 @@
  */
 
 import { constants as fsConstants } from 'node:fs';
-import { open, readFile, realpath, stat, unlink } from 'node:fs/promises';
+import { lstat, open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PGlite } from '@electric-sql/pglite';
+import type { GitDiffReadResult } from '@revdev/protocol';
 import { createLogger } from '@revealui/utils/logger';
 import { findNeverBoundOverlap, neverBoundSet, resolveOperatorHome } from './confinement.js';
 import { onAgentEnded, onDaemonStarted } from './eviction.js';
@@ -394,15 +395,24 @@ async function requireRoot(repoPathRaw: string, callerAgentId: string | null): P
  * realpath that it cannot escape the root through `..` or a symlink.
  *
  *  - mustExist=true:  realpath the target itself (read / delete / stat).
+ *    allowMissing=true additionally permits a verified confined missing target.
  *  - mustExist=false: realpath the PARENT directory (write / create a
  *    possibly-new file), then join the basename — the parent must itself be
  *    a real descendant of the root.
  */
+function resolveInRoot(repoReal: string, filePathRaw: string, mustExist: boolean): Promise<string>;
+function resolveInRoot(
+  repoReal: string,
+  filePathRaw: string,
+  mustExist: true,
+  allowMissing: true,
+): Promise<string | null>;
 async function resolveInRoot(
   repoReal: string,
   filePathRaw: string,
   mustExist: boolean,
-): Promise<string> {
+  allowMissing = false,
+): Promise<string | null> {
   const expanded = expandTilde(filePathRaw);
   const abs = isAbsolute(expanded) ? expanded : resolve(repoReal, expanded);
 
@@ -410,8 +420,32 @@ async function resolveInRoot(
     let real: string;
     try {
       real = await realpath(abs);
-    } catch {
-      throw new Error(`file not found: ${filePathRaw}`);
+    } catch (error) {
+      if (!allowMissing || (error as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw new Error(`file not found: ${filePathRaw}`);
+      // Missing reads still require confinement. Walk to the closest existing
+      // ancestor, rejecting dangling links and ancestors resolving outside the
+      // registered root rather than declaring them empty diff sides.
+      if (!within(repoReal, abs)) throw new Error(`path escapes project root: ${filePathRaw}`);
+      let ancestor = abs;
+      while (true) {
+        try {
+          await lstat(ancestor);
+          break;
+        } catch (probeError) {
+          if ((probeError as NodeJS.ErrnoException).code !== 'ENOENT') throw probeError;
+          const parent = dirname(ancestor);
+          if (parent === ancestor) throw new Error(`Cannot resolve missing path: ${filePathRaw}`);
+          ancestor = parent;
+        }
+      }
+      const ancestorReal = await realpath(ancestor);
+      if (!within(repoReal, ancestorReal))
+        throw new Error(`path escapes project root: ${filePathRaw}`);
+      const resolvedMissing = resolve(ancestorReal, relative(ancestor, abs));
+      assertTargetAvoidsNeverBound(resolvedMissing);
+      // A file created during the probe is read normally, never called missing.
+      return ancestor === abs ? ancestorReal : null;
     }
     if (!within(repoReal, real)) throw new Error(`path escapes project root: ${filePathRaw}`);
     assertTargetAvoidsNeverBound(real);
@@ -915,33 +949,117 @@ registerHandler('git.diffFile', async (params, _db, ctx) => {
   return { success: true, diff: r.stdout };
 });
 
-registerHandler('git.diffContent', async (params, _db, ctx) => {
-  // The working-tree ("after") content for a diff view. Read directly off
-  // ext4 (untrimmed, full fidelity) rather than via `git show`.
+/** Read immutable blobs after establishing presence from exact Git metadata. */
+async function readDiffBlob(
+  repoReal: string,
+  rel: string,
+  tree: 'head' | 'index',
+): Promise<GitDiffReadResult> {
+  const failure = (r: ShellResult, what: string): GitDiffReadResult => ({
+    success: false,
+    error: r.stderr || what,
+    code: r.code,
+  });
+  let entries: ShellResult;
+  if (tree === 'head') {
+    const head = await runGit(['rev-parse', '--verify', 'HEAD^{tree}'], repoReal);
+    if (!head.ok) {
+      if (head.aborted || head.code < 0) return failure(head, 'Cannot read HEAD tree');
+      // An unborn branch is the only HEAD-read failure that establishes absence.
+      const symbolic = await runGit(['symbolic-ref', '--quiet', 'HEAD'], repoReal);
+      if (symbolic.ok && symbolic.stdout.startsWith('refs/heads/')) {
+        const ref = await runGit(['show-ref', '--verify', '--quiet', symbolic.stdout], repoReal);
+        if (ref.code === 1 && !ref.aborted && !ref.stderr) return { success: true, missing: true };
+      }
+      return failure(head, 'Cannot read HEAD tree');
+    }
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(head.stdout))
+      return { success: false, error: 'Malformed HEAD tree identity' };
+    entries = await runGit(
+      ['--literal-pathspecs', 'ls-tree', '-z', head.stdout, '--', rel],
+      repoReal,
+      { trimOutput: false },
+    );
+  } else {
+    entries = await runGit(
+      ['--literal-pathspecs', 'ls-files', '--stage', '-z', '--', rel],
+      repoReal,
+      { trimOutput: false },
+    );
+  }
+  if (!entries.ok) return failure(entries, 'Cannot read Git entry metadata');
+  const rows = entries.stdout.split('\0').filter(Boolean);
+  if (!rows.length) return { success: true, missing: true };
+  if (rows.length !== 1)
+    return { success: false, error: `Unmerged or ambiguous Git entry: ${rel}` };
+  const row = rows[0] ?? '';
+  const tab = row.indexOf('\t');
+  const header = row.slice(0, tab).split(' ');
+  if (
+    tab < 0 ||
+    row.slice(tab + 1) !== rel ||
+    header.length !== 3 ||
+    !['100644', '100755', '120000'].includes(header[0] ?? '') ||
+    (tree === 'head' ? header[1] !== 'blob' : header[2] !== '0')
+  )
+    return { success: false, error: `Unsupported Git blob entry: ${rel}` };
+  const oid = (tree === 'head' ? header[2] : header[1]) ?? '';
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(oid))
+    return { success: false, error: 'Malformed Git blob identity' };
+  const size = await runGit(['cat-file', '-s', oid], repoReal);
+  if (!size.ok) return failure(size, 'Cannot read Git blob size');
+  const bytes = Number(size.stdout);
+  if (!Number.isSafeInteger(bytes) || bytes < 0 || !size.stdout)
+    return { success: false, error: 'Malformed Git blob size' };
+  if (bytes > getDaemonConfig().maxInlineReadBytes) return { success: true, tooLarge: true, bytes };
+  const blob = await runGit(['cat-file', 'blob', oid], repoReal, { trimOutput: false });
+  if (!blob.ok) return failure(blob, 'Cannot read Git blob');
+  return { success: true, ...inlineContent(Buffer.from(blob.stdout, 'utf8')) };
+}
+
+registerHandler('git.diffContent', async (params, _db, ctx): Promise<GitDiffReadResult> => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
-  const target = await resolveInRoot(repoReal, requireStr(params.filePath, 'filePath'), true);
+  const filePath = requireStr(params.filePath, 'filePath');
+  const rel = gitRelPath(repoReal, filePath);
+  const target = await resolveInRoot(repoReal, filePath, true, true);
+  if (target === null) {
+    // Confinement is established even for absence; only an exact tracked
+    // deletion establishes a valid empty side. Unknown paths remain errors.
+    const deleted = await runGit(
+      ['--literal-pathspecs', 'ls-files', '--deleted', '-z', '--', rel],
+      repoReal,
+      { trimOutput: false },
+    );
+    if (!deleted.ok)
+      return {
+        success: false,
+        error: deleted.stderr || 'Cannot inspect working-tree deletion',
+        code: deleted.code,
+      };
+    if (deleted.stdout.split('\0').filter(Boolean).includes(rel))
+      return { success: true, missing: true };
+    throw new Error(`Missing untracked diff file: ${filePath}`);
+  }
   const buf = await readFile(target);
-  return inlineContent(buf);
+  return { success: true, ...inlineContent(buf) };
 });
 
 registerHandler('git.readBlobAtHead', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
-  const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
-  // NOTE: runGit trims trailing whitespace on stdout, so a blob's final
-  // newline is not preserved here. Acceptable for the read-only "committed
-  // version" diff pane; full-fidelity working-tree content comes from
-  // file.read / git.diffContent (untrimmed fs reads).
-  const r = await runGit(['show', `HEAD:${rel}`], repoReal);
-  if (!r.ok) return { success: false, error: r.stderr || 'git show HEAD failed' };
-  return { success: true, ...inlineContent(Buffer.from(r.stdout, 'utf8')) };
+  return readDiffBlob(
+    repoReal,
+    gitRelPath(repoReal, requireStr(params.filePath, 'filePath')),
+    'head',
+  );
 });
 
 registerHandler('git.readBlobAtIndex', async (params, _db, ctx) => {
   const repoReal = await requireRoot(requireStr(params.repoPath, 'repoPath'), ctx.agentId);
-  const rel = gitRelPath(repoReal, requireStr(params.filePath, 'filePath'));
-  const r = await runGit(['show', `:${rel}`], repoReal);
-  if (!r.ok) return { success: false, error: r.stderr || 'git show :index failed' };
-  return { success: true, ...inlineContent(Buffer.from(r.stdout, 'utf8')) };
+  return readDiffBlob(
+    repoReal,
+    gitRelPath(repoReal, requireStr(params.filePath, 'filePath')),
+    'index',
+  );
 });
 
 registerHandler('git.listBranches', async (params, _db, ctx) => {

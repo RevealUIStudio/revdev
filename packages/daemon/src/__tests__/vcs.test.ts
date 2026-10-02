@@ -114,3 +114,24 @@ describe('runChild', () => {
     expect(result.abortReason).toBe('timeout');
   });
 });
+
+it('decodes UTF-8 across stdout/stderr chunk boundaries without trimming when requested', async () => {
+  const result = await runChild(
+    process.execPath,
+    [
+      '-e',
+      `
+    process.stdout.write(Buffer.from([0xe2]));
+    process.stderr.write(Buffer.from([0xf0, 0x9f]));
+    setTimeout(() => {
+      process.stdout.write(Buffer.from([0x82, 0xac, 0x20, 0x0a]));
+      process.stderr.write(Buffer.from([0x98, 0x80, 0x0a]));
+    }, 30);
+  `,
+    ],
+    { cwd: process.cwd(), trimOutput: false },
+  );
+  expect(result.ok).toBe(true);
+  expect(result.stdout).toBe('€ \n');
+  expect(result.stderr).toBe('😀\n');
+});
