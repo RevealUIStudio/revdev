@@ -258,6 +258,12 @@ corrupt HEAD, and unmerged index entries remain errors.
 
 ### Configuration persistence
 
+Startup loads configuration before registering the store or starting background
+watchers. Only a verified absent config file receives defaults. Read failures,
+invalid JSON/UTF-8 and dangling links stop setup without replacing saved bytes.
+An unavailable OS configuration directory is an error; the working directory
+is never a fallback configuration location.
+
 Set and reset hold the configuration lock while persisting a complete replacement.
 The store publishes the new in-memory value only after persistence succeeds, so
 a rejected change is neither exposed by `get_config` nor restored after restart. Configuration and Unix
