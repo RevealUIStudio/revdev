@@ -1,7 +1,63 @@
 {
-  "drizzle-orm": {
-    "repository": "https://github.com/drizzle-team/drizzle-orm",
-    "manifest": "drizzle-orm/package.json",
-    "licenses": ["LICENSE"]
+  "node": {
+    "drizzle-orm": {
+      "repository": "https://github.com/drizzle-team/drizzle-orm",
+      "manifest": "drizzle-orm/package.json",
+      "licenses": ["LICENSE"]
+    }
+  },
+  "rust": {
+    "russh@0.62.5": {
+      "repository": "https://github.com/Eugeny/russh",
+      "publishedRepository": "https://github.com/warp-tech/russh",
+      "commit": "4882af71cf27ea5293636bf4985ef296dcf20896",
+      "cratePath": "russh",
+      "license": "Apache-2.0",
+      "grants": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    "russh-cryptovec@0.62.0": {
+      "repository": "https://github.com/Eugeny/russh",
+      "publishedRepository": "https://github.com/warp-tech/russh",
+      "commit": "907c732562c5732aad6c140dba958eafddc41ba0",
+      "cratePath": "cryptovec",
+      "license": "Apache-2.0",
+      "grants": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    "russh-util@0.52.0": {
+      "repository": "https://github.com/Eugeny/russh",
+      "publishedRepository": "https://github.com/warp-tech/russh",
+      "commit": "3d09c20c52a542ffa327723d3a44cb1edd9b0ca4",
+      "cratePath": "russh-util",
+      "license": "Apache-2.0",
+      "grants": [
+        {
+          "path": "LICENSE-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    "pageant@0.2.0": {
+      "repository": "https://github.com/Eugeny/russh",
+      "publishedRepository": "https://github.com/warp-tech/russh",
+      "commit": "f6b9e6479664696db4cd9c507c6725c1ab7c8aeb",
+      "cratePath": "pageant",
+      "license": "Apache-2.0",
+      "grants": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    }
   }
 }

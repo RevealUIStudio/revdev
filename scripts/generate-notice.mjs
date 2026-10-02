@@ -10,7 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
@@ -256,19 +256,280 @@ export function provenanceSource(report, installed, integrity, policy) {
     throw new Error(`Missing immutable source commit: ${key}`);
   return { repository, commit: dependencies[0].digest.gitCommit };
 }
-export function sourceLicenseFiles(installed, policy, source, readSource) {
-  const safePath = (path) => {
-    if (
-      typeof path !== 'string' ||
-      !path ||
-      path.startsWith('/') ||
-      path.split('/').some((part) => !part || part === '.' || part === '..') ||
-      !/^[A-Za-z0-9_./-]+$/.test(path)
-    )
-      throw new Error('Unsafe source path');
-    return path;
+function safeSourcePath(path) {
+  if (
+    typeof path !== 'string' ||
+    !path ||
+    path.startsWith('/') ||
+    path.split('/').some((part) => !part || part === '.' || part === '..') ||
+    !/^[A-Za-z0-9_./-]+$/.test(path)
+  )
+    throw new Error('Unsafe source path');
+  return path;
+}
+function withSourceRepo(rootDir, source, run, callback) {
+  const temp = mkdtempSync(join(rootDir, '.notice-source-'));
+  try {
+    const publicEnv = Object.fromEntries(
+      ['PATH', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP']
+        .filter((key) => process.env[key])
+        .map((key) => [key, process.env[key]]),
+    );
+    const gitEnv = {
+      ...publicEnv,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_TERMINAL_PROMPT: '0',
+    };
+    const git = (args, cwd) => run('git', args, cwd, gitEnv);
+    git(['init', '--bare', 'source.git'], temp);
+    const repositoryDir = join(temp, 'source.git');
+    git(
+      [
+        '-c',
+        'core.hooksPath=/dev/null',
+        'fetch',
+        '--depth=1',
+        '--no-tags',
+        `${githubRepository(source.repository)}.git`,
+        source.commit,
+      ],
+      repositoryDir,
+    );
+    if (git(['rev-parse', 'FETCH_HEAD'], repositoryDir).trim() !== source.commit)
+      throw new Error('Fetched source commit mismatch');
+    return callback({ git, repositoryDir });
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+function commandBytes(tool, args, cwd) {
+  const result = spawnSync(tool, args, {
+    cwd,
+    encoding: null,
+    timeout: 180_000,
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0)
+    throw new Error(`${tool} failed: ${result.error?.message || result.stderr?.toString('utf8')}`);
+  return result.stdout;
+}
+function lockedRustArchive(rootDir, manifest, pkg) {
+  const key = `${pkg.name}@${pkg.version}`;
+  if (pkg.source !== 'registry+https://github.com/rust-lang/crates.io-index')
+    throw new Error(`Unsupported Rust source for original grant: ${key}`);
+  const lock = readFileSync(join(dirname(manifest), 'Cargo.lock'), 'utf8');
+  const entries = lock.split(/^\[\[package\]\]\s*$/m).slice(1);
+  const field = (entry, name) => {
+    const matches = [...entry.matchAll(new RegExp(`^${name} = "([^"]+)"$`, 'gm'))];
+    return matches.length === 1 ? matches[0][1] : null;
   };
-  const manifest = JSON.parse(readSource(safePath(policy.manifest)));
+  const matches = entries.filter(
+    (entry) => field(entry, 'name') === pkg.name && field(entry, 'version') === pkg.version,
+  );
+  if (matches.length !== 1) throw new Error(`Missing unique locked Rust package: ${key}`);
+  if (field(matches[0], 'source') !== pkg.source)
+    throw new Error(`Locked Rust source mismatch: ${key}`);
+  const checksum = field(matches[0], 'checksum');
+  if (!/^[a-f0-9]{64}$/.test(checksum ?? ''))
+    throw new Error(`Missing locked Rust archive checksum: ${key}`);
+  const sourceDir = dirname(pkg.manifest_path);
+  const registrySrc = join(rootDir, '.notice-tools', 'cargo-home', 'registry', 'src');
+  const relativeSource = relative(registrySrc, sourceDir);
+  const [index, folder, ...rest] = relativeSource.split('/');
+  if (
+    rest.length ||
+    !index ||
+    index === '..' ||
+    folder !== `${pkg.name}-${pkg.version}` ||
+    resolve(registrySrc, relativeSource) !== resolve(sourceDir)
+  )
+    throw new Error(`Unexpected installed Rust source path: ${key}`);
+  const archive = join(
+    rootDir,
+    '.notice-tools',
+    'cargo-home',
+    'registry',
+    'cache',
+    index,
+    `${folder}.crate`,
+  );
+  if (createHash('sha256').update(readFileSync(archive)).digest('hex') !== checksum)
+    throw new Error(`Locked Rust archive checksum mismatch: ${key}`);
+  return { archive, checksum };
+}
+function rustArchiveFiles(archive, pkg) {
+  const key = `${pkg.name}@${pkg.version}`;
+  const prefix = `${pkg.name}-${pkg.version}/`;
+  const members = commandBytes('tar', ['-tzf', archive], dirname(archive))
+    .toString('utf8')
+    .trimEnd()
+    .split('\n');
+  const files = new Set();
+  for (const member of members) {
+    if (!member.startsWith(prefix)) throw new Error(`Unexpected Rust archive member: ${key}`);
+    const rel = safeSourcePath(member.slice(prefix.length));
+    if (files.has(rel)) throw new Error(`Duplicate Rust archive member: ${key}: ${rel}`);
+    files.add(rel);
+  }
+  const read = (rel) => {
+    if (!files.has(rel)) throw new Error(`Missing Rust archive member: ${key}: ${rel}`);
+    return commandBytes('tar', ['-xOzf', archive, `${prefix}${rel}`], dirname(archive));
+  };
+  return { files, read };
+}
+function releaseVersionOnlyDifference(upstream, published, version) {
+  const packageVersion = /^version = "([^"]+)"$/m;
+  const packageBlock = (text) => text.match(/^\[package\]\r?\n([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1];
+  const oldBlock = packageBlock(upstream);
+  const newBlock = packageBlock(published);
+  if (!oldBlock || !newBlock) return false;
+  const oldVersion = oldBlock.match(packageVersion);
+  const newVersion = newBlock.match(packageVersion);
+  if (!oldVersion || !newVersion || newVersion[1] !== version) return false;
+  return (
+    upstream.replace(oldBlock, oldBlock.replace(packageVersion, `version = "${version}"`)) ===
+    published
+  );
+}
+function rustPackageIdentity(manifest) {
+  const block = manifest.match(/^\[package\]\r?\n([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1];
+  if (!block) throw new Error('Missing original Rust package section');
+  const field = (name) => {
+    const values = [...block.matchAll(new RegExp(`^${name} = "([^"]+)"$`, 'gm'))];
+    if (values.length !== 1) throw new Error(`Missing unique original Rust ${name}`);
+    return values[0][1];
+  };
+  return { name: field('name'), version: field('version'), license: field('license') };
+}
+function declaredRustPackagePath(manifest, name) {
+  const block = manifest.match(/^\[package\]\r?\n([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1];
+  if (!block) throw new Error('Missing original Rust package section');
+  const values = [...block.matchAll(new RegExp(`^${name} = "([^"]+)"$`, 'gm'))];
+  if (values.length > 1) throw new Error(`Ambiguous original Rust ${name}`);
+  return values[0]?.[1];
+}
+function packagedRustSourcePath(rel, manifest, cratePath) {
+  const readme = declaredRustPackagePath(manifest, 'readme');
+  const licenseFile = declaredRustPackagePath(manifest, 'license-file');
+  const candidates = [readme, licenseFile].filter(
+    (value) => value && posix.basename(value) === rel,
+  );
+  if (candidates.length > 1) throw new Error(`Ambiguous packaged Rust source path: ${rel}`);
+  const declared = candidates[0] ?? rel;
+  if (declared.startsWith('/') || declared.split('/').some((part) => !part || part === '.'))
+    throw new Error(`Unsafe declared Rust source path: ${rel}`);
+  return safeSourcePath(posix.normalize(posix.join(cratePath, declared)));
+}
+export function verifiedRustLicenseFiles(
+  rootDir,
+  manifest,
+  pkg,
+  kind,
+  run = command,
+  onVerified = () => {},
+) {
+  const key = `${pkg.name}@${pkg.version}`;
+  const policies = json(readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'));
+  const policy = policies.rust?.[key];
+  if (!policy) throw new Error(`No authenticated Rust source policy: ${key}`);
+  if (
+    !/^[a-f0-9]{40}$/.test(policy.commit ?? '') ||
+    !policy.cratePath ||
+    safeSourcePath(policy.cratePath) !== policy.cratePath ||
+    githubRepository(policy.publishedRepository) !== githubRepository(pkg.repository) ||
+    license(policy.license) !== kind ||
+    license(pkg.license) !== kind ||
+    !Array.isArray(policy.grants) ||
+    !policy.grants.length
+  )
+    throw new Error(`Rust source policy identity mismatch: ${key}`);
+  const { archive, checksum } = lockedRustArchive(rootDir, manifest, pkg);
+  const packageFiles = rustArchiveFiles(archive, pkg);
+  const vcs = json(packageFiles.read('.cargo_vcs_info.json').toString('utf8'));
+  if (
+    vcs.git?.sha1 !== policy.commit ||
+    vcs.path_in_vcs !== policy.cratePath ||
+    (vcs.git.dirty !== undefined && typeof vcs.git.dirty !== 'boolean')
+  )
+    throw new Error(`Rust archive VCS identity mismatch: ${key}`);
+  const packagedManifest = packageFiles.read('Cargo.toml.orig').toString('utf8');
+  if (packagedManifest.includes('\uFFFD') || !packagedManifest.trim())
+    throw new Error(`Unreadable original Rust manifest: ${key}`);
+  return withSourceRepo(rootDir, policy, run, ({ git, repositoryDir }) => {
+    const sourceText = (path) => {
+      const safePath = safeSourcePath(path);
+      const entry = git(['ls-tree', policy.commit, '--', safePath], repositoryDir).trim();
+      if (!/^100644 blob [a-f0-9]{40}\t/.test(entry) || entry.split('\t')[1] !== safePath)
+        throw new Error(`Missing regular Rust source file: ${key}: ${safePath}`);
+      return git(['show', `${policy.commit}:${safePath}`], repositoryDir);
+    };
+    const upstreamManifest = sourceText(`${policy.cratePath}/Cargo.toml`);
+    const dirty = vcs.git.dirty === true;
+    const packagedIdentity = rustPackageIdentity(packagedManifest);
+    const upstreamIdentity = rustPackageIdentity(upstreamManifest);
+    if (
+      packagedIdentity.name !== pkg.name ||
+      packagedIdentity.version !== pkg.version ||
+      packagedIdentity.license !== kind ||
+      upstreamIdentity.name !== pkg.name ||
+      upstreamIdentity.license !== kind ||
+      (!dirty && upstreamIdentity.version !== pkg.version)
+    )
+      throw new Error(`Rust original manifest identity mismatch: ${key}`);
+    if (
+      packagedManifest !== upstreamManifest &&
+      (!dirty || !releaseVersionOnlyDifference(upstreamManifest, packagedManifest, pkg.version))
+    )
+      throw new Error(`Rust original manifest differs from immutable source: ${key}`);
+    const compared = [];
+    for (const rel of packageFiles.files) {
+      if (['.cargo_vcs_info.json', 'Cargo.toml', 'Cargo.toml.orig', 'Cargo.lock'].includes(rel))
+        continue;
+      const source = packagedRustSourcePath(rel, upstreamManifest, policy.cratePath);
+      const entry = git(['ls-tree', policy.commit, '--', source], repositoryDir).trim();
+      if (!/^100644 blob [a-f0-9]{40}\t/.test(entry) || entry.split('\t')[1] !== source)
+        throw new Error(`Missing regular Rust source file: ${key}: ${rel}`);
+      const expected = entry.match(/^100644 blob ([a-f0-9]{40})\t/)[1];
+      const bytes = packageFiles.read(rel);
+      const actual = createHash('sha1')
+        .update(`blob ${bytes.length}\0`)
+        .update(bytes)
+        .digest('hex');
+      if (actual !== expected)
+        throw new Error(`Rust packaged source differs from immutable source: ${key}: ${rel}`);
+      compared.push(rel);
+    }
+    if (!compared.length) throw new Error(`No Rust packaged source compared: ${key}`);
+    const files = policy.grants.map(({ path, sha256 }) => {
+      if (!/^[a-f0-9]{64}$/.test(sha256 ?? ''))
+        throw new Error(`Unpinned Rust source grant: ${key}`);
+      const grant = sourceText(path);
+      if (!grant.trim() || grant.includes('\uFFFD') || grant.includes('\0'))
+        throw new Error(`Unreadable Rust source grant: ${key}: ${path}`);
+      if (createHash('sha256').update(grant).digest('hex') !== sha256)
+        throw new Error(`Rust source grant hash mismatch: ${key}: ${path}`);
+      return { name: `${policy.repository}/blob/${policy.commit}/${path}`, text: grant };
+    });
+    onVerified({
+      ecosystem: 'Rust',
+      dependency: key,
+      archiveSha256: checksum,
+      repository: policy.repository,
+      commit: policy.commit,
+      dirty,
+      comparedFiles: compared.length,
+      files: files.map(({ name, text }) => ({
+        name,
+        bytes: Buffer.byteLength(text),
+        sha256: createHash('sha256').update(text).digest('hex'),
+      })),
+    });
+    return files;
+  });
+}
+export function sourceLicenseFiles(installed, policy, source, readSource) {
+  const manifest = JSON.parse(readSource(safeSourcePath(policy.manifest)));
   if (
     manifest.name !== installed.name ||
     manifest.version !== installed.version ||
@@ -284,7 +545,7 @@ export function sourceLicenseFiles(installed, policy, source, readSource) {
     throw new Error('Missing unique source license paths');
   return policy.licenses
     .map((path) => {
-      const text = readSource(safePath(path));
+      const text = readSource(safeSourcePath(path));
       if (
         typeof text !== 'string' ||
         !text.trim() ||
@@ -299,7 +560,7 @@ export function sourceLicenseFiles(installed, policy, source, readSource) {
 export function verifiedNodeLicenseFiles(rootDir, installed, run = command, onVerified = () => {}) {
   // Explicit maintained paths, never inferred ancestor grants or canonical text.
   const policies = json(readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'));
-  const policy = policies[installed.name];
+  const policy = policies.node?.[installed.name];
   if (!policy)
     throw new Error(`No authenticated source policy: ${installed.name}@${installed.version}`);
   const integrity = lockedNodeArtifact(
@@ -372,36 +633,15 @@ export function verifiedNodeLicenseFiles(rootDir, installed, run = command, onVe
       ),
     );
     const source = provenanceSource(report, installed, integrity, policy);
-    const gitEnv = {
-      ...publicEnv,
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: '/dev/null',
-      GIT_TERMINAL_PROMPT: '0',
-    };
-    const git = (args, cwd) => run('git', args, cwd, gitEnv);
-    git(['init', '--bare', 'source.git'], temp);
-    const repositoryDir = join(temp, 'source.git');
-    git(
-      [
-        '-c',
-        'core.hooksPath=/dev/null',
-        'fetch',
-        '--depth=1',
-        '--no-tags',
-        `${source.repository}.git`,
-        source.commit,
-      ],
-      repositoryDir,
+    const files = withSourceRepo(rootDir, source, run, ({ git, repositoryDir }) =>
+      sourceLicenseFiles(installed, policy, source, (path) => {
+        // Refuse symlinks/submodules: read a regular blob from the exact tree.
+        const entry = git(['ls-tree', source.commit, '--', path], repositoryDir).trim();
+        if (!/^100644 blob [a-f0-9]{40}\t/.test(entry) || entry.split('\t')[1] !== path)
+          throw new Error(`Missing regular source file: ${path}`);
+        return git(['show', `${source.commit}:${path}`], repositoryDir);
+      }),
     );
-    if (git(['rev-parse', 'FETCH_HEAD'], repositoryDir).trim() !== source.commit)
-      throw new Error('Fetched source commit mismatch');
-    const files = sourceLicenseFiles(installed, policy, source, (path) => {
-      // Refuse symlinks/submodules: read a regular blob from the exact tree.
-      const entry = git(['ls-tree', source.commit, '--', path], repositoryDir).trim();
-      if (!/^100644 blob [a-f0-9]{40}\t/.test(entry) || entry.split('\t')[1] !== path)
-        throw new Error(`Missing regular source file: ${path}`);
-      return git(['show', `${source.commit}:${path}`], repositoryDir);
-    });
     onVerified({
       dependency: `${installed.name}@${installed.version}`,
       integrity,
@@ -494,7 +734,11 @@ export function rustRecords(metadata, attribution) {
     )
       missing.push('used_by.crate');
     if (typeof item.text !== 'string' || !item.text.trim()) missing.push('text');
-    if (typeof item.source_path !== 'string' || !item.source_path.trim())
+    if (
+      item.source_path !== null &&
+      item.source_path !== undefined &&
+      (typeof item.source_path !== 'string' || !item.source_path.trim())
+    )
       missing.push('source_path');
     if (missing.length) {
       const crates = Array.isArray(item.used_by)
@@ -683,22 +927,39 @@ export function generate(rootDir = root, run = command, check = false, onVerifie
     for (const [key, value] of rustRecords(metadata, attribution)) rust.set(key, value);
     for (const pkg of metadata.packages.filter((pkg) => pkg.source !== null)) {
       if (!pkg.manifest_path) throw new Error(`Missing installed Cargo manifest: ${pkg.name}`);
+      const matched = attribution.licenses.filter((item) =>
+        item.used_by.some(({ crate }) => crate.name === pkg.name && crate.version === pkg.version),
+      );
+      let files;
+      try {
+        files = licenseFiles(dirname(pkg.manifest_path), [
+          ...(pkg.license_file ? [resolve(dirname(pkg.manifest_path), pkg.license_file)] : []),
+          ...matched.flatMap((item) => (item.source_path ? [item.source_path] : [])),
+        ]);
+      } catch (error) {
+        if (!error.message.startsWith('Missing installed license files:')) throw error;
+        if (matched.length !== 1)
+          throw new Error(`Ambiguous Rust source attribution: ${pkg.name}@${pkg.version}`);
+        files = [
+          ...licenseFiles(dirname(pkg.manifest_path), [], false),
+          ...verifiedRustLicenseFiles(
+            rootDir,
+            manifest,
+            pkg,
+            license(matched[0].id),
+            run,
+            onVerified,
+          ),
+        ];
+      }
       texts.push({
         ecosystem: 'Rust',
         dependency: `${pkg.name}@${pkg.version}`,
-        files: licenseFiles(dirname(pkg.manifest_path), [
-          ...(pkg.license_file ? [resolve(dirname(pkg.manifest_path), pkg.license_file)] : []),
-          ...attribution.licenses
-            .filter((item) =>
-              item.used_by.some(
-                ({ crate }) => crate.name === pkg.name && crate.version === pkg.version,
-              ),
-            )
-            .map((item) => item.source_path),
-        ]),
+        files,
       });
     }
     for (const item of attribution.licenses) {
+      if (!item.source_path) continue;
       const sourceText = readFileSync(item.source_path, 'utf8');
       if (!sourceText.trim() || sourceText.includes('\uFFFD'))
         throw new Error(`Unreadable Rust source text: ${item.source_path}`);
@@ -836,7 +1097,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (process.argv.includes('--prepare-tools')) prepareTools();
     else
       generate(root, command, process.argv.includes('--check'), (receipt) =>
-        console.log(`Verified npm source: ${JSON.stringify(receipt)}`),
+        console.log(`Verified ${receipt.ecosystem ?? 'npm'} source: ${JSON.stringify(receipt)}`),
       );
   } catch (error) {
     console.error(`NOTICE generation refused: ${error.message}`);
