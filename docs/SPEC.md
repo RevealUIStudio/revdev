@@ -45,17 +45,6 @@ revdev/
 └── config/                         # shared config (Biome, TS, etc.)
 ```
 
-### Studio configuration persistence
-
-Set and reset hold the configuration lock while persisting a complete replacement.
-The store publishes the new in-memory value only after persistence succeeds, so
-rejected changes remain rejected until restart as well. Configuration and Unix
-managed-license files share the same atomic file writer: exclusive temporary
-creation, complete write and file sync, then replacement in the destination
-folder. Failed writes or publication retain the prior destination and clean up
-the temporary file. Unix directories and new files are restricted before private
-bytes are written. This does not assert power-loss durability of directory metadata.
-
 ### Package boundaries
 
 | Package | Public name | Responsibility |
@@ -234,6 +223,17 @@ Tauri 2 desktop app at `apps/studio/`. UI panels:
 UI primitives: Studio consumes `@revealui/presentation` tokens (dogfood Phase 1); the legacy shadow library under `src/components/ui/` is being shimmed away per [`PLAN.md`](./PLAN.md) §W4. Durable carve-outs: `codemirror`/`@codemirror/*` (editor) and `@xterm/*` (terminal). The studio Vitest suite + typecheck + build gate PRs via `studio-release.yml`.
 
 ---
+
+### Configuration persistence
+
+Set and reset hold the configuration lock while persisting a complete replacement.
+The store publishes the new in-memory value only after persistence succeeds, so
+a rejected change is neither exposed by `get_config` nor restored after restart. Configuration and Unix
+managed-license files share the same atomic file writer: exclusive temporary
+creation, complete write and file sync, then replacement in the destination
+folder. Failed writes or publication retain the prior destination and clean up
+the temporary file. Unix directories and new files are restricted before private
+bytes are written. This does not assert power-loss durability of directory metadata.
 
 ## Security posture
 
