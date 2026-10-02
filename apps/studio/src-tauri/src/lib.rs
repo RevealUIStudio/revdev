@@ -62,8 +62,8 @@ pub fn run() {
         .manage(SshState::default())
         .manage(LocalShellState::default())
         .manage(SpawnerState::default())
-        .manage(ConfigState::new())
         .setup(|app| {
+            app.manage(ConfigState::new().map_err(std::io::Error::other)?);
             tray::setup_tray(&app.handle())?;
             harness_watcher::start(app.handle().clone());
             presentment::present_main_window(&app.handle()).map_err(|err| {

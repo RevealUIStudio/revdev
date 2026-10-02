@@ -68,30 +68,72 @@ pub struct ConfigState {
 }
 
 impl ConfigState {
-    pub fn new() -> Self {
-        let config = load_config().unwrap_or_default();
-        Self {
-            config: Mutex::new(config),
+    pub fn new() -> Result<Self, String> {
+        Self::load_at(&config_path()?)
+    }
+
+    fn load_at(path: &std::path::Path) -> Result<Self, String> {
+        Ok(Self {
+            config: Mutex::new(load_config_at(path)?),
+        })
+    }
+}
+
+fn config_path() -> Result<PathBuf, String> {
+    config_path_from(dirs::config_dir())
+}
+
+fn config_path_from(base: Option<PathBuf>) -> Result<PathBuf, String> {
+    let base =
+        base.ok_or_else(|| "Cannot locate the Studio configuration directory".to_string())?;
+    Ok(base.join("revealui-studio").join("config.json"))
+}
+
+fn load_config_at(path: &std::path::Path) -> Result<StudioConfig, String> {
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // A dangling leaf or ancestor link is not a new installation.
+            let mut ancestor = path.to_path_buf();
+            loop {
+                match fs::symlink_metadata(&ancestor) {
+                    Ok(_) if ancestor == path => {
+                        return Err("Cannot read existing Studio configuration entry".into());
+                    }
+                    Ok(metadata) if metadata.file_type().is_symlink() => {
+                        fs::metadata(&ancestor).map_err(|error| {
+                            format!("Cannot resolve Studio configuration ancestor: {error}")
+                        })?;
+                        break;
+                    }
+                    Ok(_) => break,
+                    Err(probe) if probe.kind() == std::io::ErrorKind::NotFound => {
+                        if !ancestor.pop() {
+                            return Err("Cannot establish absence of Studio configuration".into());
+                        }
+                    }
+                    Err(probe) => {
+                        return Err(format!("Cannot inspect Studio configuration: {probe}"))
+                    }
+                }
+            }
+            return Ok(StudioConfig::default());
         }
-    }
-}
-
-fn config_path() -> PathBuf {
-    let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join("revealui-studio").join("config.json")
-}
-
-fn load_config() -> Result<StudioConfig, String> {
-    let path = config_path();
-    if !path.exists() {
-        return Ok(StudioConfig::default());
-    }
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+        Err(error) => return Err(format!("Cannot read Studio configuration: {error}")),
+    };
+    serde_json::from_str(&content).map_err(|error| {
+        // Saved wizard drafts may contain secrets; diagnostics must not echo values.
+        format!(
+            "Cannot parse Studio configuration ({:?}) at line {}, column {}",
+            error.classify(),
+            error.line(),
+            error.column()
+        )
+    })
 }
 
 pub fn save_config(config: &StudioConfig) -> Result<(), String> {
-    save_config_at(&config_path(), config)
+    save_config_at(&config_path()?, config)
 }
 
 fn save_config_at(path: &std::path::Path, config: &StudioConfig) -> Result<(), String> {
