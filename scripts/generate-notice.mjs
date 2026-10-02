@@ -712,10 +712,19 @@ export function nodeRecords(graph, grouped, workspaceNames, loadMetadata) {
     if (!expected.has(key)) throw new Error(`Node: uninventoried attribution for ${key}`);
   return records;
 }
-export function rustRecords(metadata, attribution) {
-  if (!Array.isArray(metadata.packages) || !metadata.resolve?.nodes)
+function resolvedRustPackages(metadata) {
+  if (!Array.isArray(metadata.packages) || !Array.isArray(metadata.resolve?.nodes))
     throw new Error('Incomplete Cargo metadata');
-  const external = metadata.packages.filter((pkg) => pkg.source !== null);
+  const byId = new Map(metadata.packages.map((pkg) => [pkg.id, pkg]));
+  if (byId.size !== metadata.packages.length || byId.has(undefined))
+    throw new Error('Ambiguous Cargo package identities');
+  const ids = metadata.resolve.nodes.map((node) => node.id);
+  if (new Set(ids).size !== ids.length || ids.some((id) => !byId.has(id)))
+    throw new Error('Unresolved Cargo package identities');
+  return ids.map((id) => byId.get(id)).filter((pkg) => pkg.source !== null);
+}
+export function rustRecords(metadata, attribution) {
+  const external = resolvedRustPackages(metadata);
   const expected = new Set(external.map((pkg) => `${pkg.name}@${pkg.version}`));
   const records = new Map();
   if (!Array.isArray(attribution.licenses)) throw new Error('Malformed cargo-about output');
@@ -761,6 +770,8 @@ export function rustRecords(metadata, attribution) {
     }
   }
   requireCoverage(expected, records, 'Rust');
+  for (const key of records.keys())
+    if (!expected.has(key)) throw new Error(`Rust: uninventoried attribution for ${key}`);
   return records;
 }
 // RFC 4180 parser: quoted commas/newlines must never shift license columns.
@@ -925,7 +936,7 @@ export function generate(rootDir = root, run = command, check = false, onVerifie
       ),
     );
     for (const [key, value] of rustRecords(metadata, attribution)) rust.set(key, value);
-    for (const pkg of metadata.packages.filter((pkg) => pkg.source !== null)) {
+    for (const pkg of resolvedRustPackages(metadata)) {
       if (!pkg.manifest_path) throw new Error(`Missing installed Cargo manifest: ${pkg.name}`);
       const matched = attribution.licenses.filter((item) =>
         item.used_by.some(({ crate }) => crate.name === pkg.name && crate.version === pkg.version),

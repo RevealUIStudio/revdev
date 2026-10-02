@@ -69,8 +69,8 @@ test.each([
 ])('rejects placeholder license %s', (value) => expect(() => license(value)).toThrow());
 test('Rust metadata inventory cannot silently disappear from cargo-about output', () => {
   const metadata = {
-    packages: [{ name: 'crate', version: '1', source: 'registry' }],
-    resolve: { nodes: [] },
+    packages: [{ id: 'crate@1', name: 'crate', version: '1', source: 'registry' }],
+    resolve: { nodes: [{ id: 'crate@1' }] },
   };
   expect(() => rustRecords(metadata, { licenses: [] })).toThrow('crate@1');
   expect(
@@ -85,6 +85,30 @@ test('Rust metadata inventory cannot silently disappear from cargo-about output'
       ],
     }).get('crate@1'),
   ).toBe('MIT');
+});
+test('Rust attribution covers resolved packages, not inactive optional metadata packages', () => {
+  const metadata = {
+    packages: [
+      { id: 'active@1', name: 'active', version: '1', source: 'registry' },
+      { id: 'inactive@1', name: 'inactive', version: '1', source: 'registry' },
+    ],
+    resolve: { nodes: [{ id: 'active@1' }] },
+  };
+  const attribution = {
+    licenses: [
+      {
+        id: 'MIT',
+        text: 'Original text',
+        source_path: '/synthetic/LICENSE',
+        used_by: [{ crate: { name: 'active', version: '1' } }],
+      },
+    ],
+  };
+  expect([...rustRecords(metadata, attribution)]).toEqual([['active@1', 'MIT']]);
+  attribution.licenses[0].used_by.push({ crate: { name: 'inactive', version: '1' } });
+  expect(() => rustRecords(metadata, attribution)).toThrow(
+    'uninventoried attribution for inactive@1',
+  );
 });
 test('Go requires every external imported package to have a license root', () => {
   const packages = [{ ImportPath: 'example.org/lib/sub', Module: { Path: 'example.org/lib' } }];
@@ -171,13 +195,14 @@ function completeFixture(lateFailure = false, junk = false) {
       return JSON.stringify({
         packages: [
           {
+            id: 'rustDep@2',
             name: 'rustDep',
             version: '2',
             source: 'registry',
             manifest_path: join(rustPath, 'Cargo.toml'),
           },
         ],
-        resolve: { nodes: [] },
+        resolve: { nodes: [{ id: 'rustDep@2' }] },
       });
     if (tool === 'cargo-about' && args[0] === 'generate') {
       expect(args).toContain('--fail');
@@ -257,7 +282,7 @@ function rustSourceFixture({ dirty = false, upstreamVersion = '2', relocatedRead
       '-czf',
       archive,
       '-C',
-      join(cacheDir, '..', 'src', index),
+      join(cacheDir, '..', '..', 'src', index),
       `${name}-${version}/.cargo_vcs_info.json`,
       `${name}-${version}/Cargo.toml`,
       `${name}-${version}/Cargo.toml.orig`,
@@ -401,8 +426,8 @@ test('pinned tool preparation installs only into the maintained workspace tool d
 
 test('Rust canonical fallback text classifies a crate but cannot supply its original grant', () => {
   const metadata = {
-    packages: [{ name: 'crate', version: '1', source: 'registry' }],
-    resolve: { nodes: [] },
+    packages: [{ id: 'crate@1', name: 'crate', version: '1', source: 'registry' }],
+    resolve: { nodes: [{ id: 'crate@1' }] },
   };
   expect(
     rustRecords(metadata, {
@@ -446,11 +471,13 @@ test('Rust grouped canonical text does not borrow one crate grant for another', 
     if (tool === 'cargo' && args[0] === 'metadata') {
       const data = JSON.parse(result);
       data.packages.push({
+        id: 'otherRustDep@3',
         name: 'otherRustDep',
         version: '3',
         source: 'registry',
         manifest_path: join(second, 'Cargo.toml'),
       });
+      data.resolve.nodes.push({ id: 'otherRustDep@3' });
       return JSON.stringify(data);
     }
     if (tool === 'cargo-about' && args[0] === 'generate') {
@@ -484,8 +511,8 @@ test('Rust local original license remains valid when cargo-about has no group so
 });
 test('Rust attribution refuses malformed used-by records with an actionable license diagnostic', () => {
   const metadata = {
-    packages: [{ name: 'crate', version: '1', source: 'registry' }],
-    resolve: { nodes: [] },
+    packages: [{ id: 'crate@1', name: 'crate', version: '1', source: 'registry' }],
+    resolve: { nodes: [{ id: 'crate@1' }] },
   };
   expect(() =>
     rustRecords(metadata, {
