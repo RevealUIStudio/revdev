@@ -23,13 +23,10 @@ interface StepDatabaseProps {
   onNext: () => Promise<void>;
 }
 
-export default function StepDatabase({
-  config: _config,
-  data,
-  onUpdateData,
-  onNext,
-}: StepDatabaseProps) {
+export default function StepDatabase({ config, data, onUpdateData, onNext }: StepDatabaseProps) {
   const [postgresUrl, setPostgresUrl] = useState(data.postgresUrl || '');
+  const [repoPath, setRepoPath] = useState(config.develop?.repoPath ?? '');
+  const [target, setTarget] = useState<{ repoPath: string; connectionString: string } | null>(null);
   const [phase, setPhase] = useState<Phase>('input');
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<'migrate' | 'seed' | null>(null);
@@ -37,13 +34,16 @@ export default function StepDatabase({
   const isRunning = phase !== 'input' && phase !== 'done';
 
   async function handleConnect() {
-    if (!postgresUrl.trim()) return;
+    if (!postgresUrl.trim() || !repoPath.trim()) return;
 
     setError(null);
+    setTarget(null);
+    const selected = { repoPath: repoPath.trim(), connectionString: postgresUrl.trim() };
 
     try {
       setPhase('testing');
-      await neonTestConnection(postgresUrl.trim());
+      await neonTestConnection(selected.connectionString);
+      setTarget(selected);
       setPendingAction('migrate');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Database setup failed');
@@ -52,12 +52,13 @@ export default function StepDatabase({
   }
 
   async function handleConfirmMigrate() {
+    if (pendingAction !== 'migrate' || target === null) return;
     setPendingAction(null);
     setError(null);
 
     try {
       setPhase('migrating');
-      await runDbMigrate('.');
+      await runDbMigrate(target.repoPath, target.connectionString);
       setPendingAction('seed');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Migration failed');
@@ -66,16 +67,17 @@ export default function StepDatabase({
   }
 
   async function handleConfirmSeed() {
+    if (pendingAction !== 'seed' || target === null) return;
     setPendingAction(null);
     setError(null);
 
     try {
       setPhase('seeding');
-      await runDbSeed('.');
+      await runDbSeed(target.repoPath, target.connectionString);
 
       setPhase('done');
       onUpdateData({
-        postgresUrl: postgresUrl.trim(),
+        postgresUrl: target.connectionString,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Seeding failed');
@@ -84,8 +86,17 @@ export default function StepDatabase({
   }
 
   function handleDialogClose() {
+    setTarget(null);
     setPendingAction(null);
     setPhase('input');
+  }
+
+  let databaseTarget = 'Selected database';
+  try {
+    const url = new URL(target?.connectionString ?? '');
+    databaseTarget = `${url.host}${url.pathname}`;
+  } catch {
+    // The native connection test reports invalid URLs before confirmation.
   }
 
   return (
@@ -95,6 +106,15 @@ export default function StepDatabase({
       error={error}
     >
       <div className="flex flex-col gap-4">
+        <Input
+          id="database-project-path"
+          label="RevealUI project directory"
+          hint="Workspace root containing package.json and pnpm-workspace.yaml"
+          value={repoPath}
+          onChange={(e) => setRepoPath(e.target.value)}
+          disabled={isRunning || phase === 'done'}
+          mono
+        />
         <Input
           id="postgres-url"
           label="PostgreSQL Connection String"
@@ -118,7 +138,7 @@ export default function StepDatabase({
             variant="primary"
             onClick={handleConnect}
             loading={isRunning}
-            disabled={!postgresUrl.trim() || isRunning || phase === 'done'}
+            disabled={!postgresUrl.trim() || !repoPath.trim() || isRunning || phase === 'done'}
           >
             Connect &amp; Migrate
           </Button>
@@ -138,9 +158,15 @@ export default function StepDatabase({
         open={pendingAction !== null}
         title={pendingAction === 'seed' ? 'Seed database?' : 'Run schema migration?'}
         body={
-          pendingAction === 'seed'
-            ? 'Seeding will insert or replace rows in the target database. Existing data in seeded tables may be overwritten and cannot be recovered.'
-            : 'This will apply pending schema migrations to the target database, altering its structure. Ensure you have a backup before proceeding.'
+          <>
+            <p>Database: {databaseTarget}</p>
+            <p>Project: {target?.repoPath}</p>
+            <p>
+              {pendingAction === 'seed'
+                ? 'Seeding will insert or replace rows in this database. Existing data in seeded tables may be overwritten and cannot be recovered.'
+                : 'This will apply pending schema migrations to this database, altering its structure. Ensure you have a backup before proceeding.'}
+            </p>
+          </>
         }
         confirmLabel={pendingAction === 'seed' ? 'Seed database' : 'Run migration'}
         typeToConfirm={pendingAction === 'seed' ? 'seed' : undefined}

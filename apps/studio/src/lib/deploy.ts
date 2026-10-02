@@ -75,14 +75,14 @@ export async function neonTestConnection(connectionString: string): Promise<stri
   return tauriInvoke<string>('neon_test_connection', { connectionString });
 }
 
-export async function runDbMigrate(repoPath: string): Promise<string> {
+export async function runDbMigrate(repoPath: string, connectionString: string): Promise<string> {
   if (!isTauri()) return 'Migrations complete (mock)';
-  return tauriInvoke<string>('run_db_migrate', { repoPath });
+  return tauriInvoke<string>('run_db_migrate', { repoPath, connectionString });
 }
 
-export async function runDbSeed(repoPath: string): Promise<string> {
+export async function runDbSeed(repoPath: string, connectionString: string): Promise<string> {
   if (!isTauri()) return 'Seed complete (mock)';
-  return tauriInvoke<string>('run_db_seed', { repoPath });
+  return tauriInvoke<string>('run_db_seed', { repoPath, connectionString });
 }
 
 // ── Stripe ─────────────────────────────────────────────────────────────────

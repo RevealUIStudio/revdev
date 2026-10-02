@@ -256,6 +256,27 @@ reads preserve UTF-8 content and trailing whitespace; literal pathspecs prevent
 file names from selecting other entries. Unborn HEAD is distinguished from a
 corrupt HEAD, and unmerged index entries remain errors.
 
+### Deployment database target
+
+Database setup requires an absolute RevealUI workspace directory and an explicit
+PostgreSQL URL with host and database name. The tested target is held through
+migration and seed confirmations; cancellation or failed testing runs neither
+mutation. Native commands validate the workspace and supply the chosen URL to
+both database environment keys used by its maintained scripts. An unmatched
+pnpm database package filter is an error.
+
+This contract covers Studio's confirmed target and child command configuration.
+The downstream RevealUI seed loader currently demotes explicitly supplied
+passwordless URLs before loading dotenv files; repairing that loader is required
+before claiming end-to-end target fidelity for those URLs. Studio must not
+introduce a separate loader or override to conceal that dependency.
+
+Connection testing passes a password-redacted URI as psql's explicit database
+argument. URI passwords remain in the child environment; routing defaults from
+ambient libpq settings cannot replace the target. Routing aliases in query
+parameters are rejected, while SSL options remain supported. Confirmation shows
+the project and host/database without credentials.
+
 ### Configuration persistence
 
 Startup loads configuration before registering the store or starting background
