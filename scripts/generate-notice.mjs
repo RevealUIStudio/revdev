@@ -973,9 +973,7 @@ export function generate(rootDir = root, run = command, check = false, onVerifie
     for (const [key, value] of rustRecords(metadata, attribution, tree)) rust.set(key, value);
     const prepared = [];
     const missingPolicies = [];
-    const sourcePolicies = json(
-      readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'),
-    );
+    let sourcePolicies;
     for (const pkg of resolvedRustPackages(metadata, tree)) {
       if (!pkg.manifest_path) throw new Error(`Missing installed Cargo manifest: ${pkg.name}`);
       const matched = attribution.licenses.filter((item) =>
@@ -991,6 +989,9 @@ export function generate(rootDir = root, run = command, check = false, onVerifie
         if (!error.message.startsWith('Missing installed license files:')) throw error;
         if (matched.length !== 1)
           throw new Error(`Ambiguous Rust source attribution: ${pkg.name}@${pkg.version}`);
+        sourcePolicies ??= json(
+          readFileSync(join(rootDir, 'scripts/notice-source-policy.json'), 'utf8'),
+        );
         if (!sourcePolicies.rust?.[`${pkg.name}@${pkg.version}`])
           missingPolicies.push(`${pkg.name}@${pkg.version}`);
         files = licenseFiles(dirname(pkg.manifest_path), [], false);
