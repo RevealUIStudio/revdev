@@ -71,17 +71,7 @@ fn connection_test_command(connection_string: &str) -> Result<Command, StudioErr
     } else {
         command.env_remove("PGPASSWORD");
     }
-    // Unset target-routing defaults cannot redirect an explicit selected URI.
-    for key in [
-        "PGHOST",
-        "PGHOSTADDR",
-        "PGPORT",
-        "PGDATABASE",
-        "PGSERVICE",
-        "PGSERVICEFILE",
-    ] {
-        command.env_remove(key);
-    }
+    clear_database_routing_defaults(&mut command);
     command.env("PGCONNECT_TIMEOUT", "10").args([
         "--dbname",
         url.as_str(),
@@ -93,6 +83,21 @@ fn connection_test_command(connection_string: &str) -> Result<Command, StudioErr
         "SELECT NOW()",
     ]);
     Ok(command)
+}
+
+fn clear_database_routing_defaults(command: &mut Command) {
+    // A URL without an explicit port must use the same default during its
+    // connection test, migration and seed rather than inherit ambient PGPORT.
+    for key in [
+        "PGHOST",
+        "PGHOSTADDR",
+        "PGPORT",
+        "PGDATABASE",
+        "PGSERVICE",
+        "PGSERVICEFILE",
+    ] {
+        command.env_remove(key);
+    }
 }
 
 fn decode_uri_component(encoded: &str) -> Result<String, StudioError> {
@@ -162,6 +167,7 @@ fn project_database_command(
         ));
     }
     let mut command = Command::new("pnpm");
+    clear_database_routing_defaults(&mut command);
     command
         .args(args)
         .current_dir(root)
