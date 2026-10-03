@@ -7,6 +7,57 @@
     }
   },
   "rust": {
+    "age@0.11.3": {
+      "repository": "https://github.com/str4d/rage",
+      "publishedRepository": "https://github.com/str4d/rage",
+      "commit": "681faceaf70973a691cee594f3ab0944cf0065e5",
+      "cratePath": "age",
+      "workspaceManifest": "Cargo.toml",
+      "license": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "grants": [
+        {
+          "path": "LICENSE-MIT",
+          "sha256": "fe56c030c2d8c3404a37fe711cebb27ebea13d0aacf7e3524db4198335ad8cd1"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "sha256": "3708458dee7f359ac6c9c5558023ed481be87e5372c43ebd7f2ca7ad23c12026"
+        }
+      ]
+    },
+    "age-core@0.11.0": {
+      "repository": "https://github.com/str4d/rage",
+      "publishedRepository": "https://github.com/str4d/rage",
+      "commit": "17446612f865c705e44fe392d9d41dd102fed137",
+      "cratePath": "age-core",
+      "workspaceManifest": "Cargo.toml",
+      "license": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "grants": [
+        {
+          "path": "LICENSE-MIT",
+          "sha256": "fe56c030c2d8c3404a37fe711cebb27ebea13d0aacf7e3524db4198335ad8cd1"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "sha256": "3708458dee7f359ac6c9c5558023ed481be87e5372c43ebd7f2ca7ad23c12026"
+        }
+      ]
+    },
+    "cookie-factory@0.3.3": {
+      "repository": "https://github.com/rust-bakery/cookie-factory",
+      "publishedRepository": "https://github.com/rust-bakery/cookie-factory",
+      "commit": "d36b805dbd7dd65f2df947235c5bcc573afe2c76",
+      "cratePath": "",
+      "license": "MIT",
+      "grants": [
+        {
+          "path": "LICENSES/MIT.txt",
+          "sha256": "d09216dc1ea5f273997667935a8d6514d80f00b89fb6954ecc3a43e0a6e360de"
+        }
+      ]
+    },
     "russh@0.62.5": {
       "repository": "https://github.com/Eugeny/russh",
       "publishedRepository": "https://github.com/warp-tech/russh",

@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import {
   csv,
@@ -251,16 +251,27 @@ function completeFixture(lateFailure = false, junk = false) {
   };
   return { dir, run };
 }
-function rustSourceFixture({ dirty = false, upstreamVersion = '2', relocatedReadme = false } = {}) {
+function rustSourceFixture({
+  dirty = false,
+  upstreamVersion = '2',
+  relocatedReadme = false,
+  inherited = false,
+  rootCrate = false,
+} = {}) {
   const dir = fixture();
   const name = 'rustDep';
   const version = '2';
   const key = `${name}@${version}`;
   const commit = 'a'.repeat(40);
   const repository = 'https://github.com/example/rust-workspace';
-  const cratePath = 'crates/rustDep';
-  const grant = 'Original Apache-2.0 grant\n';
-  const manifest = `[package]\nname = "${name}"\nversion = "${version}"\nlicense = "Apache-2.0"\n${relocatedReadme ? 'readme = "../README.md"\n' : ''}`;
+  const cratePath = rootCrate ? '' : 'crates/rustDep';
+  const grant = inherited ? 'Original MIT grant\n' : 'Original Apache-2.0 grant\n';
+  const licenseExpression = inherited ? 'MIT OR Apache-2.0' : 'Apache-2.0';
+  const identityFields = inherited
+    ? 'license.workspace = true\nrepository.workspace = true\n'
+    : `license = "${licenseExpression}"\nrepository = "${repository}"\n`;
+  const manifest = `[package]\nname = "${name}"\nversion = "${version}"\n${identityFields}${relocatedReadme ? 'readme = "../README.md"\n' : ''}`;
+  const workspaceManifest = `[workspace]\nmembers = ["${cratePath}"]\n\n[workspace.package]\nlicense = "${licenseExpression}"\nrepository = "${repository}"\n`;
   const upstreamManifest = manifest.replace(
     `version = "${version}"`,
     `version = "${upstreamVersion}"`,
@@ -314,7 +325,8 @@ function rustSourceFixture({ dirty = false, upstreamVersion = '2', relocatedRead
     publishedRepository: repository,
     commit,
     cratePath,
-    license: 'Apache-2.0',
+    ...(inherited ? { workspaceManifest: 'Cargo.toml', selectedLicense: 'MIT' } : {}),
+    license: licenseExpression,
     grants: [{ path: 'LICENSE.txt', sha256: createHash('sha256').update(grant).digest('hex') }],
   };
   const writePolicy = () =>
@@ -329,12 +341,13 @@ function rustSourceFixture({ dirty = false, upstreamVersion = '2', relocatedRead
     source: 'registry+https://github.com/rust-lang/crates.io-index',
     manifest_path: join(sourceDir, 'Cargo.toml'),
     repository,
-    license: 'Apache-2.0',
+    license: licenseExpression,
   };
   const source = new Map([
-    [`${cratePath}/Cargo.toml`, upstreamManifest],
-    [`${cratePath}/src/lib.rs`, code],
+    [posix.join(cratePath, 'Cargo.toml'), upstreamManifest],
+    [posix.join(cratePath, 'src/lib.rs'), code],
     ['LICENSE.txt', grant],
+    ...(inherited ? [['Cargo.toml', workspaceManifest]] : []),
     ...(relocatedReadme ? [['crates/README.md', 'Workspace readme\n']] : []),
   ]);
   const run = (tool, args) => {
@@ -586,6 +599,77 @@ test('Rust packaged workspace README must match its declared source path', () =>
     verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
   ).toThrow('packaged source differs');
 });
+test('Rust inherited license and repository require the pinned workspace manifest and membership', () => {
+  const f = rustSourceFixture({ inherited: true });
+  const receipts = [];
+  const files = verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'MIT', f.run, (receipt) =>
+    receipts.push(receipt),
+  );
+  expect(files[0].text).toBe('Original MIT grant\n');
+  expect(receipts[0].workspaceManifest).toMatchObject({
+    path: 'Cargo.toml',
+    sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
+  f.source.set(
+    'Cargo.toml',
+    '[workspace]\nmembers = ["other"]\n[workspace.package]\nlicense = "MIT OR Apache-2.0"\nrepository = "https://github.com/example/rust-workspace"\n',
+  );
+  expect(() => verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'MIT', f.run)).toThrow(
+    'workspace member',
+  );
+});
+test('Rust inherited fields reject an unpinned workspace or different workspace license', () => {
+  const f = rustSourceFixture({ inherited: true });
+  delete f.policy.workspaceManifest;
+  f.writePolicy();
+  expect(() => verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'MIT', f.run)).toThrow(
+    'Unauthenticated Rust workspace license',
+  );
+  f.policy.workspaceManifest = 'Cargo.toml';
+  f.writePolicy();
+  f.source.set(
+    'Cargo.toml',
+    '[workspace]\nmembers = ["crates/rustDep"]\n[workspace.package]\nlicense = "Apache-2.0"\nrepository = "https://github.com/example/rust-workspace"\n',
+  );
+  expect(() => verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'MIT', f.run)).toThrow(
+    'original manifest identity mismatch',
+  );
+  f.source.set(
+    'Cargo.toml',
+    '[workspace]\nmembers = ["crates/rustDep"]\n[workspace.package]\nlicense = "MIT OR Apache-2.0"\nrepository = "https://github.com/another/project"\n',
+  );
+  expect(() => verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'MIT', f.run)).toThrow(
+    'original manifest identity mismatch',
+  );
+});
+test('Rust original package repository must match published metadata', () => {
+  const f = rustSourceFixture();
+  f.source.set(
+    `${f.policy.cratePath}/Cargo.toml`,
+    '[package]\nname = "rustDep"\nversion = "2"\nlicense = "Apache-2.0"\nrepository = "https://github.com/another/project"\n',
+  );
+  expect(() =>
+    verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
+  ).toThrow('original manifest identity mismatch');
+});
+test('Rust root crate can authenticate original grant with empty VCS source path', () => {
+  const f = rustSourceFixture({ rootCrate: true });
+  const receipts = [];
+  const files = verifiedRustLicenseFiles(
+    f.dir,
+    f.cargoManifest,
+    f.pkg,
+    'Apache-2.0',
+    f.run,
+    (receipt) => receipts.push(receipt),
+  );
+  expect(files[0].text).toBe('Original Apache-2.0 grant\n');
+  expect(receipts[0].comparedFiles).toBe(1);
+  f.source.set('src/lib.rs', 'changed root source');
+  expect(() =>
+    verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
+  ).toThrow('packaged source differs');
+});
 test('Rust dirty source accepts only a package-version release delta with identical code', () => {
   const f = rustSourceFixture({ dirty: true, upstreamVersion: '1' });
   const receipts = [];
@@ -595,7 +679,7 @@ test('Rust dirty source accepts only a package-version release delta with identi
   expect(receipts[0].dirty).toBe(true);
   f.source.set(
     `${f.policy.cratePath}/Cargo.toml`,
-    '[package]\nname = "rustDep"\nversion = "1"\nlicense = "MIT"\n',
+    `[package]\nname = "rustDep"\nversion = "1"\nlicense = "MIT"\nrepository = "${f.policy.repository}"\n`,
   );
   expect(() =>
     verifiedRustLicenseFiles(f.dir, f.cargoManifest, f.pkg, 'Apache-2.0', f.run),
