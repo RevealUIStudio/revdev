@@ -29,9 +29,9 @@ import (
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/ssh"
 	"charm.land/wish/v2"
 	bm "charm.land/wish/v2/bubbletea"
-	"github.com/charmbracelet/ssh"
 
 	gossh "golang.org/x/crypto/ssh"
 

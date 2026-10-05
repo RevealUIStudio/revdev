@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
 	"github.com/gorilla/websocket"
 
 	"github.com/RevealUIStudio/revdev/apps/console/api"
