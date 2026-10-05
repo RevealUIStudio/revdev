@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/ssh"
+	"charm.land/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/RevealUIStudio/revdev/apps/console/api"
