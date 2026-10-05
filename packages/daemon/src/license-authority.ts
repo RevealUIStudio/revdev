@@ -285,6 +285,7 @@ export async function verifyRegisteredLicense(
       cache: 'no-store',
       signal,
       headers: { 'Content-Type': 'application/json' },
+      // codeql[js/file-access-to-http] intended licenseKey POST to fixed LICENSE_API_ORIGIN.
       body: JSON.stringify({ licenseKey, requireRegistration: true }),
     });
     if (
