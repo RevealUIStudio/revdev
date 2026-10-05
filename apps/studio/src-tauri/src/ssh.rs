@@ -201,8 +201,17 @@ impl client::Handler for SshClientHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        server_public_key: &russh::keys::PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // russh 0.63+ may present a host certificate. known_hosts here stores
+        // raw keys only, so a certificate is rejected rather than learned.
+        let russh::keys::PublicKeyOrCertificate::PublicKey {
+            key: server_public_key,
+            ..
+        } = server_public_key
+        else {
+            return Ok(false);
+        };
         let fingerprint = compute_fingerprint(server_public_key);
         let key_type = server_public_key.algorithm().as_str().to_string();
 
