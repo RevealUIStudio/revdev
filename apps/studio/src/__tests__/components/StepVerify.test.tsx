@@ -81,8 +81,8 @@ describe('StepVerify', () => {
   it('renders title and description', () => {
     renderStep();
 
-    expect(screen.getByText('Bootstrap & Verify')).toBeInTheDocument();
-    expect(screen.getByText(/Create admin account/)).toBeInTheDocument();
+    expect(screen.getByText('Configure & Check')).toBeInTheDocument();
+    expect(screen.getByText(/Configure admin sign-in/)).toBeInTheDocument();
   });
 
   it('renders admin email and password inputs', () => {
@@ -92,14 +92,14 @@ describe('StepVerify', () => {
     expect(screen.getByLabelText('Admin Password')).toBeInTheDocument();
   });
 
-  it('renders all five check rows including Email Delivery', () => {
+  it('renders all five check rows including the previous test send', () => {
     renderStep();
 
-    expect(screen.getByText('API Health')).toBeInTheDocument();
-    expect(screen.getByText('Admin')).toBeInTheDocument();
-    expect(screen.getByText('Marketing')).toBeInTheDocument();
-    expect(screen.getByText('Database (via API)')).toBeInTheDocument();
-    expect(screen.getByText('Email Delivery')).toBeInTheDocument();
+    expect(screen.getByText('API readiness endpoint')).toBeInTheDocument();
+    expect(screen.getByText('Admin response')).toBeInTheDocument();
+    expect(screen.getByText('Marketing response')).toBeInTheDocument();
+    expect(screen.getByText('API liveness endpoint')).toBeInTheDocument();
+    expect(screen.getByText('Test email send')).toBeInTheDocument();
   });
 
   it('renders Run Checks button', () => {
@@ -250,7 +250,7 @@ describe('StepVerify', () => {
     expect(mockHealthCheck).toHaveBeenCalledWith('https://api.myapp.dev/health/live');
   });
 
-  it('runs all checks including email delivery on valid input', async () => {
+  it('runs all checks including the recorded email send on valid input', async () => {
     renderStep();
 
     fireEvent.change(screen.getByLabelText('Admin Email'), {
@@ -262,7 +262,9 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Test email sent')).toBeInTheDocument();
+      expect(
+        screen.getByText('Previous test send succeeded. Check the recipient inbox.'),
+      ).toBeInTheDocument();
     });
 
     expect(mockHealthCheck).toHaveBeenCalledTimes(4);
@@ -280,7 +282,7 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/All checks passed/)).toBeInTheDocument();
+      expect(screen.getByText(/The listed checks passed/)).toBeInTheDocument();
     });
 
     const completeBtn = screen.getByRole('button', { name: /complete setup/i });
@@ -302,7 +304,7 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/All checks passed/)).toBeInTheDocument();
+      expect(screen.getByText(/The listed checks passed/)).toBeInTheDocument();
     });
 
     expect(screen.queryByRole('button', { name: /run checks/i })).not.toBeInTheDocument();
@@ -320,16 +322,16 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/All checks passed/)).toBeInTheDocument();
+      expect(screen.getByText(/The listed checks passed/)).toBeInTheDocument();
     });
 
     expect(screen.getByLabelText('Admin Email')).toBeDisabled();
     expect(screen.getByLabelText('Admin Password')).toBeDisabled();
   });
 
-  // -- Email delivery — Gmail provider ------------------------------------
+  // -- Test send — Gmail provider ------------------------------------
 
-  it('fails email delivery when no test send has succeeded', async () => {
+  it('keeps completion unavailable when no test send has succeeded', async () => {
     renderStep({
       data: {
         emailProvider: 'gmail',
@@ -348,7 +350,7 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Not verified/)).toBeInTheDocument();
+      expect(screen.getByText(/No successful test send recorded/)).toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: /complete setup/i })).toBeDisabled();
   });
@@ -544,7 +546,28 @@ describe('StepVerify', () => {
 
   // -- HTTP status boundary -----------------------------------------------
 
-  it('treats HTTP 301 redirect as pass (2xx-3xx range)', async () => {
+  it('keeps setup incomplete when browser preview cannot make real health requests', async () => {
+    const actualDeploy =
+      await vi.importActual<typeof import('../../lib/deploy')>('../../lib/deploy');
+    mockHealthCheck.mockImplementation(actualDeploy.healthCheck);
+    renderStep();
+
+    fireEvent.change(screen.getByLabelText('Admin Email'), {
+      target: { value: 'admin@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Admin Password'), {
+      target: { value: 'securepassword123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Demo mode cannot check deployment responses/)).toHaveLength(4);
+    });
+    expect(screen.getByRole('button', { name: /complete setup/i })).toBeDisabled();
+    expect(screen.queryByText('HTTP 200')).not.toBeInTheDocument();
+  });
+
+  it('reports passing HTTP redirects without claiming deployment verification', async () => {
     mockHealthCheck.mockResolvedValue(301);
 
     renderStep();
@@ -558,7 +581,11 @@ describe('StepVerify', () => {
     fireEvent.click(screen.getByRole('button', { name: /run checks/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/All checks passed/)).toBeInTheDocument();
+      expect(screen.getByText(/The listed checks passed/)).toBeInTheDocument();
     });
+    expect(screen.getAllByText('HTTP 301')).toHaveLength(4);
+    expect(screen.getByText(/Complete the remaining verification/)).toBeInTheDocument();
+    expect(screen.getByText(/Check the recipient inbox/)).toBeInTheDocument();
+    expect(screen.queryByText(/Your RevealUI instance is live/)).not.toBeInTheDocument();
   });
 });

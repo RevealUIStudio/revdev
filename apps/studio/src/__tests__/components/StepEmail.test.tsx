@@ -73,6 +73,9 @@ describe('StepEmail', () => {
     renderStep({ emailVerified: true });
 
     expect(screen.getByText('Next')).not.toBeDisabled();
+    expect(
+      screen.getByText('Previous test send succeeded. Check the recipient inbox.'),
+    ).toBeInTheDocument();
   });
 
   it('disables Save Config when credentials are empty', () => {
@@ -198,7 +201,10 @@ describe('StepEmail', () => {
       );
     });
     expect(onUpdateData).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: true }));
-    expect(screen.getByText(/Gmail message id msg-1/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Gmail accepted the test message. Message id msg-1/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Check the recipient inbox/)).toBeInTheDocument();
   });
 
   it('surfaces a probe failure and does not mark verified', async () => {

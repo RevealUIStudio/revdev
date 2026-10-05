@@ -30,7 +30,7 @@ export default function StepEmail({
   const [probing, setProbing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<string | null>(
-    data.emailVerified ? 'Previous test send succeeded.' : null,
+    data.emailVerified ? 'Previous test send succeeded. Check the recipient inbox.' : null,
   );
 
   const isConfigured =
@@ -89,7 +89,9 @@ export default function StepEmail({
         emailFrom: emailFrom.trim(),
         emailVerified: true,
       });
-      setProbeResult(`Sent. Gmail message id ${result.messageId}`);
+      setProbeResult(
+        `Gmail accepted the test message. Message id ${result.messageId}. Check the recipient inbox.`,
+      );
     } catch (err) {
       onUpdateData({ emailVerified: false });
       setError(err instanceof Error ? err.message : 'Test send failed');
@@ -143,7 +145,7 @@ export default function StepEmail({
         <Input
           id="email-test-to"
           label="Send test to"
-          hint="A real inbox you can check. Next stays disabled until this send succeeds."
+          hint="Send to an inbox you can check. Next becomes available after a successful send."
           type="email"
           placeholder="you@yourdomain.com"
           value={testTo}

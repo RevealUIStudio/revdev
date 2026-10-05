@@ -1,139 +1,255 @@
-import { describe, expect, it } from 'vitest';
-import {
-  generateKek,
-  generateRsaKeypair,
-  generateSecret,
-  healthCheck,
-  neonTestConnection,
-  resendSendTest,
-  runDbMigrate,
-  runDbSeed,
-  smtpSendTest,
-  stripeCatalogSync,
-  stripeRunKeys,
-  stripeRunSeed,
-  stripeValidateKeys,
-  vercelCreateProject,
-  vercelDeploy,
-  vercelGetDeployment,
-  vercelSetEnv,
-  vercelValidateBlobToken,
-  vercelValidateToken,
-} from '../../lib/deploy';
+import { invoke } from '@tauri-apps/api/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { __resetDegradedModeForTests, isDegradedMode } from '../../lib/degraded-mode';
+import * as deploy from '../../lib/deploy';
 
-describe('deploy bridge (browser mocks)', () => {
-  // ── Vercel ────────────────────────────────────────────────────────────────
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
-  it('vercelValidateToken returns empty array', async () => {
-    expect(await vercelValidateToken('token')).toEqual([]);
+interface Operation {
+  name: string;
+  run: () => Promise<unknown>;
+  command: string;
+  args?: Record<string, unknown>;
+  result: unknown;
+}
+
+const operations: Operation[] = [
+  {
+    name: 'Vercel token validation',
+    run: () => deploy.vercelValidateToken('token'),
+    command: 'vercel_validate_token',
+    args: { token: 'token' },
+    result: [],
+  },
+  {
+    name: 'blob token validation',
+    run: () => deploy.vercelValidateBlobToken('blob-token'),
+    command: 'vercel_validate_blob_token',
+    args: { token: 'blob-token' },
+    result: false,
+  },
+  {
+    name: 'project creation',
+    run: () => deploy.vercelCreateProject('token', 'site', 'nextjs', 'apps/admin'),
+    command: 'vercel_create_project',
+    args: { token: 'token', name: 'site', framework: 'nextjs', rootDirectory: 'apps/admin' },
+    result: { id: 'project-id', name: 'site', framework: 'nextjs', accountId: 'team-id' },
+  },
+  {
+    name: 'project creation without a root directory',
+    run: () => deploy.vercelCreateProject('token', 'site', 'nextjs'),
+    command: 'vercel_create_project',
+    args: { token: 'token', name: 'site', framework: 'nextjs', rootDirectory: null },
+    result: { id: 'project-id', name: 'site', framework: 'nextjs', accountId: 'team-id' },
+  },
+  {
+    name: 'environment write with default targets',
+    run: () => deploy.vercelSetEnv('token', 'project-id', 'EXAMPLE_KEY', 'value'),
+    command: 'vercel_set_env',
+    args: {
+      token: 'token',
+      projectId: 'project-id',
+      key: 'EXAMPLE_KEY',
+      value: 'value',
+      target: ['production', 'preview', 'development'],
+    },
+    result: undefined,
+  },
+  {
+    name: 'environment write with explicit targets',
+    run: () => deploy.vercelSetEnv('token', 'project-id', 'EXAMPLE_KEY', 'value', ['production']),
+    command: 'vercel_set_env',
+    args: {
+      token: 'token',
+      projectId: 'project-id',
+      key: 'EXAMPLE_KEY',
+      value: 'value',
+      target: ['production'],
+    },
+    result: undefined,
+  },
+  {
+    name: 'deployment creation',
+    run: () => deploy.vercelDeploy('token', 'project-id'),
+    command: 'vercel_deploy',
+    args: { token: 'token', projectId: 'project-id' },
+    result: 'deployment-id',
+  },
+  {
+    name: 'deployment status',
+    run: () => deploy.vercelGetDeployment('token', 'deployment-id'),
+    command: 'vercel_get_deployment',
+    args: { token: 'token', deploymentId: 'deployment-id' },
+    result: { uid: 'deployment-id', url: 'site.example.com', state: 'ERROR', created: 1n },
+  },
+  {
+    name: 'database connection test',
+    run: () => deploy.neonTestConnection('postgresql://selected.invalid/db'),
+    command: 'neon_test_connection',
+    args: { connectionString: 'postgresql://selected.invalid/db' },
+    result: 'database response',
+  },
+  {
+    name: 'database migration',
+    run: () => deploy.runDbMigrate('/repo', 'postgresql://selected.invalid/db'),
+    command: 'run_db_migrate',
+    args: { repoPath: '/repo', connectionString: 'postgresql://selected.invalid/db' },
+    result: 'migration response',
+  },
+  {
+    name: 'database seed',
+    run: () => deploy.runDbSeed('/repo', 'postgresql://selected.invalid/db'),
+    command: 'run_db_seed',
+    args: { repoPath: '/repo', connectionString: 'postgresql://selected.invalid/db' },
+    result: 'seed response',
+  },
+  {
+    name: 'Stripe key validation',
+    run: () => deploy.stripeValidateKeys('stripe-key'),
+    command: 'stripe_validate_keys',
+    args: { secretKey: 'stripe-key' },
+    result: false,
+  },
+  {
+    name: 'Stripe seed',
+    run: () => deploy.stripeRunSeed('/repo'),
+    command: 'stripe_run_seed',
+    args: { repoPath: '/repo' },
+    result: 'Stripe seed response',
+  },
+  {
+    name: 'Stripe key generation',
+    run: () => deploy.stripeRunKeys('/repo'),
+    command: 'stripe_run_keys',
+    args: { repoPath: '/repo' },
+    result: 'Stripe key response',
+  },
+  {
+    name: 'Stripe catalog sync',
+    run: () => deploy.stripeCatalogSync('/repo'),
+    command: 'stripe_catalog_sync',
+    args: { repoPath: '/repo' },
+    result: 'catalog response',
+  },
+  {
+    name: 'Resend test send',
+    run: () => deploy.resendSendTest('email-key', 'test@example.com'),
+    command: 'resend_send_test',
+    args: { apiKey: 'email-key', toEmail: 'test@example.com' },
+    result: false,
+  },
+  {
+    name: 'SMTP test send',
+    run: () => deploy.smtpSendTest('smtp.example.com', 587, 'user', 'password', 'test@example.com'),
+    command: 'smtp_send_test',
+    args: {
+      host: 'smtp.example.com',
+      port: 587,
+      user: 'user',
+      pass: 'password',
+      toEmail: 'test@example.com',
+    },
+    result: false,
+  },
+  {
+    name: 'Gmail test send',
+    run: () =>
+      deploy.gmailSendTest(
+        'service@example.com',
+        'synthetic-key',
+        'from@example.com',
+        'to@example.com',
+      ),
+    command: 'gmail_send_test',
+    args: {
+      serviceAccountEmail: 'service@example.com',
+      privateKey: 'synthetic-key',
+      fromEmail: 'from@example.com',
+      toEmail: 'to@example.com',
+    },
+    result: { messageId: 'message-id', sentAt: '1' },
+  },
+  {
+    name: 'secret generation',
+    run: () => deploy.generateSecret(48),
+    command: 'generate_secret',
+    args: { length: 48 },
+    result: 'native-generated-secret',
+  },
+  {
+    name: 'encryption key generation',
+    run: () => deploy.generateKek(),
+    command: 'generate_kek',
+    result: 'native-generated-key',
+  },
+  {
+    name: 'RSA key generation',
+    run: () => deploy.generateRsaKeypair(),
+    command: 'generate_rsa_keypair',
+    result: ['native-private-key', 'native-public-key'],
+  },
+  {
+    name: 'HTTP response check',
+    run: () => deploy.healthCheck('https://api.example.com/health/ready'),
+    command: 'health_check',
+    args: { url: 'https://api.example.com/health/ready' },
+    result: 503,
+  },
+];
+
+beforeEach(() => {
+  vi.mocked(invoke).mockReset();
+  Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
+  __resetDegradedModeForTests();
+});
+afterEach(() => {
+  Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
+  __resetDegradedModeForTests();
+});
+
+describe('browser deployment boundary', () => {
+  it.each(operations)('rejects $name before creating operational evidence', async ({ run }) => {
+    await expect(run()).rejects.toThrow(
+      /Demo mode cannot .*\. Run Studio to perform this operation\./,
+    );
+    expect(invoke).not.toHaveBeenCalled();
+    expect(isDegradedMode()).toBe(true);
+  });
+});
+
+describe('native deployment bridge', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
   });
 
-  it('vercelValidateBlobToken returns true', async () => {
-    expect(await vercelValidateBlobToken('vercel_blob_token')).toBe(true);
+  it.each(operations)('preserves $name command, arguments and returned result', async ({
+    run,
+    command,
+    args,
+    result,
+  }) => {
+    vi.mocked(invoke).mockResolvedValueOnce(result);
+    await expect(run()).resolves.toEqual(result);
+    if (args) expect(invoke).toHaveBeenCalledWith(command, args);
+    else expect(invoke).toHaveBeenCalledWith(command);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(isDegradedMode()).toBe(false);
   });
 
-  it('vercelCreateProject returns mock project with accountId', async () => {
-    const result = await vercelCreateProject('token', 'test', 'nextjs');
-    expect(result).toEqual({
-      id: 'mock-test',
-      name: 'test',
-      framework: 'nextjs',
-      accountId: 'mock-team',
+  it.each(operations)('propagates $name failure without producing a substitute result', async ({
+    run,
+  }) => {
+    const error = new Error('Native operation failed');
+    vi.mocked(invoke).mockRejectedValueOnce(error);
+    await expect(run()).rejects.toBe(error);
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([200, 301])('preserves HTTP %s without upgrading its meaning', async (status) => {
+    vi.mocked(invoke).mockResolvedValueOnce(status);
+    await expect(deploy.healthCheck('https://api.example.com/health/live')).resolves.toBe(status);
+    expect(invoke).toHaveBeenCalledWith('health_check', {
+      url: 'https://api.example.com/health/live',
     });
-  });
-
-  it('vercelSetEnv resolves without error', async () => {
-    await expect(vercelSetEnv('t', 'p', 'k', 'v')).resolves.toBeUndefined();
-  });
-
-  it('vercelDeploy returns an obviously-fake deploy id', async () => {
-    expect(await vercelDeploy('t', 'p')).toBe('MOCK_DEPLOY_ID_DO_NOT_USE');
-  });
-
-  it('vercelGetDeployment returns READY state with deployment ID', async () => {
-    const result = await vercelGetDeployment('t', 'dep-1');
-    expect(result.state).toBe('READY');
-    expect(result.uid).toBe('dep-1');
-    expect(result.url).toBe('mock.vercel.app');
-    expect(result.created).toBeTypeOf('bigint');
-  });
-
-  // ── Database ──────────────────────────────────────────────────────────────
-
-  it('neonTestConnection returns mock timestamp string', async () => {
-    const result = await neonTestConnection('postgres://...');
-    expect(result).toBe('NOW() = 2026-03-15 (mock)');
-  });
-
-  it('runDbMigrate returns mock completion message', async () => {
-    expect(await runDbMigrate('/repo', 'postgresql://selected.invalid/db')).toBe(
-      'Migrations complete (mock)',
-    );
-  });
-
-  it('runDbSeed returns mock completion message', async () => {
-    expect(await runDbSeed('/repo', 'postgresql://selected.invalid/db')).toBe(
-      'Seed complete (mock)',
-    );
-  });
-
-  // ── Stripe ────────────────────────────────────────────────────────────────
-
-  it('stripeValidateKeys returns true', async () => {
-    expect(await stripeValidateKeys('sk_test')).toBe(true);
-  });
-
-  it('stripeRunSeed returns mock completion message', async () => {
-    expect(await stripeRunSeed('/repo')).toBe('Stripe seed complete (mock)');
-  });
-
-  it('stripeRunKeys returns mock completion message', async () => {
-    expect(await stripeRunKeys('/repo')).toBe('Keys generated (mock)');
-  });
-
-  it('stripeCatalogSync returns mock completion message', async () => {
-    expect(await stripeCatalogSync('/repo')).toBe('Catalog synced (mock)');
-  });
-
-  // ── Email ─────────────────────────────────────────────────────────────────
-
-  it('resendSendTest returns true', async () => {
-    expect(await resendSendTest('key', 'test@example.com')).toBe(true);
-  });
-
-  it('smtpSendTest returns true', async () => {
-    expect(await smtpSendTest('smtp.example.com', 587, 'user', 'pass', 'test@example.com')).toBe(
-      true,
-    );
-  });
-
-  // ── Secrets ───────────────────────────────────────────────────────────────
-
-  it('generateSecret returns an obviously-fake secret of the requested length', async () => {
-    const result = await generateSecret(48);
-    expect(result).toHaveLength(48);
-    // Must NOT look like a real secret — it should scream MOCK so it can't be
-    // mistaken for or copied into a real env (see audit Theme 2).
-    expect(result.startsWith('MOCK_SECRET')).toBe(true);
-    expect(result).not.toBe('x'.repeat(48));
-  });
-
-  it('generateKek returns an obviously-fake 64-char value', async () => {
-    const result = await generateKek();
-    expect(result).toHaveLength(64);
-    expect(result.startsWith('MOCK_KEK')).toBe(true);
-    expect(result).not.toBe('a'.repeat(64));
-  });
-
-  it('generateRsaKeypair returns obviously-fake key sentinels', async () => {
-    const [priv, pub] = await generateRsaKeypair();
-    expect(priv).toBe('MOCK_PRIVATE_KEY_DO_NOT_USE');
-    expect(pub).toBe('MOCK_PUBLIC_KEY_DO_NOT_USE');
-  });
-
-  // ── Health ────────────────────────────────────────────────────────────────
-
-  it('healthCheck returns 200', async () => {
-    expect(await healthCheck('https://example.com')).toBe(200);
   });
 });

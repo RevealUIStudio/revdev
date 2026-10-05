@@ -10,8 +10,9 @@ import { useSyncExternalStore } from 'react';
  * secrets, or green "running" service cards that reflect nothing).
  *
  * Today the dominant trigger is running outside the Tauri desktop app (browser
- * preview): every `!isTauri()` fallback — `invoke()` MOCK_DATA, the deploy-lib
- * mocks, the browser config short-circuit — is degraded by definition. A
+ * preview): `invoke()` MOCK_DATA and the browser config short-circuit are
+ * degraded by definition. Deployment operations reject outside Tauri rather
+ * than returning fabricated operational results. A
  * mutable `markDegraded()` escalation hook is also provided so any genuinely
  * runtime fallback (e.g. a remote daemon going unreachable) can flip the flag.
  *
