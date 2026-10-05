@@ -77,7 +77,7 @@ impl client::Handler for AcceptAnyKey {
 
     async fn check_server_key(
         &mut self,
-        _key: &russh::keys::PublicKey,
+        _key: &russh::keys::PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
         Ok(true)
     }
