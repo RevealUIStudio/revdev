@@ -1,0 +1,26 @@
+# Security-sensitive paths. The last matching pattern wins.
+
+/.github/CODEOWNERS @joshua-v-dev @RevealUIStudio
+/.github/workflows/ @joshua-v-dev @RevealUIStudio
+
+# License authority and the harness daemon.
+/packages/daemon/ @joshua-v-dev @RevealUIStudio
+
+# Auth, license, and signing surfaces outside the daemon.
+/apps/console/authz/ @joshua-v-dev @RevealUIStudio
+/apps/studio/src/components/auth/ @joshua-v-dev @RevealUIStudio
+/apps/studio/src/hooks/use-auth.ts @joshua-v-dev @RevealUIStudio
+/apps/studio/src/hooks/use-license-provision.ts @joshua-v-dev @RevealUIStudio
+/apps/studio/src/lib/auth-api.ts @joshua-v-dev @RevealUIStudio
+/apps/studio/src/lib/license-provision.ts @joshua-v-dev @RevealUIStudio
+/apps/studio/src/lib/license-provision-poll.ts @joshua-v-dev @RevealUIStudio
+/apps/studio/src-tauri/src/license_ctl.rs @joshua-v-dev @RevealUIStudio
+/apps/studio/src-tauri/src/signing.rs @joshua-v-dev @RevealUIStudio
+/packages/protocol/src/signature.ts @joshua-v-dev @RevealUIStudio
+/packages/protocol/src/signature-schemas.ts @joshua-v-dev @RevealUIStudio
+
+/scripts/issue-license.ts @joshua-v-dev @RevealUIStudio
+/scripts/license-safety.test.mjs @joshua-v-dev @RevealUIStudio
+/scripts/rotate-license.ts @joshua-v-dev @RevealUIStudio
+
+/SECURITY.md @joshua-v-dev @RevealUIStudio
