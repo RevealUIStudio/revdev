@@ -1,0 +1,26 @@
+# Security-sensitive paths. The last matching pattern wins.
+
+/.github/CODEOWNERS @RevealUIStudio
+/.github/workflows/ @RevealUIStudio
+
+# License authority and the harness daemon.
+/packages/daemon/ @RevealUIStudio
+
+# Auth, license, and signing surfaces outside the daemon.
+/apps/console/authz/ @RevealUIStudio
+/apps/studio/src/components/auth/ @RevealUIStudio
+/apps/studio/src/hooks/use-auth.ts @RevealUIStudio
+/apps/studio/src/hooks/use-license-provision.ts @RevealUIStudio
+/apps/studio/src/lib/auth-api.ts @RevealUIStudio
+/apps/studio/src/lib/license-provision.ts @RevealUIStudio
+/apps/studio/src/lib/license-provision-poll.ts @RevealUIStudio
+/apps/studio/src-tauri/src/license_ctl.rs @RevealUIStudio
+/apps/studio/src-tauri/src/signing.rs @RevealUIStudio
+/packages/protocol/src/signature.ts @RevealUIStudio
+/packages/protocol/src/signature-schemas.ts @RevealUIStudio
+
+/scripts/issue-license.ts @RevealUIStudio
+/scripts/license-safety.test.mjs @RevealUIStudio
+/scripts/rotate-license.ts @RevealUIStudio
+
+/SECURITY.md @RevealUIStudio
