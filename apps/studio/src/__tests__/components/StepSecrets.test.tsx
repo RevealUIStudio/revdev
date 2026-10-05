@@ -131,4 +131,21 @@ describe('StepSecrets', () => {
     // Generate button should still be visible for retry
     expect(screen.getByText('Generate All Secrets')).toBeInTheDocument();
   });
+
+  it('keeps browser preview from saving placeholder keys or advancing', async () => {
+    const actual = await vi.importActual<typeof import('../../lib/deploy')>('../../lib/deploy');
+    mockGenerateSecret.mockImplementation(actual.generateSecret);
+    mockGenerateKek.mockImplementation(actual.generateKek);
+    const onUpdateData = vi.fn();
+    const onNext = vi.fn();
+    render(<StepSecrets data={MOCK_DATA} onUpdateData={onUpdateData} onNext={onNext} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate All Secrets' }));
+    expect(await screen.findByText(/Demo mode cannot generate/)).toBeInTheDocument();
+    expect(screen.queryByText('Generated')).not.toBeInTheDocument();
+    expect(onUpdateData).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Generate All Secrets' })).toBeEnabled();
+    expect(onNext).not.toHaveBeenCalled();
+  });
 });

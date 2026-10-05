@@ -25,11 +25,11 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checks, setChecks] = useState<CheckState[]>([
-    { label: 'API Health', status: 'idle' },
-    { label: 'Admin', status: 'idle' },
-    { label: 'Marketing', status: 'idle' },
-    { label: 'Database (via API)', status: 'idle' },
-    { label: 'Email Delivery', status: 'idle' },
+    { label: 'API readiness endpoint', status: 'idle' },
+    { label: 'Admin response', status: 'idle' },
+    { label: 'Marketing response', status: 'idle' },
+    { label: 'API liveness endpoint', status: 'idle' },
+    { label: 'Test email send', status: 'idle' },
   ]);
 
   const domain = data.domain;
@@ -108,11 +108,14 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
       }
 
       if (data.emailVerified) {
-        updateCheck(4, { status: 'pass', detail: 'Test email sent' });
+        updateCheck(4, {
+          status: 'pass',
+          detail: 'Previous test send succeeded. Check the recipient inbox.',
+        });
       } else {
         updateCheck(4, {
           status: 'fail',
-          detail: 'Not verified. Send a test email in the Email step.',
+          detail: 'No successful test send recorded. Send a test email in the Email step.',
         });
       }
     } catch (err) {
@@ -124,8 +127,8 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
 
   return (
     <WizardStep
-      title="Bootstrap & Verify"
-      description="Create admin account and verify your deployment."
+      title="Configure & Check"
+      description="Configure admin sign-in and check deployment responses."
       error={error}
     >
       <div className="flex flex-col gap-4">
@@ -188,7 +191,8 @@ export default function StepVerify({ config, data, onComplete }: StepVerifyProps
         {allPassed && (
           <div className="rounded-md border border-success/50 bg-success-subtle p-4">
             <p className="mb-2 text-sm font-medium text-success">
-              All checks passed! Your RevealUI instance is live.
+              The listed checks passed. Complete the remaining verification before relying on this
+              deployment.
             </p>
             <div className="flex flex-col gap-1 text-sm font-mono text-fg-muted">
               <p>

@@ -149,7 +149,7 @@ Source of truth: internal audit (2026-06-23) + 2026-07-09 remediation re-verify 
 | WS | Lane | Scope | Status (2026-07-21) |
 |---|---|---|---|
 | W8 | Destructive-action confirmation | `ConfirmDialog` + type-to-confirm on vault/git/daemon/SSH/spawn/inference/setup/DB | ✅ **SHIPPED** (residual: re-audit any new destructive control) |
-| W9 | Degraded/mock-mode visibility | `markDegraded` → `DegradedBanner` → AppShell; mock secret sentinels | ✅ **SHIPPED** |
+| W9 | Degraded/mock-mode visibility | `markDegraded` → `DegradedBanner` → AppShell; browser deployment operations reject without generating placeholder keys or provider results | ✅ **SHIPPED** |
 | W10 | Tauri-backend hardening | Agent-wait deadlock, kill_all on exit, SSH channel split, SIGKILL escalate, tray Option, Windows E:\repos retired | ✅ **Mostly shipped** — residual: deploy-wizard Theme 7 honesty, any new Rust lifecycle bugs |
 | W11 | Error-contract sweep | http helper + mutation try/catch on high-traffic hooks | ✅ **Mostly shipped** — residual: Biome ban on bare `catch {}` / void promises if not yet wired |
 | W12 | Docs-accuracy CI gate | `scripts/doc-lint-license-format.mjs` | ✅ **SHIPPED** first piece; extend env-var/string coverage when needed | <!-- doclint:allow-legacy-format -->
