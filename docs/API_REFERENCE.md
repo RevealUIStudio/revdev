@@ -35,7 +35,7 @@ Returns a pong response to verify daemon connectivity.
 ---
 
 ### `harness.health`
-**Tier**: Free (GAP-337 — monitoring without a Pro license; `harness.prune` remains Pro)
+**Tier**: Free (GAP-337. Monitoring without a Pro license; `harness.prune` remains Pro)
 
 Returns daemon health status, active session/task counts, prune state, agent-key GC classification, and client-identity anchor consistency. Takes no params (any passed are ignored).
 
@@ -264,7 +264,7 @@ List the calling agent's active file reservations.
 
 ## Projects and File I/O
 
-Single-repo file and git access is **Free** — RevDev is meant to be usable as a daily driver without a license. Multi-agent coordination (mail, tasks, files.\* reservations, memory, agent.\*, merge.\*) stays Pro/Max. Every method below is also **Signature: required**.
+Single-repo file and git access is **Free**. RevDev is meant to be usable as a daily driver without a license. Multi-agent coordination (mail, tasks, files.\* reservations, memory, agent.\*, merge.\*) stays Pro/Max. Every method below is also **Signature: required**.
 
 ### `project.open`
 **Tier**: Free
@@ -603,10 +603,10 @@ Interacting with an already-running local model (`inference.status`/`chat`/`gene
 ### `inference.status`
 **Tier**: Free (identity-exempt)
 
-Check Ollama connectivity and loaded models.
+Check Ollama connectivity and loaded models. Also reports whether the OpenRouter provider is configured. That report never includes an API key.
 
 **Params**: none
-**Response**: `{ running: boolean, url: string, version?: string, models?: { name, sizeMb, modified }[], error?: string }`
+**Response**: `{ running: boolean, url: string, version?: string, models?: { name, sizeMb, modified }[], error?: string, openrouter: { configured: boolean, defaultModel: string, chain: string[] } }`
 
 ---
 
@@ -633,20 +633,28 @@ Warm up or unload a model.
 ### `inference.chat`
 **Tier**: Free (identity-exempt)
 
-Chat completion via Ollama.
+Chat completion. Omit `provider`, or set `provider: "ollama"`, for the local Ollama path. Set `provider: "openrouter"` to use the OpenRouter US allowlist (`docs/OPENROUTER.md`). `model` is required on the Ollama path. On the OpenRouter path, omit `model` to use the default chain (`google/gemma-4-31b-it:free`, then `google/gemma-4-26b-a4b-it:free`).
 
-**Params**: `{ model: string, messages: { role: 'system' | 'user' | 'assistant', content: string }[], temperature?: number, maxTokens?: number }`
-**Response**: `{ message: { role, content }, stats: { totalMs, tokens, tokensPerSecond } }` or `{ error: string }`
+**Params**: `{ model?: string, messages: { role: 'system' | 'user' | 'assistant', content: string }[], provider?: 'ollama' | 'openrouter', temperature?: number, maxTokens?: number }`
+
+`temperature` is 0 through 2. `maxTokens` is an integer from 1 through 32768.
+
+**Response** (Ollama): `{ message: { role, content }, stats: { totalMs, tokens, tokensPerSecond } }` or `{ error: string }`
+
+**Response** (OpenRouter): `{ message: { role, content }, stats: { totalMs, tokens, tokensPerSecond, promptTokens, completionTokens }, provider: 'openrouter', model: string }` or `{ error: string }`. A free-tier rate limit adds `rateLimited: true` plus `retryAfterSeconds`, `limit`, `remaining`, and `resetAt` when those headers are present.
 
 ---
 
 ### `inference.generate`
 **Tier**: Free (identity-exempt)
 
-Text generation via Ollama.
+Text generation. The `provider` switch matches `inference.chat`. On the OpenRouter path, `system` (when set) and `prompt` are sent as chat messages, and the text comes back as `response`.
 
-**Params**: `{ model: string, prompt: string, system?: string, temperature?: number, maxTokens?: number }`
-**Response**: `{ response: string, stats: { totalMs, tokens, tokensPerSecond } }` or `{ error: string }`
+**Params**: `{ model?: string, prompt: string, system?: string, provider?: 'ollama' | 'openrouter', temperature?: number, maxTokens?: number }`
+
+**Response** (Ollama): `{ response: string, stats: { totalMs, tokens, tokensPerSecond } }` or `{ error: string }`
+
+**Response** (OpenRouter): `{ response: string, stats: { totalMs, tokens, tokensPerSecond, promptTokens, completionTokens }, provider: 'openrouter', model: string }` or `{ error: string }`
 
 ---
 
@@ -836,4 +844,4 @@ All params are validated with Zod schemas. Key limits:
 
 Path traversal (`../`) and system paths (`/etc/`, `/proc/`, `/sys/`) are blocked.
 
-`ping`, `identity.rotate`, `project.grant`, and `project.revoke` have no dedicated Zod schema — their params are checked only inside the handler, so malformed extra fields don't produce a -32602; a missing required field surfaces as a generic -32000 handler error instead.
+`ping`, `identity.rotate`, `project.grant`, and `project.revoke` have no dedicated Zod schema. Their params are checked only inside the handler, so malformed extra fields don't produce a -32602; a missing required field surfaces as a generic -32000 handler error instead.

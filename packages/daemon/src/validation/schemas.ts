@@ -7,8 +7,8 @@
  * agent-memory + agent-coordination contracts (see
  * `revealui/packages/contracts/src/agents`,
  * `revealui/packages/db/src/schema/agents.ts`,
- * `revealui/packages/mcp/src/servers/revealui-memory.ts` —
- * all use the typed-record framing
+ * `revealui/packages/mcp/src/servers/revealui-memory.ts`.
+ * All use the typed-record framing
  * `memoryType`/`content`/`metadata`, not KV-store `key`/`value`).
  *
  * Drift between schemas and handler/bridge param names was tracked
@@ -73,14 +73,27 @@ const agentId = z
   .optional();
 const actorAgentId = z.string().max(MAX_NAME_LENGTH).optional();
 
+const inferenceProvider = z.enum(['ollama', 'openrouter']).optional();
+const inferenceTemperature = z.number().min(0).max(2).optional();
+const inferenceMaxTokens = z.number().int().min(1).max(32768).optional();
+
+function modelRequiredUnlessOpenRouter(value: {
+  provider?: 'ollama' | 'openrouter';
+  model?: string;
+}): boolean {
+  return (
+    value.provider === 'openrouter' || (typeof value.model === 'string' && value.model.length > 0)
+  );
+}
+
 /**
- * Task priority enum — canonical naming used by bridge MCP tool +
+ * Task priority enum. Canonical naming used by bridge MCP tool +
  * handler. Matches RevealUI contracts naming convention.
  */
 const taskPriority = z.enum(['low', 'medium', 'high', 'critical']).optional();
 
 /**
- * Mail priority enum — kept narrow (3 values) since mail is
+ * Mail priority enum. Kept narrow (3 values) since mail is
  * coordination-tier, not the full task priority spectrum.
  */
 const mailPriority = z.enum(['low', 'normal', 'high']).optional();
@@ -97,13 +110,13 @@ export const schemas: Record<string, z.ZodType> = {
       agentName: z.string().max(MAX_NAME_LENGTH).optional(),
       workDir: z.string().max(MAX_PATH_LENGTH).optional(),
       backend: z.string().max(64).optional(),
-      // Compat aliases — handler reads workDir||task and backend||env.
+      // Compat aliases. Handler reads workDir||task and backend||env.
       task: z.string().max(MAX_PATH_LENGTH).optional(),
       env: z.string().max(64).optional(),
       pid: z.number().int().nonnegative().optional(),
       // Client-owned identity (Studio zero-9P): an SPKI PEM Ed25519 public
       // key. When present the daemon registers only this public half and
-      // never mints a keypair. Bounded generously — a PEM is ~120 bytes.
+      // never mints a keypair. Bounded generously. A PEM is ~120 bytes.
       publicKeyPem: z.string().max(4096).optional(),
       actorAgentId,
     })
@@ -150,7 +163,7 @@ export const schemas: Record<string, z.ZodType> = {
       task: z.string().max(MAX_BODY_LENGTH).optional(),
       files: z.string().max(MAX_BODY_LENGTH).optional(),
       // Activity-state (GAP-257). The handler self-scopes `state` to
-      // ctx.agentId — sessionId/agentId override task/files only, never state.
+      // ctx.agentId. SessionId/agentId override task/files only, never state.
       state: z.enum(['active', 'blocked', 'idle']).optional(),
       blockedReason: z.string().max(MAX_NAME_LENGTH).optional(),
       // Compat: handler accepts sessionId or agentId for cross-session targeting.
@@ -316,7 +329,7 @@ export const schemas: Record<string, z.ZodType> = {
             // and circular references, and returns `undefined` for a function /
             // symbol value (so `.length` then throws too). A throw here escapes
             // safeParse and surfaces as an unhandled rejection in the per-socket
-            // handler — a trivially reachable, pre-auth remote DoS. Treat any
+            // handler. A trivially reachable, pre-auth remote DoS. Treat any
             // un-stringifiable payload as invalid rather than letting it throw.
             try {
               return JSON.stringify(v).length <= MAX_PAYLOAD_SIZE;
@@ -345,7 +358,7 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
-  // GAP-362: long-poll for a completion (or other) event — auto-notify over client poll
+  // GAP-362: long-poll for a completion (or other) event. Auto-notify over client poll
   'events.wait': z
     .object({
       eventType: z.string().min(1).max(64),
@@ -426,7 +439,7 @@ export const schemas: Record<string, z.ZodType> = {
 
   // GAP-459 Phase 1: composite peer-context read (advisory awareness).
   // Pro multi-agent coordination (not EXEMPT). Not signature-required:
-  // metadata only (presence, paths, task titles, event summaries) — no
+  // metadata only (presence, paths, task titles, event summaries). No
   // file contents. Same trust boundary as session.list + files.* on the
   // 0600 socket.
   'context.snapshot': z
@@ -439,7 +452,7 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
-  // GAP-342 — five-section fidelity snapshot (id-match; never mtime)
+  // GAP-342. Five-section fidelity snapshot (id-match; never mtime)
   'session.snapshot.write': z
     .object({
       sessionId: z.string().min(1).max(MAX_NAME_LENGTH),
@@ -489,16 +502,16 @@ export const schemas: Record<string, z.ZodType> = {
   'memory.query': z
     .object({
       memoryType: z.string().max(64).optional(),
-      // Full-text content filter — distinct from memoryType (categorical).
+      // Full-text content filter. Distinct from memoryType (categorical).
       query: z.string().max(MAX_NAME_LENGTH).optional(),
-      // Tag filter — searches metadata.tags JSONB.
+      // Tag filter. Searches metadata.tags JSONB.
       tags: z.array(z.string().max(64)).max(MAX_IDS_BATCH).optional(),
       limit: z.number().int().min(1).max(MAX_QUERY_LIMIT).optional(),
       actorAgentId,
     })
     .passthrough(),
 
-  // GAP-349 P5 — local knowledge-graph replica
+  // GAP-349 P5. Local knowledge-graph replica
   'graph.status': z.object({ actorAgentId }).passthrough(),
   'graph.search': z
     .object({
@@ -585,8 +598,8 @@ export const schemas: Record<string, z.ZodType> = {
   // Both handlers (`server.ts:registerHandler('harness.health', ...)` and
   // `harness.prune`) previously bypassed `validateParams` because no
   // schema existed in the registry. Adding them here completes the
-  // Option A direction (schemas as canonical) shipped by GAP-173 —
-  // every live handler should have a schema entry.
+  // Option A direction (schemas as canonical) shipped by GAP-173.
+  // Every live handler should have a schema entry.
   //
   // These schemas WERE intentionally type-only, delegating safety to the
   // handler's `Math.max(0, ...)` clamp so that integration tests could pass
@@ -611,7 +624,7 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
-  // GAP-154 Phase 5 — daemon peer registry (Neon coordination_agents role=daemon)
+  // GAP-154 Phase 5. Daemon peer registry (Neon coordination_agents role=daemon)
   'daemon.peers': z
     .object({
       staleAfterSeconds: z.number().min(30).max(86_400).optional(),
@@ -624,7 +637,7 @@ export const schemas: Record<string, z.ZodType> = {
       staleDays: z.number().min(1).optional(),
       hardDeleteDays: z.number().min(1).optional(),
       // GAP-459: also end sessions with no updated_at activity for this many
-      // seconds. Floor 3600s (1h) when provided — 0/omit disables the arm.
+      // seconds. Floor 3600s (1h) when provided. 0/omit disables the arm.
       // Not .int()-only: fractional seconds are harmless; floor is the property.
       heartbeatStaleSeconds: z.number().min(3600).optional(),
       actorAgentId,
@@ -633,7 +646,7 @@ export const schemas: Record<string, z.ZodType> = {
 
   // -- Inference --------------------------------------------------------------
   // `inference.status` takes no required params (handler signature is
-  // `async ()` — no params destructured). Schema added for symmetry with
+  // `async ()`. No params destructured). Schema added for symmetry with
   // the rest of the inference.* methods + so the only remaining bare
   // method in the registry is `ping` (intentional, no params).
   'inference.status': z
@@ -672,7 +685,7 @@ export const schemas: Record<string, z.ZodType> = {
 
   'inference.chat': z
     .object({
-      model: z.string().max(256),
+      model: z.string().max(256).optional(),
       messages: z
         .array(
           z.object({
@@ -681,17 +694,29 @@ export const schemas: Record<string, z.ZodType> = {
           }),
         )
         .max(100),
+      provider: inferenceProvider,
+      temperature: inferenceTemperature,
+      maxTokens: inferenceMaxTokens,
       actorAgentId,
     })
-    .passthrough(),
+    .passthrough()
+    .refine(modelRequiredUnlessOpenRouter, {
+      message: 'model is required unless provider is openrouter',
+    }),
 
   'inference.generate': z
     .object({
-      model: z.string().max(256),
+      model: z.string().max(256).optional(),
       prompt: z.string().max(MAX_MEMORY_LENGTH),
+      provider: inferenceProvider,
+      temperature: inferenceTemperature,
+      maxTokens: inferenceMaxTokens,
       actorAgentId,
     })
-    .passthrough(),
+    .passthrough()
+    .refine(modelRequiredUnlessOpenRouter, {
+      message: 'model is required unless provider is openrouter',
+    }),
 
   // -- Worktrees --------------------------------------------------------------
   'worktree.create': z
@@ -726,11 +751,11 @@ export const schemas: Record<string, z.ZodType> = {
       taskId: z.string().max(MAX_NAME_LENGTH).optional(),
       // Canonical: sourceBranch (matches DB column `merge_requests.source_branch`).
       sourceBranch: z.string().max(256).optional(),
-      // Compat alias — handler accepts `branch` as alias for sourceBranch.
+      // Compat alias. Handler accepts `branch` as alias for sourceBranch.
       branch: z.string().max(256).optional(),
       // Canonical: baseBranch (matches DB column `merge_requests.base_branch`).
       baseBranch: z.string().max(256).optional(),
-      // Compat alias — handler accepts `targetBranch` as alias for baseBranch.
+      // Compat alias. Handler accepts `targetBranch` as alias for baseBranch.
       targetBranch: z.string().max(256).optional(),
       description: z.string().max(MAX_BODY_LENGTH).optional(),
       actorAgentId,
@@ -802,7 +827,7 @@ export const schemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
 
-  // agent.list takes no required params — the handler self-scopes to the
+  // agent.list takes no required params. The handler self-scopes to the
   // verified signer's owner_agent.
   'agent.list': z
     .object({
