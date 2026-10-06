@@ -7,6 +7,14 @@ Dates are ISO 8601 (UTC).
 
 ## [Unreleased]
 
+### Added
+
+- **OpenRouter free-model provider.** `inference.chat` and `inference.generate`
+  accept `provider: "openrouter"` and call OpenRouter with a US-origin
+  allowlist. The default with no `provider` stays on Ollama. The key is read
+  from `OPENROUTER_API_KEY` at call time and is never logged or stored.
+  See `docs/OPENROUTER.md`.
+
 ### Changed
 
 - **GAP-262 agent-key GC.** Classification uses PID liveness instead of
@@ -24,7 +32,7 @@ Dates are ISO 8601 (UTC).
   2.5.0 binary fails locally instead of disagreeing with CI. The schema URL
   in `biome.json` matches 2.5.2.
 
-## [0.3.0] — 2026-09-22
+## [0.3.0] 2026-09-22
 
 ### Changed
 
@@ -50,7 +58,7 @@ Dates are ISO 8601 (UTC).
 - `@revdev/theme` stays `0.1.0`. Nothing but a dependency soak touched it
   since its version line.
 
-## [0.2.12] — 2026-08-29
+## [0.2.12] 2026-08-29
 
 ### Security
 
@@ -75,7 +83,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.12]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.12
 
-## [0.2.11] — 2026-08-16
+## [0.2.11] 2026-08-16
 
 ### Fixed
 
@@ -84,7 +92,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.11]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.11
 
-## [0.2.10] — 2026-08-16
+## [0.2.10] 2026-08-16
 
 ### Fixed
 
@@ -94,7 +102,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.10]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.10
 
-## [0.2.9] — 2026-08-16
+## [0.2.9] 2026-08-16
 
 ### Fixed
 
@@ -105,7 +113,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.9]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.9
 
-## [0.2.8] — 2026-08-16
+## [0.2.8] 2026-08-16
 
 ### Fixed
 
@@ -115,7 +123,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.8]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.8
 
-## [0.2.7] — 2026-08-15
+## [0.2.7] 2026-08-15
 
 ### Fixed
 
@@ -129,7 +137,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.7]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.7
 
-## [0.2.6] — 2026-08-15
+## [0.2.6] 2026-08-15
 
 ### Fixed
 
@@ -140,7 +148,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.6]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.6
 
-## [0.2.5] — 2026-08-15
+## [0.2.5] 2026-08-15
 
 ### Fixed
 
@@ -153,7 +161,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.5]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.5
 
-## [0.2.4] — 2026-08-15
+## [0.2.4] 2026-08-15
 
 ### Fixed
 
@@ -167,7 +175,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.4]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.4
 
-## [0.2.3] — 2026-08-14
+## [0.2.3] 2026-08-14
 
 ### Fixed
 
@@ -181,7 +189,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.3]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.3
 
-## [0.2.2] — 2026-08-14
+## [0.2.2] 2026-08-14
 
 ### Fixed
 
@@ -191,7 +199,7 @@ Dates are ISO 8601 (UTC).
 
 [0.2.2]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.2
 
-## [0.2.1] — 2026-08-14
+## [0.2.1] 2026-08-14
 
 ### Added
 
@@ -265,7 +273,7 @@ Dates are ISO 8601 (UTC).
   W8–W13 remediation marked shipped where code already landed; SPEC method
   table matches the real registry (no phantom `harness.stats` / `events.tail`).
 
-## [0.2.0] — 2026-07-17
+## [0.2.0] 2026-07-17
 
 ### Added
 
@@ -310,7 +318,7 @@ Dates are ISO 8601 (UTC).
   secrets to the two backflow app secrets instead of inheriting all caller
   secrets.
 
-## [0.1.1] — 2026-07-03
+## [0.1.1] 2026-07-03
 
 ### Fixed
 
@@ -324,9 +332,9 @@ Dates are ISO 8601 (UTC).
 - Test-suite hardening: resource-aware bounded concurrency and a de-brittled
   shutdown-drain hang guard.
 
-## [0.1.0] — 2026-07-01
+## [0.1.0] 2026-07-01
 
-First public release of RevealUI Studio — a native desktop AI editor and
+First public release of RevealUI Studio. A native desktop AI editor and
 agent-coordination dashboard.
 
 ### Added
