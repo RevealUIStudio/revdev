@@ -206,9 +206,6 @@ importers:
       '@revdev/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@revealui/contracts':
-        specifier: ^1.4.0
-        version: 1.4.0(typescript@7.0.2)
       '@revealui/core':
         specifier: ^0.15.4
         version: 0.15.4(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
@@ -1147,16 +1144,6 @@ packages:
 
   '@revealui/contracts@0.8.3':
     resolution: {integrity: sha512-yO+aRATk4rkt7reFrD7378x2VNMaDkJLByOEQwPbQV1kMfwNts2FzadsKw02JhJAs/eS2yJlYpz5xWGD2l4DUg==}
-    engines: {node: '>=24.13.0'}
-    peerDependencies:
-      drizzle-zod: ^0.8.3
-      typescript: 7.0.2
-    peerDependenciesMeta:
-      drizzle-zod:
-        optional: true
-
-  '@revealui/contracts@1.4.0':
-    resolution: {integrity: sha512-84jp/fzhI1GpMUZ3WnLUQLlQqE3f74nK/TGQE+xdqx11G1WcIxSLG1v8IjiGRJO16R7rTeoPKhFHvTj2xXm1DQ==}
     engines: {node: '>=24.13.0'}
     peerDependencies:
       drizzle-zod: ^0.8.3
@@ -4198,11 +4185,6 @@ snapshots:
       typescript: 7.0.2
       zod: 4.4.3
     optional: true
-
-  '@revealui/contracts@1.4.0(typescript@7.0.2)':
-    dependencies:
-      typescript: 7.0.2
-      zod: 4.4.3
 
   '@revealui/core@0.13.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)':
     dependencies:
