@@ -1,5 +1,5 @@
 /**
- * Inference handlers — bridge between daemon RPC and Ollama HTTP API.
+ * Inference handlers. Bridge between daemon RPC and Ollama HTTP API.
  *
  * These handlers provide model management and chat completion through
  * the daemon's license-gated RPC surface. Free tier gets local inference
@@ -7,7 +7,7 @@
  *
  * Every handler enforces a per-operation timeout via AbortSignal. Without
  * this, a stuck Ollama (accepts the connection but never responds) would
- * hold the daemon socket indefinitely — any caller could DoS the daemon
+ * hold the daemon socket indefinitely. Any caller could DoS the daemon
  * with a single inference.status call. Timeouts are env-overridable so
  * deployers can tune for slow hardware, large models, and slow networks.
  *
@@ -17,11 +17,12 @@
  * gives callers a consistent error shape they can render.
  */
 
+import { describeOpenRouter, openRouterChat } from './openrouter.js';
 import { registerHandler } from './server.js';
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
 
-function readTimeoutMs(envName: string, defaultMs: number): number {
+export function readTimeoutMs(envName: string, defaultMs: number): number {
   const raw = process.env[envName];
   if (!raw) return defaultMs;
   const parsed = Number.parseInt(raw, 10);
@@ -63,10 +64,11 @@ function timeoutMessage(op: keyof typeof OLLAMA_TIMEOUTS): string {
 const CONNECT_ERROR = 'Cannot connect to Ollama. Run: ollama serve';
 
 // ---------------------------------------------------------------------------
-// inference.status — check Ollama health + loaded models
+// inference.status. Check Ollama health + loaded models
 // ---------------------------------------------------------------------------
 
 registerHandler('inference.status', async () => {
+  const openrouter = describeOpenRouter();
   try {
     const [versionRes, modelsRes] = await Promise.all([
       ollamaFetch('/api/version', { timeoutMs: OLLAMA_TIMEOUTS.status }),
@@ -74,7 +76,7 @@ registerHandler('inference.status', async () => {
     ]);
 
     if (!versionRes.ok) {
-      return { running: false, error: 'Ollama not responding', url: OLLAMA_URL };
+      return { running: false, error: 'Ollama not responding', url: OLLAMA_URL, openrouter };
     }
 
     const version = (await versionRes.json()) as { version: string };
@@ -91,17 +93,18 @@ registerHandler('inference.status', async () => {
         sizeMb: Math.round(m.size / 1_000_000),
         modified: m.modified_at,
       })),
+      openrouter,
     };
   } catch (err) {
     if (isTimeoutError(err)) {
-      return { running: false, error: timeoutMessage('status'), url: OLLAMA_URL };
+      return { running: false, error: timeoutMessage('status'), url: OLLAMA_URL, openrouter };
     }
-    return { running: false, error: CONNECT_ERROR, url: OLLAMA_URL };
+    return { running: false, error: CONNECT_ERROR, url: OLLAMA_URL, openrouter };
   }
 });
 
 // ---------------------------------------------------------------------------
-// inference.pull — download a model
+// inference.pull. Download a model
 // ---------------------------------------------------------------------------
 
 registerHandler('inference.pull', async (params) => {
@@ -130,7 +133,7 @@ registerHandler('inference.pull', async (params) => {
 });
 
 // ---------------------------------------------------------------------------
-// inference.delete — remove a locally downloaded model
+// inference.delete. Remove a locally downloaded model
 // ---------------------------------------------------------------------------
 //
 // Unlike the value-returning inference.* handlers, this maps to a void caller
@@ -167,14 +170,14 @@ registerHandler('inference.delete', async (params) => {
 });
 
 // ---------------------------------------------------------------------------
-// inference.start — load a model into memory (warm up)
+// inference.start. Load a model into memory (warm up)
 // ---------------------------------------------------------------------------
 
 registerHandler('inference.start', async (params) => {
   const { model } = params as { model: string };
 
   try {
-    // Ollama loads models on first request — send empty generate to warm up
+    // Ollama loads models on first request. Send empty generate to warm up
     const res = await ollamaFetch('/api/generate', {
       method: 'POST',
       body: JSON.stringify({ model, prompt: '', stream: false }),
@@ -196,7 +199,7 @@ registerHandler('inference.start', async (params) => {
 });
 
 // ---------------------------------------------------------------------------
-// inference.stop — unload a model from memory
+// inference.stop. Unload a model from memory
 // ---------------------------------------------------------------------------
 
 registerHandler('inference.stop', async (params) => {
@@ -224,10 +227,27 @@ registerHandler('inference.stop', async (params) => {
 });
 
 // ---------------------------------------------------------------------------
-// inference.chat — chat completion via Ollama
+// inference.chat. Ollama unless provider is openrouter.
 // ---------------------------------------------------------------------------
 
-registerHandler('inference.chat', async (params) => {
+registerHandler('inference.chat', async (params, db, ctx) => {
+  if (params.provider === 'openrouter') {
+    return openRouterChat(
+      {
+        method: 'inference.chat',
+        model: typeof params.model === 'string' ? params.model : undefined,
+        messages: Array.isArray(params.messages)
+          ? (params.messages as Array<{ role: string; content: string }>)
+          : [],
+        temperature: typeof params.temperature === 'number' ? params.temperature : undefined,
+        maxTokens: typeof params.maxTokens === 'number' ? params.maxTokens : undefined,
+        actorAgentId: typeof params.actorAgentId === 'string' ? params.actorAgentId : undefined,
+      },
+      db,
+      ctx,
+    );
+  }
+
   const { model, messages, temperature, maxTokens } = params as {
     model: string;
     messages: Array<{ role: string; content: string }>;
@@ -281,10 +301,40 @@ registerHandler('inference.chat', async (params) => {
 });
 
 // ---------------------------------------------------------------------------
-// inference.generate — raw text completion via Ollama
+// inference.generate. Ollama unless provider is openrouter.
 // ---------------------------------------------------------------------------
 
-registerHandler('inference.generate', async (params) => {
+registerHandler('inference.generate', async (params, db, ctx) => {
+  if (params.provider === 'openrouter') {
+    const messages: Array<{ role: string; content: string }> = [];
+    if (typeof params.system === 'string' && params.system.length > 0) {
+      messages.push({ role: 'system', content: params.system });
+    }
+    messages.push({
+      role: 'user',
+      content: typeof params.prompt === 'string' ? params.prompt : '',
+    });
+    const result = await openRouterChat(
+      {
+        method: 'inference.generate',
+        model: typeof params.model === 'string' ? params.model : undefined,
+        messages,
+        temperature: typeof params.temperature === 'number' ? params.temperature : undefined,
+        maxTokens: typeof params.maxTokens === 'number' ? params.maxTokens : undefined,
+        actorAgentId: typeof params.actorAgentId === 'string' ? params.actorAgentId : undefined,
+      },
+      db,
+      ctx,
+    );
+    if ('error' in result) return result;
+    return {
+      response: result.message.content,
+      stats: result.stats,
+      provider: result.provider,
+      model: result.model,
+    };
+  }
+
   const { model, prompt, system, temperature, maxTokens } = params as {
     model: string;
     prompt: string;

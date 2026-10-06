@@ -1,6 +1,6 @@
 # @revdev/daemon
 
-Harness daemon — the coordination brain for RevDev.
+Harness daemon. The coordination brain for RevDev.
 
 Manages AI agent sessions, PTY processes, tool routing, inter-agent messaging, task coordination, and file reservations.
 
@@ -10,7 +10,7 @@ Manages AI agent sessions, PTY processes, tool routing, inter-agent messaging, t
 - **Remote**: HTTP gateway with pairing-code auth (**shipped**, GAP-421 port of the
   harness gateway; GAP-154 Phase 5 transport + `daemon.peers` Neon registry). Off by default (`httpPort: 0`).
   When enabled: `GET/POST /api/pair` (HMAC challenge, secret never on the wire),
-  `POST /rpc` (same `dispatchRpc` path as the Unix socket — one authorization
+  `POST /rpc` (same `dispatchRpc` path as the Unix socket. One authorization
   plane), `GET /api/status`, `GET /api/stream/:processId` (ticket-bound SSE).
   Default bind is `127.0.0.1`; do not expose to untrusted networks without a
   reverse proxy and operator review.
@@ -104,6 +104,7 @@ Environment variables (all optional):
 | `REVDEV_DAEMON_LOG` | `~/.local/share/revealui/daemon.log` | Log file for `--detach` mode |
 | `POSTGRES_URL` | (none → sync disabled) | Neon URL for cross-machine `coordination_*` sync (GAP-154) |
 | `POSTGRES_URL_FILE` | (none) | File path to Neon URL (stream-safe systemd; same effect as POSTGRES_URL) |
+| `OPENROUTER_API_KEY` | (unset) | Enables OpenRouter for `inference.chat` / `inference.generate` when `provider` is `openrouter`. See `docs/OPENROUTER.md`. |
 
 ## License tiers
 
@@ -151,13 +152,13 @@ package's README). Call them only when the daemon socket is reachable.
 
 ## Architecture pointers
 
-- `src/server.ts` — JSON-RPC dispatch, license guard, RPC handler registry, periodic stale-session prune (GAP-153).
+- `src/server.ts`. JSON-RPC dispatch, license guard, RPC handler registry, periodic stale-session prune (GAP-153).
 - `src/loop-guard.ts`: LoopGuard registry (`loop.arm` / `loop.tick` / `loop.status`) and session-end reap.
-- `src/agent-key-gc.ts` — agent-key GC classification by PID liveness (GAP-262). Quarantine and delete stay disabled; the sweep does not remove keys.
-- `src/storage/schema.ts` — PGlite schema (11 tables: agent_sessions, agent_messages, file_reservations, tasks, events, worktrees, agent_memory, merge_requests, agent_identity, agent_identity_keys, agent_identity_nonces).
-- `src/neon.ts` — daemon → Neon dual-write helpers (GAP-154 Phases 2 + 3). Best-effort, no-op when `POSTGRES_URL` unset. Sessions, mail, files, tasks, events dual-write; `memory.*` / `merge.*` stay local-only until Neon schema grows (documented in-module).
-- `src/http-gateway.ts` — TCP HTTP gateway + pairing + SSE (GAP-421 / GAP-154 Phase 5 transport). Off unless `httpPort > 0`.
-- `src/gateway-store.ts` — durable gateway tokens + bootstrap secret hash.
-- `src/guard.ts` — license tier check at RPC dispatch time.
-- `systemd/revdev-daemon.service` — systemd-user unit template.
-- `systemd/install.sh` — installer that resolves the unit's exec path and enables it.
+- `src/agent-key-gc.ts`. Agent-key GC classification by PID liveness (GAP-262). Quarantine and delete stay disabled; the sweep does not remove keys.
+- `src/storage/schema.ts`. PGlite schema (11 tables: agent_sessions, agent_messages, file_reservations, tasks, events, worktrees, agent_memory, merge_requests, agent_identity, agent_identity_keys, agent_identity_nonces).
+- `src/neon.ts`. Daemon → Neon dual-write helpers (GAP-154 Phases 2 + 3). Best-effort, no-op when `POSTGRES_URL` unset. Sessions, mail, files, tasks, events dual-write; `memory.*` / `merge.*` stay local-only until Neon schema grows (documented in-module).
+- `src/http-gateway.ts`. TCP HTTP gateway + pairing + SSE (GAP-421 / GAP-154 Phase 5 transport). Off unless `httpPort > 0`.
+- `src/gateway-store.ts`. Durable gateway tokens + bootstrap secret hash.
+- `src/guard.ts`. License tier check at RPC dispatch time.
+- `systemd/revdev-daemon.service`. Systemd-user unit template.
+- `systemd/install.sh`. Installer that resolves the unit's exec path and enables it.
