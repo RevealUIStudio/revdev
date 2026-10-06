@@ -187,7 +187,7 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
-          REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
+          REVEALFLEET_OVERRIDE_SIGNERS: ${{ vars.REVEALFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: typescript
           # Script-side mirror of this job's same-repo `if:` guard, so the
           # script's own early-exit is exactly as strong as the layer it backs.
@@ -241,7 +241,7 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
-          REVFLEET_OVERRIDE_SIGNERS: ${{ vars.REVFLEET_OVERRIDE_SIGNERS }}
+          REVEALFLEET_OVERRIDE_SIGNERS: ${{ vars.REVEALFLEET_OVERRIDE_SIGNERS }}
           PROVE_RED_LANGS: go
           # Script-side mirror of this job's same-repo `if:` guard, so the
           # script's own early-exit is exactly as strong as the layer it backs.

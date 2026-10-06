@@ -240,6 +240,8 @@ function runCmd(file, args, opts) {
     const testEnv = { ...process.env };
     delete testEnv.GH_TOKEN;
     delete testEnv.GITHUB_TOKEN;
+    delete testEnv.REVEALFLEET_OVERRIDE_SIGNERS;
+    // An obsolete setting grants no authority and must not reach PR code either.
     delete testEnv.REVFLEET_OVERRIDE_SIGNERS;
     output = execFileSync(file, args, {
       encoding: 'utf8',
@@ -520,7 +522,7 @@ if (anyFail) {
   }
   const grant = await verifyProveRedException({
     event,
-    allowedSigners: process.env.REVFLEET_OVERRIDE_SIGNERS,
+    allowedSigners: process.env.REVEALFLEET_OVERRIDE_SIGNERS,
     readComments(repo, pr) {
       const pages = JSON.parse(
         execFileSync(

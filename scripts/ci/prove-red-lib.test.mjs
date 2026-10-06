@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
   hasExemptLabel,
   indicatesNoWorkDone,
@@ -12,6 +13,23 @@ import {
   typescriptRunArgs,
   verifyProveRedException,
 } from './prove-red-lib.mjs';
+
+// Hooks export repository-local Git state; cwd alone does not isolate a child.
+// Synthetic repositories keep normal runtime settings but own their namespace.
+function fixtureGitEnvironment(inherited = process.env) {
+  const env = { ...inherited };
+  const localNames = execFileSync('git', ['rev-parse', '--local-env-vars'], {
+    encoding: 'utf8',
+  })
+    .trim()
+    .split('\n');
+  for (const name of localNames) delete env[name];
+  for (const name of Object.keys(env)) {
+    if (name.startsWith('GIT_CONFIG_KEY_') || name.startsWith('GIT_CONFIG_VALUE_'))
+      delete env[name];
+  }
+  return env;
+}
 
 // Regression lock for the GAP-393 review remediation
 // (https://github.com/RevealUIStudio/revdev/pull/325#issuecomment-5080422951,
@@ -466,10 +484,13 @@ describe('prove-red script ordering', () => {
     (kind, expected, exit) => {
       const root = mkdtempSync(join(tmpdir(), 'revdev-prove-red-order-'));
       try {
-        const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+        const fixtureEnv = fixtureGitEnvironment();
+        const git = (...args) =>
+          execFileSync('git', args, { cwd: root, env: fixtureEnv, encoding: 'utf8' });
         git('init', '-q');
         git('config', 'user.email', 'fixture@example.invalid');
         git('config', 'user.name', 'Fixture');
+        git('config', 'commit.gpgsign', 'false');
         writeFileSync(join(root, 'package.json'), '{"name":"fixture"}');
         writeFileSync(join(root, 'value.js'), 'module.exports = 1;');
         git('add', '.');
@@ -486,7 +507,7 @@ describe('prove-red script ordering', () => {
         writeFileSync(
           join(root, 'bin/pnpm'),
           '#!/usr/bin/env node\n' +
-            'if(process.env.GH_TOKEN||process.env.GITHUB_TOKEN||process.env.REVFLEET_OVERRIDE_SIGNERS)process.exit(91);\n' +
+            'if(process.env.GH_TOKEN||process.env.GITHUB_TOKEN||process.env.REVEALFLEET_OVERRIDE_SIGNERS||process.env.REVFLEET_OVERRIDE_SIGNERS)process.exit(91);\n' +
             'const {spawnSync}=require("node:child_process");\n' +
             'const r=spawnSync(process.execPath,["value.test.js"],{stdio:"inherit"});process.exitCode=r.status;\n',
           { mode: 0o755 },
@@ -499,7 +520,7 @@ describe('prove-red script ordering', () => {
             encoding: 'utf8',
             timeout: 20000,
             env: {
-              ...process.env,
+              ...fixtureEnv,
               PATH: `${join(root, 'bin')}:${process.env.PATH}`,
               BASE_REF: baseSha,
               GH_TOKEN: 'read-only-fixture-token',
@@ -507,6 +528,7 @@ describe('prove-red script ordering', () => {
               PR_LABELS: '["verify:no-behavior-change"]',
               PROVE_RED_LANGS: 'typescript',
               GITHUB_EVENT_PATH: '',
+              REVEALFLEET_OVERRIDE_SIGNERS: 'fixture-owner-anchor',
               REVFLEET_OVERRIDE_SIGNERS: 'fixture-owner-anchor',
             },
           },
@@ -528,6 +550,158 @@ describe('prove-red script ordering', () => {
 // Exercise the consumer's default npm package loader, not an injected verifier.
 // Synthetic owner/forger keys are test-only and are destroyed with the fixture.
 describe('published shared SSHSIG prove-red boundary', () => {
+  it('CI supplies only the canonical trust variable to every language job', () => {
+    const languages = [];
+    for (const filename of ['ci.yml', 'studio-rust-tests.yml']) {
+      const workflow = parseYaml(
+        readFileSync(new URL(`../../.github/workflows/${filename}`, import.meta.url), 'utf8'),
+      );
+      for (const job of Object.values(workflow.jobs)) {
+        for (const step of job.steps || []) {
+          if (!step.env?.PROVE_RED_LANGS) continue;
+          languages.push(step.env.PROVE_RED_LANGS);
+          expect(step.env.REVEALFLEET_OVERRIDE_SIGNERS).toBe(
+            `\${{ vars.REVEALFLEET_OVERRIDE_SIGNERS }}`,
+          );
+          expect(step.env).not.toHaveProperty('REVFLEET_OVERRIDE_SIGNERS');
+        }
+      }
+    }
+    expect(languages.sort()).toEqual(['go', 'rust', 'typescript']);
+  });
+
+  it('the actual CLI accepts canonical trust and rejects obsolete-only or conflicting trust', async () => {
+    const { buildOwnerOverridePayload, buildOwnerOverrideComment } = await import(
+      '@revealui/harnesses/gates'
+    );
+    const root = mkdtempSync(join(tmpdir(), 'revdev-canonical-trust-'));
+    try {
+      const foreignIndex = join(root, 'unrelated-index');
+      writeFileSync(foreignIndex, 'preserved foreign index');
+      const fixtureEnv = fixtureGitEnvironment({
+        ...process.env,
+        GIT_DIR: join(root, 'unrelated.git'),
+        GIT_INDEX_FILE: foreignIndex,
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'core.worktree',
+        GIT_CONFIG_VALUE_0: join(root, 'unrelated-worktree'),
+      });
+      const git = (...args) =>
+        execFileSync('git', args, { cwd: root, env: fixtureEnv, encoding: 'utf8' }).trim();
+      git('init', '-q');
+      expect(readFileSync(foreignIndex, 'utf8')).toBe('preserved foreign index');
+      git('config', 'user.email', 'fixture@example.invalid');
+      git('config', 'user.name', 'Fixture');
+      git('config', 'commit.gpgsign', 'false');
+      writeFileSync(join(root, 'package.json'), '{"name":"fixture"}');
+      writeFileSync(join(root, 'value.js'), 'module.exports = 1;');
+      git('add', 'package.json', 'value.js');
+      git('commit', '-qm', 'base');
+      const baseSha = git('rev-parse', 'HEAD');
+      writeFileSync(join(root, 'value.js'), 'module.exports = 2;');
+      writeFileSync(
+        join(root, 'value.test.js'),
+        "require('node:assert/strict').equal(require('./value.js'), 1);",
+      );
+      git('add', 'value.js', 'value.test.js');
+      git('commit', '-qm', 'inert test requires owner exception');
+      const context = {
+        repo: 'RevealUIStudio/revdev',
+        pr: 270,
+        head: git('rev-parse', 'HEAD'),
+        gate: 'prove-red',
+      };
+      const owner = join(root, 'synthetic-owner');
+      execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', owner]);
+      const anchor = `owner@revealui.com ${readFileSync(`${owner}.pub`, 'utf8').trim()}\n`;
+      const expiry = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const payload = buildOwnerOverridePayload(context, expiry);
+      const payloadFile = join(root, 'synthetic-payload');
+      writeFileSync(payloadFile, payload);
+      execFileSync('ssh-keygen', [
+        '-Y',
+        'sign',
+        '-f',
+        owner,
+        '-n',
+        'revealfleet-override',
+        payloadFile,
+      ]);
+      const body = buildOwnerOverrideComment(payload, readFileSync(`${payloadFile}.sig`, 'utf8'));
+      const eventFile = join(root, 'event.json');
+      writeFileSync(
+        eventFile,
+        JSON.stringify({
+          repository: { full_name: context.repo },
+          pull_request: {
+            number: context.pr,
+            head: { sha: context.head },
+            base: { repo: { full_name: context.repo } },
+            labels: [{ name: 'verify:no-behavior-change' }],
+          },
+        }),
+      );
+      mkdirSync(join(root, 'bin'));
+      writeFileSync(
+        join(root, 'bin/pnpm'),
+        '#!/usr/bin/env node\n' +
+          'if(process.env.GH_TOKEN||process.env.GITHUB_TOKEN||process.env.REVEALFLEET_OVERRIDE_SIGNERS||process.env.REVFLEET_OVERRIDE_SIGNERS)process.exit(91);\n' +
+          'const {spawnSync}=require("node:child_process"); const r=spawnSync(process.execPath,["value.test.js"],{stdio:"inherit"});process.exitCode=r.status;\n',
+        { mode: 0o755 },
+      );
+      writeFileSync(
+        join(root, 'bin/gh'),
+        '#!/usr/bin/env node\n' +
+          `require('node:assert/strict').deepEqual(process.argv.slice(2), ['api', 'repos/${context.repo}/issues/${context.pr}/comments', '--paginate', '--slurp']);\n` +
+          `console.log(${JSON.stringify(JSON.stringify([[{ body, html_url: 'https://example.invalid/synthetic-grant' }]]))});\n`,
+        { mode: 0o755 },
+      );
+      const env = {
+        ...fixtureEnv,
+        PATH: `${join(root, 'bin')}:${process.env.PATH}`,
+        BASE_REF: baseSha,
+        PROVE_RED_LANGS: 'typescript',
+        GITHUB_EVENT_PATH: eventFile,
+        GH_TOKEN: 'synthetic-read-token',
+        GITHUB_TOKEN: 'synthetic-read-token',
+      };
+      delete env.REVEALFLEET_OVERRIDE_SIGNERS;
+      delete env.REVFLEET_OVERRIDE_SIGNERS;
+      for (const [canonical, obsolete, expected] of [
+        [anchor, 'invalid obsolete anchor', 0],
+        [undefined, anchor, 1],
+        ['invalid canonical anchor', anchor, 1],
+      ]) {
+        // The gate intentionally leaves its disposable checkout at base source.
+        // Each invocation starts again from this fixture's committed PR source.
+        git('checkout', 'HEAD', '--', 'value.js');
+        const invocationEnv = { ...env, REVFLEET_OVERRIDE_SIGNERS: obsolete };
+        if (canonical !== undefined) invocationEnv.REVEALFLEET_OVERRIDE_SIGNERS = canonical;
+        const result = spawnSync(
+          process.execPath,
+          [new URL('./prove-red.mjs', import.meta.url).pathname],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            timeout: 20000,
+            env: invocationEnv,
+          },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.status, result.stdout + result.stderr).toBe(expected);
+        if (expected === 0)
+          expect(result.stdout).toContain('Owner-signed prove-red exception verified');
+        else expect(result.stderr).toContain('owner exception rejected');
+        if (canonical === undefined) expect(result.stderr).toContain('missing-owner-trust-anchor');
+        expect(git('rev-parse', 'HEAD')).toBe(context.head);
+        expect(readFileSync(join(root, 'value.js'), 'utf8')).toBe('module.exports = 1;');
+        expect(readFileSync(foreignIndex, 'utf8')).toBe('preserved foreign index');
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30000);
+
   it('grants exact context and rejects head/gate transplant, forgery and expiry', async () => {
     const { buildOwnerOverridePayload, buildOwnerOverrideComment } = await import(
       '@revealui/harnesses/gates'

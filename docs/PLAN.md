@@ -196,10 +196,18 @@ The `verify:no-behavior-change` label is a request, never a grant. Changed tests
 run first. Only a failure to produce red evidence may consult the shared
 `@revealui/harnesses/gates` owner-signature verifier. Its grant binds repository,
 PR, exact head SHA, gate `prove-red` and expiry; CI reads the owner-controlled
-`REVFLEET_OVERRIDE_SIGNERS` repository variable. Missing trust, package or PR
+`REVEALFLEET_OVERRIDE_SIGNERS` repository variable. Missing trust, package or PR
 comments rejects the exception. Ordinary failing-first evidence needs none of
 those resources. Posting a grant then applying the request label reevaluates
 the existing jobs; there is no alternative verifier or gate bypass.
+
+Only the canonical variable supplies trust; the shortened legacy setting is
+not a fallback. Both names are removed from untrusted test subprocesses. The
+repository owner must provision the canonical Actions variable with the
+approved public signer record and verify the exact-context CI grant before
+retiring the obsolete setting. This source migration does not establish that
+external configuration is present. Payload fields, the `revealfleet-override`
+signature namespace and owner-key custody are unchanged.
 
 The paired RevealUI `@revealui/harnesses@0.20.0` release is published by normal
 release run 36922599967 from main 231fc18e; registry readback confirms its exact
