@@ -32,8 +32,8 @@ function fixtureGitEnvironment(inherited = process.env) {
 }
 
 // Regression lock for the GAP-393 review remediation
-// (https://github.com/RevealUIStudio/revdev/pull/325#issuecomment-5080422951,
-// https://github.com/RevealUIStudio/revdev/pull/327#issuecomment-5080489570):
+// (https://github.com/revealui-studio/revdev/pull/325#issuecomment-5080422951,
+// https://github.com/revealui-studio/revdev/pull/327#issuecomment-5080489570):
 // exact-match label semantics, a JSON-array PR_LABELS transport that never
 // throws on malformed/absent input, a promotion-skip predicate that fires
 // only for a same-repo test -> main PR and fails closed otherwise, and the
@@ -116,7 +116,7 @@ describe('hasExemptLabel', () => {
 });
 
 describe('isForkSafePromotionSkip', () => {
-  const SAME_REPO = 'RevealUIStudio/revdev';
+  const SAME_REPO = 'revealui-studio/revdev';
   const FORK_REPO = 'someone-else/revdev';
 
   it('fires for a same-repo test -> main PR', () => {
@@ -298,11 +298,11 @@ describe('indicatesNoWorkDone', () => {
 
 describe('owner-signed prove-red exception boundary', () => {
   const event = {
-    repository: { full_name: 'RevealUIStudio/revdev' },
+    repository: { full_name: 'revealui-studio/revdev' },
     pull_request: {
       number: 270,
       head: { sha: 'a'.repeat(40) },
-      base: { repo: { full_name: 'RevealUIStudio/revdev' } },
+      base: { repo: { full_name: 'revealui-studio/revdev' } },
       labels: [{ name: 'verify:no-behavior-change' }],
     },
   };
@@ -338,7 +338,7 @@ describe('owner-signed prove-red exception boundary', () => {
     const result = await verifyProveRedException({
       ...base,
       readComments: async (repo, pr) => {
-        expect(repo).toBe('RevealUIStudio/revdev');
+        expect(repo).toBe('revealui-studio/revdev');
         expect(pr).toBe(270);
         return comments;
       },
@@ -347,7 +347,7 @@ describe('owner-signed prove-red exception boundary', () => {
           comments,
           allowedSigners: base.allowedSigners,
           expected: {
-            repo: 'RevealUIStudio/revdev',
+            repo: 'revealui-studio/revdev',
             pr: 270,
             head: 'a'.repeat(40),
             gate: 'prove-red',
@@ -376,7 +376,7 @@ describe('owner-signed prove-red exception boundary', () => {
         `${OWNER_OVERRIDE_IDENTITY} namespaces="${OWNER_OVERRIDE_NAMESPACE}" ` +
         `${publicKey[0]} ${publicKey[1]}`;
       const expected = {
-        repo: 'RevealUIStudio/revdev',
+        repo: 'revealui-studio/revdev',
         pr: 270,
         head: 'a'.repeat(40),
         gate: 'prove-red',
@@ -606,7 +606,7 @@ describe('published shared SSHSIG prove-red boundary', () => {
       git('add', 'value.js', 'value.test.js');
       git('commit', '-qm', 'inert test requires owner exception');
       const context = {
-        repo: 'RevealUIStudio/revdev',
+        repo: 'revealui-studio/revdev',
         pr: 270,
         head: git('rev-parse', 'HEAD'),
         gate: 'prove-red',
@@ -714,7 +714,7 @@ describe('published shared SSHSIG prove-red boundary', () => {
         execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key]);
       }
       const context = {
-        repo: 'RevealUIStudio/revdev',
+        repo: 'revealui-studio/revdev',
         pr: 270,
         head: 'a'.repeat(40),
         gate: 'prove-red',

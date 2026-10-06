@@ -28,7 +28,7 @@
     "updater": {
       "endpoints": [
         "https://releases.revealui.com/studio/{{target}}/{{arch}}/latest.json",
-        "https://github.com/RevealUIStudio/revdev/releases/download/studio-latest/latest.json"
+        "https://github.com/revealui-studio/revdev/releases/download/studio-latest/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUwMjEwREREQjBBRTEwNjEKUldSaEVLNnczUTBoNExmOEowekdCckdwUGhKQm5kS3dEMGRKU0V4OUhwS1pDb0FrYTc3NmlTTUMK"
     }

@@ -5247,7 +5247,7 @@ dependencies = [
 [[package]]
 name = "revvault-core"
 version = "0.4.0"
-source = "git+https://github.com/RevealUIStudio/revvault.git?rev=b531c5a86d5b35a5b930a2335bb2af8328250dba#b531c5a86d5b35a5b930a2335bb2af8328250dba"
+source = "git+https://github.com/revealui-studio/revvault.git?rev=b531c5a86d5b35a5b930a2335bb2af8328250dba#b531c5a86d5b35a5b930a2335bb2af8328250dba"
 dependencies = [
  "age",
  "anyhow",

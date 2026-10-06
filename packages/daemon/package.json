@@ -4,7 +4,7 @@
   "description": "Harness daemon — AI agent coordination, PTY management, and inter-agent messaging",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RevealUIStudio/revdev.git",
+    "url": "https://github.com/revealui-studio/revdev.git",
     "directory": "packages/daemon"
   },
   "license": "FSL-1.1-MIT",

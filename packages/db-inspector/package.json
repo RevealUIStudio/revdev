@@ -4,7 +4,7 @@
   "description": "Native SELECT-only database inspector. No external UI host.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RevealUIStudio/revdev.git",
+    "url": "https://github.com/revealui-studio/revdev.git",
     "directory": "packages/db-inspector"
   },
   "license": "MIT",

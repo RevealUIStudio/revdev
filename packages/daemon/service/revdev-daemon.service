@@ -1,6 +1,6 @@
 [Unit]
 Description=RevDev Harness Daemon — AI agent coordination runtime
-Documentation=https://github.com/RevealUIStudio/revdev
+Documentation=https://github.com/revealui-studio/revdev
 After=network.target
 
 [Service]

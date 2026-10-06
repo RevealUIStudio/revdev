@@ -1,5 +1,5 @@
 const UPSTREAM =
-  'https://github.com/RevealUIStudio/revdev/releases/download/studio-latest/latest.json';
+  'https://github.com/revealui-studio/revdev/releases/download/studio-latest/latest.json';
 
 export const config = { runtime: 'edge' };
 

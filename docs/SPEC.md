@@ -236,7 +236,7 @@ Tauri 2 desktop app at `apps/studio/`. UI panels:
 |---|---|
 | Dashboard (agent health, session list) | `useHealth` polling daemon `harness.health` |
 | Session viewer | Streaming subscribe to `events.tail` for the selected session |
-| Deploy wizard | Multi-step flow; the email test step is a stub pending a durable SMTP probe ([#15](https://github.com/RevealUIStudio/revdev/issues/15)) |
+| Deploy wizard | Multi-step flow; the email test step is a stub pending a durable SMTP probe ([#15](https://github.com/revealui-studio/revdev/issues/15)) |
 | Billing | RevealUI API consumer |
 | Alerts | Subscribes to `events.subscribe` for alert-tagged events |
 | Infrastructure / Daemon | `components/infrastructure/{DaemonPanel,InfrastructurePanel}.tsx` — daemon status + lifecycle |

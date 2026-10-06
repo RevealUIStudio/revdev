@@ -182,7 +182,7 @@ Studio checks `releases.revealui.com` first, then the GitHub `studio-latest` upd
 
 ### Update signature verification failed
 
-This means the downloaded update binary was tampered with or corrupted. **Do not install it.** Download manually from [GitHub Releases](https://github.com/RevealUIStudio/revdev/releases).
+This means the downloaded update binary was tampered with or corrupted. **Do not install it.** Download manually from [GitHub Releases](https://github.com/revealui-studio/revdev/releases).
 
 ---
 
@@ -241,5 +241,5 @@ launchctl list | grep revealui
 
 ## Getting Help
 
-- [GitHub Issues](https://github.com/RevealUIStudio/revdev/issues) — bug reports and feature requests
+- [GitHub Issues](https://github.com/revealui-studio/revdev/issues) — bug reports and feature requests
 - Email: support@revealui.com

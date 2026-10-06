@@ -56,7 +56,7 @@ RevDev consumes RevealUI packages — it doesn't contain them:
 - `@revealui/contracts` — shared Zod schemas
 - `@revealui/security` — input sanitization (Studio terminal uses `sanitizeTerminalLine`)
 - `@revealui/harnesses` — AI harness adapters (Fair Source)
-- `@revealui/presentation` — Studio shims tokens and components through this. Dogfood Phase 1+2 shipped via [revdev#67](https://github.com/RevealUIStudio/revdev/pull/67), [#71](https://github.com/RevealUIStudio/revdev/pull/71), [#73](https://github.com/RevealUIStudio/revdev/pull/73).
+- `@revealui/presentation` — Studio shims tokens and components through this. Dogfood Phase 1+2 shipped via [revdev#67](https://github.com/revealui-studio/revdev/pull/67), [#71](https://github.com/revealui-studio/revdev/pull/71), [#73](https://github.com/revealui-studio/revdev/pull/73).
 
 The harness daemon is the brain; Studio is its UI. Console is a separate SSH surface talking to the RevealUI API, not the daemon.
 

@@ -23,7 +23,7 @@ Additional:
 
 ### 1. Download Studio
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/RevealUIStudio/revdev/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/revealui-studio/revdev/releases):
 
 | Platform | File |
 |----------|------|
@@ -41,7 +41,7 @@ The daemon is the coordination brain — Studio connects to it for all agent ope
 
 ```bash
 # Clone the repo
-git clone https://github.com/RevealUIStudio/revdev.git
+git clone https://github.com/revealui-studio/revdev.git
 cd revdev
 
 # Install dependencies

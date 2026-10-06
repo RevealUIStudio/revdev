@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Pure predicates factored out of prove-red.mjs (GAP-393 review remediation,
-// https://github.com/RevealUIStudio/revdev/pull/325#issuecomment-5080422951).
+// https://github.com/revealui-studio/revdev/pull/325#issuecomment-5080422951).
 // Kept side-effect-free (no process.exit, no I/O) so they are importable and
 // unit-testable without spawning the script or a git repo.
 
@@ -61,7 +61,7 @@ export function isWorkspaceRootPackage(pkgDir, repoRoot) {
 
 // Resolves the command to run a changed TypeScript/vitest test file, given
 // its owning package (GAP-393 review remediation,
-// https://github.com/RevealUIStudio/revdev/pull/327#issuecomment-5080489570).
+// https://github.com/revealui-studio/revdev/pull/327#issuecomment-5080489570).
 // A workspace-member package routes through `pnpm --filter <name>`. The
 // workspace ROOT package does not: `pnpm --filter revdev exec vitest ...`
 // matches no project, prints "No projects matched the filters", and EXITS 0
