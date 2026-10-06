@@ -1,6 +1,6 @@
 [Unit]
 Description=RevDev coordination daemon
-Documentation=https://github.com/RevealUIStudio/revdev
+Documentation=https://github.com/revealui-studio/revdev
 After=network-online.target
 
 [Service]

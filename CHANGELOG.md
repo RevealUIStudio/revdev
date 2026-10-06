@@ -79,9 +79,9 @@ Dates are ISO 8601 (UTC).
 
 - Studio-dogfood Phase 4: shadow `components/ui` lives under
   `components/adapters` with a Studio-only Biome `noRestrictedImports` ban
-  ([#347](https://github.com/RevealUIStudio/revdev/pull/347)).
+  ([#347](https://github.com/revealui-studio/revdev/pull/347)).
 
-[0.2.12]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.12
+[0.2.12]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.12
 
 ## [0.2.11] 2026-08-16
 
@@ -90,7 +90,7 @@ Dates are ISO 8601 (UTC).
 - **Windows release compile.** `spawn_blocking` pipe write/read needs
   `mut` stdin and stdout. That path is Windows-only so Linux CI missed it.
 
-[0.2.11]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.11
+[0.2.11]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.11
 
 ## [0.2.10] 2026-08-16
 
@@ -100,7 +100,7 @@ Dates are ISO 8601 (UTC).
   Linux `revdev-relay` as missing and tried to compile it on Windows
   (`UnixStream` is Linux-only). Use the downloaded ELF if the file exists.
 
-[0.2.10]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.10
+[0.2.10]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.10
 
 ## [0.2.9] 2026-08-16
 
@@ -111,7 +111,7 @@ Dates are ISO 8601 (UTC).
   delivered a ping line. Studio now writes and reads them with blocking
   std I/O on a worker thread.
 
-[0.2.9]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.9
+[0.2.9]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.9
 
 ## [0.2.8] 2026-08-16
 
@@ -121,7 +121,7 @@ Dates are ISO 8601 (UTC).
   `__tests__`. The SetupWizard mock uses `vi.mocked` so a rejected
   `daemonSetup` is typed.
 
-[0.2.8]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.8
+[0.2.8]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.8
 
 ## [0.2.7] 2026-08-15
 
@@ -135,7 +135,7 @@ Dates are ISO 8601 (UTC).
   pipe write. Piped stdout was fully buffered, so Studio never saw a
   response while the daemon kept the socket open.
 
-[0.2.7]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.7
+[0.2.7]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.7
 
 ## [0.2.6] 2026-08-15
 
@@ -146,7 +146,7 @@ Dates are ISO 8601 (UTC).
   console children keep CREATE_NO_WINDOW only. Agent uses `WslLaunch`.
 - **Quality lint.** Biome no longer treats ICO source SVGs as DOM.
 
-[0.2.6]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.6
+[0.2.6]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.6
 
 ## [0.2.5] 2026-08-15
 
@@ -159,7 +159,7 @@ Dates are ISO 8601 (UTC).
   `wsl.exe` console). Parallel Agent RPCs no longer race past the
   spawn cooldown.
 
-[0.2.5]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.5
+[0.2.5]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.5
 
 ## [0.2.4] 2026-08-15
 
@@ -173,7 +173,7 @@ Dates are ISO 8601 (UTC).
 - **Agent daemon-down copy.** One Setup line. The spawn panel and the
   offline chip do not repeat it.
 
-[0.2.4]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.4
+[0.2.4]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.4
 
 ## [0.2.3] 2026-08-14
 
@@ -187,7 +187,7 @@ Dates are ISO 8601 (UTC).
 - **Agent errors.** Tauri `{ kind, message }` rejects show the real
   message, not `[object Object]`. A down WSL daemon is one Setup line.
 
-[0.2.3]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.3
+[0.2.3]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.3
 
 ## [0.2.2] 2026-08-14
 
@@ -197,7 +197,7 @@ Dates are ISO 8601 (UTC).
   hiding to the tray. Windows `wsl.exe` / `cmd` / `pwsh` spawns use
   `CREATE_NO_WINDOW` so daemon polls do not flash a terminal.
 
-[0.2.2]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.2
+[0.2.2]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.2
 
 ## [0.2.1] 2026-08-14
 
@@ -219,7 +219,7 @@ Dates are ISO 8601 (UTC).
 - **First-run and WSLg.** Local-first first-run and refuse-to-start when WSLg
   cannot present a window (revdev#405, #406), included in this desktop tag.
 
-[0.2.1]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.2.1
+[0.2.1]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.2.1
 
 
 ### Added
@@ -355,4 +355,4 @@ agent-coordination dashboard.
 - Auto-update delivery (`releases.revealui.com`) is not yet wired for this first
   release; install from the release artifacts directly.
 
-[0.1.0]: https://github.com/RevealUIStudio/revdev/releases/tag/studio-v0.1.0
+[0.1.0]: https://github.com/revealui-studio/revdev/releases/tag/studio-v0.1.0

@@ -10,7 +10,7 @@ staleness-status: FRESH
 
 **Last Updated:** 2026-08-19
 **Status:** Pre-1.0 — daemon production-grade for internal use; Studio + Console build clean; public tags `studio-v0.2.11` and `console-v0.2.0` exist
-**Repo:** [RevealUIStudio/revdev](https://github.com/RevealUIStudio/revdev)
+**Repo:** [revealui-studio/revdev](https://github.com/revealui-studio/revdev)
 
 > **The spec lives in one place: [`docs/SPEC.md`](./SPEC.md)** — surface area, architecture, JSON-RPC contract, license model, identity. This file is the stable entry point; it carries no spec content of its own. (Consolidated 2026-06-11; the licensing model previously specced in the internal coordination hub was absorbed into `SPEC.md` §License model.)
 

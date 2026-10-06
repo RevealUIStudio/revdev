@@ -28,8 +28,8 @@ revvault set <tauri-signing-private-key-password path> < "$D/pw"
 revvault set <tauri-signing-public-key path>           < "$D/revdev-studio.key.pub"
 
 # Mirror to CI secrets, then shred
-gh secret set TAURI_SIGNING_PRIVATE_KEY          -R RevealUIStudio/revdev < "$D/revdev-studio.key"
-gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD -R RevealUIStudio/revdev < "$D/pw"
+gh secret set TAURI_SIGNING_PRIVATE_KEY          -R revealui-studio/revdev < "$D/revdev-studio.key"
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD -R revealui-studio/revdev < "$D/pw"
 shred -u "$D/pw" "$D/revdev-studio.key" && rm -rf "$D"
 ```
 
@@ -66,7 +66,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tasks.create","params":{"title":"test ta
 
 ## 5. GitHub Secrets (for CI)
 
-Add these to RevealUIStudio/revdev → Settings → Secrets → Actions.
+Add these to revealui-studio/revdev → Settings → Secrets → Actions.
 
 `.github/workflows/studio-release.yml` **reads these names**. It does not contain certificate bytes and it does not generate certificates. An empty secret leaves that platform unsigned. A non-empty certificate secret is passed through (macOS) or imported for Authenticode (Windows).
 

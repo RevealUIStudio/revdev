@@ -11,7 +11,7 @@ staleness-status: FRESH
 **Last Updated:** 2026-08-19
 **Status:** Pre-1.0 — Studio + Console + harness daemon all buildable; public tags `studio-v0.2.11` and `console-v0.2.0` exist
 **Owner:** RevealUI Studio (`founder@revealui.com`)
-**Repo:** [RevealUIStudio/revdev](https://github.com/RevealUIStudio/revdev)
+**Repo:** [revealui-studio/revdev](https://github.com/revealui-studio/revdev)
 
 > **The plan lives in one place: [`docs/PLAN.md`](./PLAN.md).** This file is the stable entry point; it carries no plan content of its own. The former `PRODUCTION_LAUNCH_PLAN.md` was absorbed into `PLAN.md` on 2026-06-11 with every status re-verified.
 >

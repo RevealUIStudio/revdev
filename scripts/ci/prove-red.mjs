@@ -226,7 +226,7 @@ function skip(msg, { notice = false } = {}) {
 //   - A command that ran but did no work (e.g. `pnpm --filter` matching no
 //     project prints "No projects matched the filters" and exits 0 — that
 //     would otherwise be scored as a passing test that never ran; GAP-393
-//     review remediation, https://github.com/RevealUIStudio/revdev/pull/327
+//     review remediation, https://github.com/revealui-studio/revdev/pull/327
 //     #issuecomment-5080489570).
 // Output is captured (not streamed via `stdio: 'inherit'`) so it can be
 // inspected for the no-work-done marker; it is still printed in full, just
