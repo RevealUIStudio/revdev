@@ -1,8 +1,11 @@
 name: Issue + PR Body Leak Scan
 
-# Thin caller — logic in org-shared reusable workflow:
+# Non-name rules: org-shared reusable workflow
 #   RevealUIStudio/.github/.github/workflows/issue-leak-scan-reusable.yml
 # Requires .gitleaks.issues.toml on this repo's default branch.
+# Name rules are not in that file. The client-names job runs
+# scripts/check-client-leaks.sh against the event body with the org
+# Actions secret CLIENT_LEAK_PATTERNS.
 
 on:
   issues:
@@ -23,5 +26,92 @@ concurrency:
 
 jobs:
   scan:
-    uses: RevealUIStudio/.github/.github/workflows/issue-leak-scan-reusable.yml@8ea1ca5697dfc1f2041aac1368a9dd6d241121ab
-    secrets: inherit
+    uses: revealui-studio/.github/.github/workflows/issue-leak-scan-reusable.yml@ed893dec79c02c60604d566a03ddfb305e9358fe
+    secrets:
+      client_leak_patterns: ${{ secrets.CLIENT_LEAK_PATTERNS }}
+
+  client-names:
+    name: Client name scan on issue or PR body
+    if: >-
+      github.actor != 'github-actions[bot]'
+      && github.actor != 'dependabot[bot]'
+      && github.actor != 'chatgpt-codex-connector[bot]'
+      && (github.event.comment == null || github.event.comment.user.type != 'Bot')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Write event body
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const body =
+              context.payload.comment?.body
+              ?? context.payload.issue?.body
+              ?? context.payload.pull_request?.body
+              ?? '';
+            await fs.mkdir('/tmp/client-name-scan', { recursive: true });
+            await fs.writeFile('/tmp/client-name-scan/body.txt', body, 'utf8');
+            core.info(body.length ? `Wrote event body (${body.length} chars).` : 'Event body is empty.');
+
+      - name: Scan body for client names
+        id: scan
+        env:
+          CLIENT_LEAK_PATTERNS: ${{ secrets.CLIENT_LEAK_PATTERNS }}
+        run: |
+          set +e
+          bash scripts/check-client-leaks.sh /tmp/client-name-scan \
+            >/tmp/client-name-scan-out.txt 2>/tmp/client-name-scan-err.txt
+          code=$?
+          # Violation output can contain a matched literal. Do not print it.
+          # Setup errors name the secret only, so those are safe to show.
+          if [[ "$code" -eq 2 ]]; then
+            cat /tmp/client-name-scan-err.txt >&2
+          elif [[ "$code" -eq 0 ]]; then
+            cat /tmp/client-name-scan-out.txt
+          fi
+          echo "code=${code}" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - name: Comment and label on client-name findings
+        if: always() && steps.scan.outputs.code == '1'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const issueNumber =
+              context.payload.issue?.number
+              ?? context.payload.pull_request?.number;
+            if (!issueNumber) {
+              core.setFailed('Client-name scan found a hit but there is no issue number.');
+              return;
+            }
+            const commentBody = [
+              '> [!CAUTION]',
+              '> **Possible client or prospect name detected.**',
+              '',
+              'The client-name scanner flagged this body. Edit it and replace the name with a placeholder.',
+              'The pattern list lives in the org Actions secret `CLIENT_LEAK_PATTERNS`, not in the repository.',
+              '',
+              'Once cleaned, remove the `contains-sensitive-content` label.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: commentBody,
+            });
+            try {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['contains-sensitive-content'],
+              });
+            } catch (err) {
+              core.warning(`addLabels failed: ${err.message}`);
+            }

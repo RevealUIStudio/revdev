@@ -28,6 +28,10 @@ apps/console/rvui
 .env.local
 .env.*.local
 
+# Local client/prospect pattern list. Fallback when CLIENT_LEAK_PATTERNS
+# is unset. Never commit. CI uses the org Actions secret instead.
+.client-name-watchlist.local
+
 # IDE
 .idea/
 .vscode/
